@@ -1,0 +1,6 @@
+moviepy
+accelerate
+diffusers
+torch
+torchvision
+wandb
