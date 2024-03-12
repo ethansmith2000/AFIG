@@ -12,3 +12,7 @@ getting set up and training should be as easy as
 pip install -r requirements.txt
 python train_[method].py
 ```
+
+## Future Plans
+- Try some more on the GMM methods, see if we can fix the STDs at the std of the dataset or use a fixed per position learnable std
+- Can we do this in latent space? I'd really like to somehow encode each concentric ring into a single token to make this scalable.
