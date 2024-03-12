@@ -501,8 +501,6 @@ def inverse_fft(mag, phase):
     return array
 
 
-
-
 ###############
 
 def get_one_2d_freq_from_1d(seq, orig_h, orig_w, debug=False, index=None):

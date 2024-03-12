@@ -235,6 +235,7 @@ class FFTDecoderBase(nn.Module):
         image = inverse_fft(mag, angle)
 
         image = image.cpu().numpy() * 255
+        image = np.clip(image, 0, 255)
         image = image.transpose(0, 2, 3, 1).astype(np.uint8)
         images = [image[i] for i in range(image.shape[0])]
         images = [Image.fromarray(image) for image in images]
