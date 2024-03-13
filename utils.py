@@ -24,7 +24,7 @@ from diffusers.optimization import get_scheduler
 
 def quantize(x, centroids):
     d = abs(x[None, :] - centroids[:, None])
-    x = torch.argmin(d, -1)
+    x = torch.argmin(d, 0)
     return x
 
 

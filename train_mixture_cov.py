@@ -51,7 +51,7 @@ base_args = dict(
     validation_steps=100,
     tracker_project_name="seqdiffusion",
 
-    importance_weighting=True,
+    importance_weighting = True,
     variance_loss_factor = 0.00025,
     # variance_loss_factor=0.0,
     phase_out_of_range_penalty = 0.00025,
@@ -66,8 +66,6 @@ base_args = dict(
     ff_mult=3,
     num_layers=12,
     ctx_len=700,
-
-    npz_path="/home/ubuntu/seq_diffusion/imagenet"
 )
 base_args = SimpleNamespace(**base_args)
 

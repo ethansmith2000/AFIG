@@ -469,11 +469,11 @@ class FFTDecoderMixtureWithCovariance(FFTDecoderBase):
     def gen_sample(self, batch_size, sample_scale=1.0, sample_topk=3):
         device, weight_dtype = quick_get_device_and_dtype(self)
 
-        start = torch.zeros(batch_size, 6, device=device).to(weight_dtype)
+        start = torch.zeros(batch_size, 1, 6, device=device).to(weight_dtype)
         whole_sequence = start.clone().to(device).to(weight_dtype)
 
         i = 0
-        while whole_sequence.shape[1] <= 3264:
+        while whole_sequence.shape[1] <= 544:
             mean_x, std_x, mix_x = self(whole_sequence)
             mean_x = mean_x[:, -1:]
             std_x = std_x[:, -1:]
@@ -483,8 +483,6 @@ class FFTDecoderMixtureWithCovariance(FFTDecoderBase):
             i += 1
 
         whole_sequence = whole_sequence[:, 1:]
-
-        whole_sequence = whole_sequence.reshape(batch_size, whole_sequence.shape[1] // 6, 6)
 
         images = self.convert_to_image(whole_sequence)
 
@@ -548,7 +546,6 @@ class FFTDecoderMixtureWithCovariance(FFTDecoderBase):
         return mixed_log_probs
 
     def forward(self, x):
-
         x = self.fourier_embedder(x)
 
         x = self.in_proj(x)
@@ -637,7 +634,7 @@ class FFTDecoderMixtureWithCovariance(FFTDecoderBase):
 
 
 
-class FFTDecoderMixtureUnrolled(nn.Module):
+class FFTDecoderMixtureUnrolled(FFTDecoderBase):
 
     def __init__(self,
                  query_dim=768,
