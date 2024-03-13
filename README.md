@@ -12,8 +12,12 @@ getting set up and training should be as easy as
 pip install -r requirements.txt
 python train_[method].py
 ```
-
 The results that looked nice are from the quantized method
+
+
+You can visualize the generation process by taking a finished image and running visualize_reconstruction found in utils.py, from which the frames can then be made a video with the moviepy function
+
+
 
 ## Future Plans
 - Try some more on the GMM methods, see if we can fix the STDs at the std of the dataset or use a fixed per position learnable std
