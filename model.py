@@ -1,3 +1,4 @@
+import math
 import torch
 import numpy as np
 import torch.nn as nn
@@ -43,17 +44,10 @@ class Attention(nn.Module):
                  heads=8, dropout=0.0,
                  ):
         super().__init__()
-        self.to_q = nn.Linear(query_dim, query_dim)
-        self.to_k = nn.Linear(context_dim, query_dim)
-        self.to_v = nn.Linear(context_dim, query_dim)
+        self.to_qkv = nn.Linear(query_dim, query_dim * 3, bias=False)
         self.heads = heads
-        self.dim_head = query_dim // heads
-        self.scale = 1 / (self.dim_head ** 0.5)
         self.out_proj = nn.Linear(query_dim, query_dim)
-
-
         self.norm = nn.LayerNorm(query_dim)
-        self.dropout = nn.Dropout(dropout)
 
     def batch_to_head_dim(self, tensor):
         batch_size, heads, seq_len, dim = tensor.shape
@@ -61,24 +55,21 @@ class Attention(nn.Module):
         return tensor
 
     def head_to_batch_dim(self, tensor):
-        head_size = self.heads
         batch_size, seq_len, dim = tensor.shape
         tensor = tensor.reshape(batch_size, seq_len, self.heads, dim // self.heads)
         tensor = tensor.permute(0, 2, 1, 3)
         return tensor
 
-
-    def forward(self, x, context):
+    def forward(self, x):
         b, n, _ = x.shape
 
         resid_x = x
-        norm_x = self.norm(x)
-        if context is None:
-            context = norm_x
 
-        q = self.head_to_batch_dim(self.to_q(norm_x))
-        k = self.head_to_batch_dim(self.to_k(context))
-        v = self.head_to_batch_dim(self.to_v(context))
+        norm_x = self.norm(x)
+        q, k, v = self.to_qkv(norm_x).chunk(3, dim=-1)
+        q = self.head_to_batch_dim(q)
+        k = self.head_to_batch_dim(k)
+        v = self.head_to_batch_dim(v)
 
         attn_output = F.scaled_dot_product_attention(q, k, v, #attn_mask=
                                     is_causal=True,
@@ -89,7 +80,6 @@ class Attention(nn.Module):
         attn_output = self.batch_to_head_dim(attn_output)
 
         attn_output = self.out_proj(attn_output)
-        attn_output = self.dropout(attn_output)
 
         x = resid_x + attn_output
 
@@ -102,9 +92,7 @@ class FeedForward(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(dim, dim * mult),
             nn.GELU(),
-            nn.Dropout(dropout),
             nn.Linear(dim * mult, dim),
-            nn.Dropout(dropout),
         )
         self.norm = nn.LayerNorm(dim)
 
@@ -134,34 +122,27 @@ class TransformerLayer(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, x, context):
-        if self.gradient_checkpointing:
-            x = torch.utils.checkpoint.checkpoint(self.self_attn, x, None)
-            if self.cross_attn is not None:
-                x = torch.utils.checkpoint.checkpoint(self.cross_attn, x, context)
-            x = torch.utils.checkpoint.checkpoint(self.ff, x)
-
-        else:
-            x = self.self_attn(x, x)
-            if self.cross_attn is not None:
-                x = self.cross_attn(x, context)
-            x = self.ff(x)
-
+        x = self.self_attn(x, x)
+        x = self.ff(x)
         return x
 
-class FourierEmbedder():
+class FourierEmbedder(nn.Module):
     def __init__(self, num_freqs, temperature):
+        super().__init__()
         self.num_freqs = num_freqs
         self.temperature = temperature
-        self.freq_bands = temperature ** (torch.arange(num_freqs) / num_freqs)
+        freq_bands = temperature ** (torch.arange(num_freqs, dtype=torch.float32) / num_freqs)
+        self.register_buffer("freq_bands", freq_bands)
 
     @torch.no_grad()
-    def __call__(self, x, cat_dim=-1):
+    def forward(self, x, cat_dim=-1):
         """
         :param x: arbitrary shape of tensor
         :param cat_dim: cat dim
         """
         out = []
-        for freq in self.freq_bands:
+        freq_bands = self.freq_bands.to(dtype=x.dtype)
+        for freq in freq_bands:
             out.append(torch.sin(freq * x))
             out.append(torch.cos(freq * x))
         return torch.cat(out, cat_dim)
@@ -342,9 +323,6 @@ class FFTDecoderQuantized(FFTDecoderBase):
         x = self.in_norm(x)
 
         for layer in self.layers:
-            # if self.gradient_checkpointing:
-            #     x = torch.utils.checkpoint.checkpoint(layer, x, x)
-            # else:
             x = layer(x, x)
 
         x = self.final_norm(x)
@@ -501,7 +479,7 @@ class FFTDecoderMixtureWithCovariance(FFTDecoderBase):
             mix_probs = mix_probs.float()
             ground_truth = ground_truth.float()
 
-            mix_probs = F.softmax(mix_probs, dim=-1)
+            log_mix_probs = F.log_softmax(mix_probs, dim=-1)
 
             # modulo phase values
             modulo_means = self.modulo_phase(means.clone())
@@ -538,10 +516,10 @@ class FFTDecoderMixtureWithCovariance(FFTDecoderBase):
             mahalanobis_dist = mahalanobis_dist.float()
 
             #  log probabilities
-            log_probs = -0.5 * (n_dim * torch.log(torch.tensor(2 * torch.pi)) + log_cov_det + mahalanobis_dist)
+            log_probs = -0.5 * (n_dim * math.log(2 * math.pi) + log_cov_det + mahalanobis_dist)
 
             # weighted sum of log probs
-            mixed_log_probs = torch.logsumexp(log_probs + torch.log(mix_probs), dim=-1)
+            mixed_log_probs = torch.logsumexp(log_probs + log_mix_probs, dim=-1)
 
         return mixed_log_probs
 
@@ -576,7 +554,7 @@ class FFTDecoderMixtureWithCovariance(FFTDecoderBase):
         # b, s, 576
 
         for layer in self.cov_network:
-            cov_x = cov_x + layer(cov_x)
+            cov_x = layer(cov_x)
 
         # b, s, 6, 6, dim -> b, s, 6, 6, num_gaussians
         cov_x = cov_x.reshape(b, s, 6, 6, -1)

@@ -57,6 +57,11 @@ base_args = dict(
     phase_out_of_range_penalty = 0.00025,
     sample_scale = 1.0,
     sample_topk = 20,
+    min_variance = 0.05,
+    kl_prior_variance = 0.5,
+    kl_weight = 1e-3,
+    mixture_entropy_weight = 1e-3,
+    mixture_entropy_min = 1.5,
 
     num_gaussians=30,
     # num_gaussians=8,
@@ -133,13 +138,19 @@ def main(args):
     grad_norm = 0
     phase_out_of_range_loss = None
     variance_loss = None
+    kl_reg_loss = None
+    mixture_entropy_loss = None
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(model):
                 with torch.no_grad():
                     # Convert images to latent space
                     # b, c, h, w
-                    pixel_values = batch[0].cuda().float()
+                    pixel_values = batch[0].to(
+                        device=accelerator.device,
+                        dtype=torch.float32,
+                        non_blocking=True,
+                    )
 
                     # (b, c, h, w) x 2
                     mag, phase = get_fft(pixel_values)
@@ -148,13 +159,24 @@ def main(args):
                     inputs = torch.cat([mag, phase], dim=1)
 
                     # unroll into sequence
-                    inputs = get_1d_freqs_from_2d(inputs).cuda().float()
+                    inputs = get_1d_freqs_from_2d(inputs)
 
                     # permute to token
                     inputs = inputs.permute(0, 2, 1)
 
                     targets = inputs[:, 1:, :]
                     inputs = inputs[:, :-1, :]
+
+                    inputs = inputs.to(
+                        device=accelerator.device,
+                        dtype=weight_dtype,
+                        non_blocking=True,
+                    )
+                    targets = targets.to(
+                        device=accelerator.device,
+                        dtype=weight_dtype,
+                        non_blocking=True,
+                    )
 
                 loss = torch.zeros(1, device=accelerator.device)#, dtype=weight_dtype)
 
@@ -163,8 +185,24 @@ def main(args):
 
                 # punish variance, i think we want to try to have many narrow modes where possible 
                 if args.variance_loss_factor > 0:
-                    variance_loss = F.relu(covs.norm(dim=(-2,-1)).mean())
+                    cov_diag = covs.diagonal(dim1=-2, dim2=-1)
+                    variance_loss = torch.relu(args.min_variance - cov_diag).mean()
                     loss = loss + variance_loss * args.variance_loss_factor
+
+                if args.kl_weight > 0:
+                    dim_cov = covs.shape[-1]
+                    covs_flat = covs.reshape(-1, dim_cov, dim_cov)
+                    covs_float = covs_flat.to(torch.float32)
+                    trace_cov = covs_float.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
+                    _, logdet_cov = torch.linalg.slogdet(covs_float)
+                    kl_terms = (
+                        trace_cov / args.kl_prior_variance
+                        - dim_cov
+                        + dim_cov * math.log(args.kl_prior_variance)
+                        - logdet_cov
+                    )
+                    kl_reg_loss = 0.5 * kl_terms.mean()
+                    loss = loss + kl_reg_loss * args.kl_weight
 
                 # we do a modulo thingy so that a prediction like 3.1416 is understood to be = to -3.1414 but lets penalize this
                 if args.phase_out_of_range_penalty > 0:
@@ -179,9 +217,18 @@ def main(args):
 
                 #TODO make based off expected amplitude
                 if args.importance_weighting:
-                    weights = torch.linspace(1, 0.25, main_loss.shape[1])
-                    weights = weights.to(loss.device).to(main_loss.dtype)
-                    main_loss = main_loss * weights[None, :]
+                    mag_channels = targets.shape[-1] // 2
+                    magnitudes = targets[:, :, :mag_channels].detach().abs().mean(dim=-1)
+                    weights = magnitudes / (magnitudes.mean(dim=1, keepdim=True) + 1e-6)
+                    main_loss = main_loss * weights
+
+                if args.mixture_entropy_weight > 0:
+                    mix_log_probs = F.log_softmax(mix_ps, dim=-1)
+                    mix_probs = mix_log_probs.exp()
+                    entropy = -(mix_probs * mix_log_probs).sum(dim=-1)
+                    entropy_gap = torch.relu(args.mixture_entropy_min - entropy)
+                    mixture_entropy_loss = entropy_gap.mean()
+                    loss = loss + mixture_entropy_loss * args.mixture_entropy_weight
 
                 loss = loss + main_loss.mean()
 
@@ -229,6 +276,10 @@ def main(args):
                 logs["phase_out_of_range_loss"] = phase_out_of_range_loss.detach().item()
             if variance_loss is not None:
                 logs["variance_loss"] = variance_loss.detach().item()
+            if kl_reg_loss is not None:
+                logs["kl_reg_loss"] = kl_reg_loss.detach().item()
+            if mixture_entropy_loss is not None:
+                logs["mixture_entropy_loss"] = mixture_entropy_loss.detach().item()
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
