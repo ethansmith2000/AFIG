@@ -1,4 +1,13 @@
 
+import os
+# export TRITON_CACHE_DIR=/home/ethan/.triton/cache
+os.environ["TRITON_CACHE_DIR"] = "/home/ethan/.triton/cache"
+
+import os, tempfile
+os.environ.setdefault("TMPDIR", "/home/ethan/tmp")
+tempfile.tempdir = "/home/ethan/tmp"
+
+
 import math
 import os
 import torch.utils.checkpoint
@@ -33,7 +42,7 @@ base_args = dict(
     lr_power=1.0,
     use_8bit_adam=False,
     gradient_accumulation_steps=1,
-    gradient_checkpointing=True,
+    gradient_checkpointing=False,
     adam_beta1=0.9,
     adam_beta2=0.999,
     adam_weight_decay=1e-2,
@@ -56,21 +65,28 @@ base_args = dict(
     # variance_loss_factor=0.0,
     phase_out_of_range_penalty = 0.00025,
     sample_scale = 1.0,
-    sample_topk = 20,
+    sample_topk = 8,
     min_variance = 0.05,
     kl_prior_variance = 0.5,
     kl_weight = 1e-3,
     mixture_entropy_weight = 1e-3,
     mixture_entropy_min = 1.5,
 
-    num_gaussians=30,
-    # num_gaussians=8,
+    input_noise_prob=0.2,
+    input_noise_std=0.02,
+
+
+    num_gaussians=8,
     query_dim=1024,
-    heads=16,
+    heads=8,
     dropout=0.0,
     ff_mult=3,
     num_layers=12,
     ctx_len=700,
+
+    compile=False,
+    compile_mode="reduce-overhead",
+    compile_fullgraph=True,
 )
 base_args = SimpleNamespace(**base_args)
 
@@ -134,6 +150,11 @@ def main(args):
         desc="Steps",
         disable=not accelerator.is_local_main_process,
     )
+    import copy
+    model_copy = copy.deepcopy(model)
+
+    if args.compile:
+        model = torch.compile(model, mode=args.compile_mode, fullgraph=args.compile_fullgraph)
 
     grad_norm = 0
     phase_out_of_range_loss = None
@@ -142,6 +163,7 @@ def main(args):
     mixture_entropy_loss = None
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
+            noise_mask_fraction = None
             with accelerator.accumulate(model):
                 with torch.no_grad():
                     # Convert images to latent space
@@ -178,16 +200,22 @@ def main(args):
                         non_blocking=True,
                     )
 
+                if args.input_noise_prob > 0 and args.input_noise_std > 0:
+                    noise_mask = (
+                        torch.rand(inputs.shape[0], inputs.shape[1], 1, device=inputs.device)
+                        < args.input_noise_prob
+                    )
+                    noise = torch.randn_like(inputs) * args.input_noise_std
+                    inputs = inputs + noise * noise_mask.to(inputs.dtype)
+                    noise_mask_fraction = noise_mask.float().mean().item()
+
                 loss = torch.zeros(1, device=accelerator.device)#, dtype=weight_dtype)
 
                 means, covs, mix_ps = model(inputs)
-                log_probs = model.gmm_log_prob(means, covs, mix_ps, targets)
 
-                # punish variance, i think we want to try to have many narrow modes where possible 
-                if args.variance_loss_factor > 0:
-                    cov_diag = covs.diagonal(dim1=-2, dim2=-1)
-                    variance_loss = torch.relu(args.min_variance - cov_diag).mean()
-                    loss = loss + variance_loss * args.variance_loss_factor
+                means, covs, mix_ps = model.post_process(means, covs, mix_ps)
+
+                log_probs = model.gmm_log_prob(means, covs, mix_ps, targets)
 
                 if args.kl_weight > 0:
                     dim_cov = covs.shape[-1]
@@ -216,11 +244,11 @@ def main(args):
                 orig_loss = orig_loss.mean().item()
 
                 #TODO make based off expected amplitude
-                if args.importance_weighting:
-                    mag_channels = targets.shape[-1] // 2
-                    magnitudes = targets[:, :, :mag_channels].detach().abs().mean(dim=-1)
-                    weights = magnitudes / (magnitudes.mean(dim=1, keepdim=True) + 1e-6)
-                    main_loss = main_loss * weights
+                # if args.importance_weighting:
+                #     mag_channels = targets.shape[-1] // 2
+                #     magnitudes = targets[:, :, :mag_channels].detach().abs().mean(dim=-1)
+                #     weights = magnitudes / (magnitudes.mean(dim=1, keepdim=True) + 1e-6)
+                #     main_loss = main_loss * weights
 
                 if args.mixture_entropy_weight > 0:
                     mix_log_probs = F.log_softmax(mix_ps, dim=-1)
@@ -232,16 +260,16 @@ def main(args):
 
                 loss = loss + main_loss.mean()
 
-                if global_step % 100 == 0 and global_step > 0:
-                    with torch.no_grad():
-                        max_g = 10
-                        logger.info(f"sample of means at pos 0: {means[0, 0, :max_g, :]}")
-                        logger.info(f"sample of stds at pos 0: {covs[0, 0, :max_g, torch.arange(6), torch.arange(6)]}")
-                        logger.info(f"sample of mix_ps at pos 0: {F.softmax(mix_ps[0, 0, :], dim=-1)}")
+                # if global_step % 100 == 0 and global_step > 0:
+                #     with torch.no_grad():
+                #         max_g = 10
+                #         logger.info(f"sample of means at pos 0: {means[0, 0, :max_g, :]}")
+                #         logger.info(f"sample of stds at pos 0: {covs[0, 0, :max_g, torch.arange(6), torch.arange(6)]}")
+                #         logger.info(f"sample of mix_ps at pos 0: {F.softmax(mix_ps[0, 0, :], dim=-1)}")
 
-                        logger.info(f"sample of means at pos 100: {means[0, 100, :max_g, :]}")
-                        logger.info(f"sample of stds at pos 100: {covs[0, 100, :max_g, torch.arange(6), torch.arange(6)]}")
-                        logger.info(f"sample of mix_ps at pos 100: {F.softmax(mix_ps[0, 100, :], dim=-1)}")
+                #         logger.info(f"sample of means at pos 100: {means[0, 100, :max_g, :]}")
+                #         logger.info(f"sample of stds at pos 100: {covs[0, 100, :max_g, torch.arange(6), torch.arange(6)]}")
+                #         logger.info(f"sample of mix_ps at pos 100: {F.softmax(mix_ps[0, 100, :], dim=-1)}")
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -259,8 +287,10 @@ def main(args):
                     save_model(model, args, accelerator, logger, global_step)
 
                     if global_step % args.validation_steps == 0:
+                        # copy weights from model to model_copy
+                        model_copy.load_state_dict(model.state_dict())
                         image_logs = log_validation(
-                            model,
+                            model_copy,
                             args,
                             accelerator,
                             logger,
@@ -280,6 +310,8 @@ def main(args):
                 logs["kl_reg_loss"] = kl_reg_loss.detach().item()
             if mixture_entropy_loss is not None:
                 logs["mixture_entropy_loss"] = mixture_entropy_loss.detach().item()
+            if noise_mask_fraction is not None:
+                logs["input_noise_fraction"] = noise_mask_fraction
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 

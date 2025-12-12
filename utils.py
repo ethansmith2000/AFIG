@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import PIL
 from PIL import Image
-from moviepy.editor import ImageSequenceClip
+# from moviepy.editor import ImageSequenceClip
 import wandb
 import gc
 import logging
@@ -77,14 +77,14 @@ def basic_train_setup(args, logger):
          ]
     )
 
-    # train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True,
-    #                                         download=True, transform=transform)
+    train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True,
+                                            download=True, transform=transform)
 
     # train_dataset = torchvision.datasets.CelebA(root='./data', split='train',
     #                                         download=True, transform=transform)
 
-    train_dataset = torchvision.datasets.Flowers102(root='./data', split='train',
-                                                    download=True, transform=transform)
+    # train_dataset = torchvision.datasets.Flowers102(root='./data', split='train',
+    #                                                 download=True, transform=transform)
 
     gc.collect()
     torch.cuda.empty_cache()
@@ -644,16 +644,16 @@ def visualize_reconstruction(img, one_freq_dim=0, h=64, w=64):
     return single_freqs, progress_frames
 
 
-def create_video_moviepy(frames, output_path, filename="movie", fps=25):
-    if isinstance(frames[0], PIL.Image.Image):
-        frames = [np.array(frame.convert("RGB")) for frame in frames]
-    clip = ImageSequenceClip(frames, fps=fps)
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
-    clip.write_videofile(f"{output_path}/{filename}.mp4", codec="libx264")
+# def create_video_moviepy(frames, output_path, filename="movie", fps=25):
+#     if isinstance(frames[0], PIL.Image.Image):
+#         frames = [np.array(frame.convert("RGB")) for frame in frames]
+#     clip = ImageSequenceClip(frames, fps=fps)
+#     if not os.path.exists(output_path):
+#         os.makedirs(output_path)
+#     clip.write_videofile(f"{output_path}/{filename}.mp4", codec="libx264")
 
-    # Close the clip to release resources
-    clip.close()
+#     # Close the clip to release resources
+#     clip.close()
 
 
 

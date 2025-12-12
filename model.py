@@ -73,7 +73,6 @@ class Attention(nn.Module):
 
         attn_output = F.scaled_dot_product_attention(q, k, v, #attn_mask=
                                     is_causal=True,
-                                    scale=self.scale,
                                     #dropout_p=self.dropout
                                     )
 
@@ -122,7 +121,7 @@ class TransformerLayer(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, x, context):
-        x = self.self_attn(x, x)
+        x = self.self_attn(x)
         x = self.ff(x)
         return x
 
@@ -323,7 +322,7 @@ class FFTDecoderQuantized(FFTDecoderBase):
         x = self.in_norm(x)
 
         for layer in self.layers:
-            x = layer(x, x)
+            x = layer(x)
 
         x = self.final_norm(x)
         x = self.proj_out(x)
@@ -452,11 +451,12 @@ class FFTDecoderMixtureWithCovariance(FFTDecoderBase):
 
         i = 0
         while whole_sequence.shape[1] <= 544:
-            mean_x, std_x, mix_x = self(whole_sequence)
+            mean_x, cov_x, mix_x = self(whole_sequence)
+            mean_x, cov_x, mix_x = self.post_process(mean_x, cov_x, mix_x)
             mean_x = mean_x[:, -1:]
-            std_x = std_x[:, -1:]
+            cov_x = cov_x[:, -1:]
             mix_x = mix_x[:, -1:]
-            preds = self.sample_gmm(mean_x, std_x, mix_x, scale=sample_scale, topk=sample_topk)
+            preds = self.sample_gmm(mean_x, cov_x, mix_x, scale=sample_scale, topk=sample_topk)
             whole_sequence = torch.cat([whole_sequence, preds], dim=1)
             i += 1
 
@@ -523,6 +523,49 @@ class FFTDecoderMixtureWithCovariance(FFTDecoderBase):
 
         return mixed_log_probs
 
+    def post_process(self, mean_x, cov_x, mix_x):
+        b, s, num_gaussians = mix_x.shape[:3]
+        with torch.autocast("cuda", enabled=True, dtype=torch.float32):
+            cov_x = cov_x.float()
+
+            # lower triangle
+            cov_x = torch.tril(cov_x)
+
+            mask = (torch.eye(6, device=cov_x.device).float()[None, None, None, :, :] > 0).expand_as(cov_x)
+            cov_x[mask] = torch.nn.functional.softplus(cov_x[mask].float())
+
+            cov_x = torch.matmul(cov_x.float(), cov_x.permute(0, 1, 2, 4, 3).float())
+
+            positive_definite_constant = torch.eye(6, device=cov_x.device)[None, None, None, :,
+                                         :] * self.positive_definite_constant
+
+            cov_x = cov_x + positive_definite_constant
+
+            # numerical stability for calculating logprobs
+            # cov_x = cov_x.reshape(b, s, -1, 36)
+            # cov_x = self.cov_norm_2(cov_x)
+            # cov_x = cov_x.reshape(b, s, -1, 6, 6)
+
+            # b, s, 6^2, 16
+            # cov_x = cov_x.reshape(b, s, 36, -1)
+            # cov_x = cov_x.reshape(b * s, 36, -1)
+
+            # cov_x = self.cov_network_proj_in(cov_x)
+            # for layer in self.cov_network:
+            #     cov_x = layer(cov_x, cov_x)
+            # cov_x = self.cov_network_proj_out(cov_x)
+
+            # cov_x = cov_x.reshape(b, s, 6, 6, -1)
+
+            # # b, s, 16, 6, 6
+            # cov_x = cov_x.reshape(b, s, -1, 6, 6)
+            # cov_x = cov_x.reshape(b * s, -1, 6, 6)
+
+            mean_x = mean_x.reshape(b, s, -1, 6)
+
+        return mean_x, cov_x, mix_x
+
+
     def forward(self, x):
         x = self.fourier_embedder(x)
 
@@ -570,45 +613,7 @@ class FFTDecoderMixtureWithCovariance(FFTDecoderBase):
         # numerical precision
         orig_dtype = cov_x.dtype
 
-        with torch.autocast("cuda", enabled=True, dtype=torch.float32):
-            cov_x = cov_x.float()
-
-            # lower triangle
-            cov_x = torch.tril(cov_x)
-
-            mask = (torch.eye(6, device=cov_x.device).float()[None, None, None, :, :] > 0).expand_as(cov_x)
-            cov_x[mask] = torch.nn.functional.softplus(cov_x[mask].float())
-
-            cov_x = torch.matmul(cov_x.float(), cov_x.permute(0, 1, 2, 4, 3).float())
-
-            positive_definite_constant = torch.eye(6, device=cov_x.device)[None, None, None, :,
-                                         :] * self.positive_definite_constant
-
-            cov_x = cov_x + positive_definite_constant
-
-            # numerical stability for calculating logprobs
-            # cov_x = cov_x.reshape(b, s, -1, 36)
-            # cov_x = self.cov_norm_2(cov_x)
-            # cov_x = cov_x.reshape(b, s, -1, 6, 6)
-
-            # b, s, 6^2, 16
-            # cov_x = cov_x.reshape(b, s, 36, -1)
-            # cov_x = cov_x.reshape(b * s, 36, -1)
-
-            # cov_x = self.cov_network_proj_in(cov_x)
-            # for layer in self.cov_network:
-            #     cov_x = layer(cov_x, cov_x)
-            # cov_x = self.cov_network_proj_out(cov_x)
-
-            # cov_x = cov_x.reshape(b, s, 6, 6, -1)
-
-            # # b, s, 16, 6, 6
-            # cov_x = cov_x.reshape(b, s, -1, 6, 6)
-            # cov_x = cov_x.reshape(b * s, -1, 6, 6)
-
-            mean_x = mean_x.reshape(b, s, -1, 6)
-
-            return mean_x, cov_x, mix_x
+        return mean_x, cov_x, mix_x
 
 
 
