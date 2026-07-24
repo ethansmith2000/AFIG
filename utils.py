@@ -1,10 +1,16 @@
 
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ImportError:  # optional; only needed for do_paint visualization
+    plt = None
 import numpy as np
 import PIL
 from PIL import Image
 # from moviepy.editor import ImageSequenceClip
-import wandb
+try:
+    import wandb
+except ImportError:
+    wandb = None
 import gc
 import logging
 import math
@@ -237,7 +243,7 @@ def get_1d_freqs_from_2d(array, debug=False):
     array = array[:, :, :, :split_point]
     mapping = torch.empty_like(array)
     total_size = array.shape[2] * array.shape[3]
-    unfolded = torch.empty((b, c, total_size))
+    unfolded = array.new_empty((b, c, total_size))
 
     def log_point(unfold, arr, coord, pt):
         unfold[:, :, pt] = arr[:, :, coord[0], coord[1]]
@@ -364,6 +370,8 @@ def do_paint(array, break_idx=-1):
             cur_coord = cur_coord[0], cur_coord[1] + 1
             print(cur_coord, ptr)
 
+    if plt is None:
+        raise ImportError("matplotlib is required for do_paint visualization")
     plt.imshow(array[0])
 
     return array

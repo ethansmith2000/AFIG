@@ -1,3 +1,9 @@
-data/*
-wandb*
+data/
+wandb*/
+continuous_runs/
+logs/
+*.pt
+*.pth
+*.ckpt
 *.cpython*
+__pycache__/
