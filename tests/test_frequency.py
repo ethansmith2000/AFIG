@@ -25,6 +25,10 @@ class TestOrbitTable(unittest.TestCase):
         self.assertEqual(int(table["is_self_conjugate"].sum()), 4)
         coords = list(zip(table["ky"].tolist(), table["kx"].tolist()))
         self.assertEqual(len(coords), len(set(coords)))
+        multiplicity = table["conjugate_multiplicity"]
+        self.assertTrue(torch.all(multiplicity[table["is_self_conjugate"]] == 1))
+        self.assertTrue(torch.all(multiplicity[~table["is_self_conjugate"]] == 2))
+        self.assertEqual(int(multiplicity.sum().item()), 32 * 32)
 
     def test_full_coverage(self):
         table = build_orbit_table(32, 32, ordering="radial")
@@ -88,6 +92,78 @@ class TestFrequencyCodec(unittest.TestCase):
         # Rough unit variance after whitening (allowing sampling noise).
         active = tokens[..., :3]  # always active
         self.assertTrue(0.5 < active.std().item() < 1.5)
+
+    def test_orbit_zca_roundtrip_and_unit_covariance(self):
+        codec = FrequencyCodec(
+            FrequencyCodecConfig(
+                value_transform="identity",
+                normalization="orbit_whiten",
+            )
+        )
+        batches = list(self._synth_loader(n_batches=32, batch_size=8))
+        codec.fit_from_loader(batches)
+        images = torch.cat(batches, dim=0)
+        tokens = codec.encode(images)
+        reconstruction = codec.decode(tokens)
+        self.assertLess((images - reconstruction).abs().max().item(), 2e-4)
+        for position in (1, 10, 100):
+            values = tokens[:, position]
+            covariance = torch.cov(values.T)
+            self.assertTrue(
+                torch.allclose(
+                    covariance,
+                    torch.eye(6),
+                    atol=0.35,
+                    rtol=0.35,
+                )
+            )
+
+    def test_orbit_statistics_separate_axis_and_off_axis(self):
+        generator = torch.Generator().manual_seed(4)
+
+        class StripeLoader:
+            def __iter__(self):
+                for _ in range(16):
+                    rows = torch.randn(8, 3, 32, 1, generator=generator)
+                    cols = torch.randn(8, 3, 1, 32, generator=generator)
+                    noise = 0.01 * torch.randn(8, 3, 32, 32, generator=generator)
+                    yield torch.sigmoid(rows + cols + noise)
+
+        codec = FrequencyCodec(
+            FrequencyCodecConfig(normalization="orbit_whiten")
+        )
+        codec.fit_from_loader(StripeLoader())
+        axis = ((codec.ky_signed == 0) & (codec.kx_signed == 5)).nonzero()[0, 0]
+        off_axis = ((codec.ky_signed == 3) & (codec.kx_signed == 4)).nonzero()[0, 0]
+        axis_power = torch.diagonal(codec.orbit_cov[axis]).sum()
+        off_axis_power = torch.diagonal(codec.orbit_cov[off_axis]).sum()
+        self.assertGreater(axis_power.item(), off_axis_power.item() * 5)
+
+    def test_covariance_power_metric_alpha_identities(self):
+        codec = FrequencyCodec(
+            FrequencyCodecConfig(normalization="orbit_whiten")
+        )
+        codec.fit_from_loader(self._synth_loader(n_batches=16, batch_size=8))
+        alpha_zero = codec.orbit_covariance_power_metric(0.0)
+        active = codec.component_mask.bool()
+        diagonal = torch.diagonal(alpha_zero, dim1=-2, dim2=-1)
+        normalized = diagonal[active] / codec.conjugate_multiplicity[:, None].expand_as(
+            diagonal
+        )[active]
+        self.assertLess(normalized.std().item(), 1e-5)
+        self.assertEqual(
+            (alpha_zero - torch.diag_embed(diagonal)).abs().max().item() < 1e-6,
+            True,
+        )
+
+        alpha_one = codec.orbit_covariance_power_metric(1.0)
+        expected = codec.orbit_cov * codec.conjugate_multiplicity[:, None, None]
+        scale = codec.seq_len / torch.diagonal(
+            expected, dim1=-2, dim2=-1
+        ).sum()
+        self.assertTrue(
+            torch.allclose(alpha_one, expected * scale, atol=1e-6, rtol=1e-4)
+        )
 
     def test_asinh_fit_roundtrip(self):
         codec = FrequencyCodec(FrequencyCodecConfig(value_transform="asinh"))

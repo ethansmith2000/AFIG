@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 
 
-CODEC_VERSION = 1
+CODEC_VERSION = 2
 NUM_CHANNELS = 3
 TOKEN_DIM = 6  # RGB real + RGB imag
 
@@ -26,7 +26,7 @@ class FrequencyCodecConfig:
     width: int = 32
     ordering: str = "radial"  # radial | square_spiral
     value_transform: str = "identity"  # identity | asinh
-    normalization: str = "radial_whiten"  # radial_whiten | radial_standardize
+    normalization: str = "radial_whiten"  # radial_whiten | radial_standardize | orbit_whiten
     covariance_eps: float = 1e-5
     fft_norm: str = "ortho"
 
@@ -126,6 +126,11 @@ def build_orbit_table(
 
     partner_ky = ((-ky) % height)
     partner_kx = ((-kx) % width)
+    conjugate_multiplicity = torch.where(
+        is_self,
+        torch.ones_like(ky, dtype=torch.float32),
+        torch.full_like(ky, 2, dtype=torch.float32),
+    )
 
     return {
         "ky": ky,
@@ -139,6 +144,7 @@ def build_orbit_table(
         "angle": angle,
         "radius_bin": radius_bin,
         "component_mask": component_mask,
+        "conjugate_multiplicity": conjugate_multiplicity,
         "seq_len": torch.tensor(len(reps), dtype=torch.long),
         "num_self_conjugate": torch.tensor(int(is_self.sum().item()), dtype=torch.long),
     }
@@ -184,7 +190,11 @@ class FrequencyCodec(nn.Module):
             raise ValueError("Only fft_norm='ortho' is supported.")
         if self.config.value_transform not in ("identity", "asinh"):
             raise ValueError(f"Unknown value_transform: {self.config.value_transform}")
-        if self.config.normalization not in ("radial_whiten", "radial_standardize"):
+        if self.config.normalization not in (
+            "radial_whiten",
+            "radial_standardize",
+            "orbit_whiten",
+        ):
             raise ValueError(f"Unknown normalization: {self.config.normalization}")
 
         table = build_orbit_table(
@@ -236,6 +246,42 @@ class FrequencyCodec(nn.Module):
             torch.ones(self.num_bins, TOKEN_DIM),
             persistent=True,
         )
+        orbit_eye = torch.eye(TOKEN_DIM).unsqueeze(0).repeat(self.seq_len_int, 1, 1)
+        self.register_buffer(
+            "orbit_counts",
+            torch.zeros(self.seq_len_int, dtype=torch.long),
+            persistent=True,
+        )
+        self.register_buffer(
+            "orbit_mean",
+            torch.zeros(self.seq_len_int, TOKEN_DIM),
+            persistent=True,
+        )
+        self.register_buffer(
+            "orbit_cov",
+            torch.zeros_like(orbit_eye),
+            persistent=True,
+        )
+        self.register_buffer(
+            "orbit_sqrt",
+            orbit_eye.clone(),
+            persistent=True,
+        )
+        self.register_buffer(
+            "orbit_inv_sqrt",
+            orbit_eye.clone(),
+            persistent=True,
+        )
+        self.register_buffer(
+            "orbit_std",
+            torch.ones(self.seq_len_int, TOKEN_DIM),
+            persistent=True,
+        )
+        self.register_buffer(
+            "orbit_asinh_scale",
+            torch.ones(self.seq_len_int, TOKEN_DIM),
+            persistent=True,
+        )
         self.register_buffer(
             "config_fingerprint",
             torch.tensor(0, dtype=torch.long),  # placeholder; metadata in state_dict extras
@@ -245,6 +291,7 @@ class FrequencyCodec(nn.Module):
             "codec_version": CODEC_VERSION,
             "config": self.config.fingerprint(),
         }
+        self._orbit_metric_cache: Dict[Tuple[float, str], torch.Tensor] = {}
 
     # ------------------------------------------------------------------
     # Properties
@@ -351,23 +398,34 @@ class FrequencyCodec(nn.Module):
     def apply_value_transform(self, tokens: torch.Tensor) -> torch.Tensor:
         if self.config.value_transform == "identity":
             return tokens
-        # asinh: per-bin per-component scale
-        scales = self.asinh_scale[self.radius_bin]  # [L, 6]
+        scales = (
+            self.orbit_asinh_scale
+            if self.config.normalization == "orbit_whiten"
+            else self.asinh_scale[self.radius_bin]
+        )
         return torch.asinh(tokens / scales.clamp_min(1e-8))
 
     def invert_value_transform(self, tokens: torch.Tensor) -> torch.Tensor:
         if self.config.value_transform == "identity":
             return tokens
-        scales = self.asinh_scale[self.radius_bin]
+        scales = (
+            self.orbit_asinh_scale
+            if self.config.normalization == "orbit_whiten"
+            else self.asinh_scale[self.radius_bin]
+        )
         return torch.sinh(tokens) * scales
 
     def _invert_value_transform_at(
-        self, tokens: torch.Tensor, bins: torch.Tensor
+        self, tokens: torch.Tensor, positions: torch.Tensor
     ) -> torch.Tensor:
-        """Invert value transform for tokens whose radius bins are `bins` [T]."""
+        """Invert value transform for selected orbit positions [T]."""
         if self.config.value_transform == "identity":
             return tokens
-        scales = self.asinh_scale[bins]  # [T, 6]
+        scales = (
+            self.orbit_asinh_scale[positions]
+            if self.config.normalization == "orbit_whiten"
+            else self.asinh_scale[self.radius_bin[positions]]
+        )
         return torch.sinh(tokens) * scales
 
     # ------------------------------------------------------------------
@@ -376,11 +434,17 @@ class FrequencyCodec(nn.Module):
     def normalize(self, tokens: torch.Tensor) -> torch.Tensor:
         self.assert_fitted()
         bins = self.radius_bin
-        mean = self.bin_mean[bins]  # [L, 6]
+        mean = (
+            self.orbit_mean
+            if self.config.normalization == "orbit_whiten"
+            else self.bin_mean[bins]
+        )
         centered = tokens - mean
         mask = self.component_mask
 
-        if self.config.normalization == "radial_standardize":
+        if self.config.normalization == "orbit_whiten":
+            out = torch.einsum("lrc,blc->blr", self.orbit_inv_sqrt, centered)
+        elif self.config.normalization == "radial_standardize":
             std = self.bin_std[bins].clamp_min(1e-8)
             out = centered / std
         else:
@@ -394,10 +458,16 @@ class FrequencyCodec(nn.Module):
     def denormalize(self, tokens: torch.Tensor) -> torch.Tensor:
         self.assert_fitted()
         bins = self.radius_bin
-        mean = self.bin_mean[bins]
+        mean = (
+            self.orbit_mean
+            if self.config.normalization == "orbit_whiten"
+            else self.bin_mean[bins]
+        )
         mask = self.component_mask
 
-        if self.config.normalization == "radial_standardize":
+        if self.config.normalization == "orbit_whiten":
+            out = torch.einsum("lrc,blc->blr", self.orbit_sqrt, tokens) + mean
+        elif self.config.normalization == "radial_standardize":
             std = self.bin_std[bins]
             out = tokens * std + mean
         else:
@@ -422,11 +492,18 @@ class FrequencyCodec(nn.Module):
         """
         self.assert_fitted()
         bins = self.radius_bin[positions]
-        mean = self.bin_mean[bins]
+        mean = (
+            self.orbit_mean[positions]
+            if self.config.normalization == "orbit_whiten"
+            else self.bin_mean[bins]
+        )
         mask = self.component_mask[positions]
         is_self = self.is_self_conjugate[positions]
 
-        if self.config.normalization == "radial_standardize":
+        if self.config.normalization == "orbit_whiten":
+            sqrt = self.orbit_sqrt[positions]
+            out = torch.einsum("trc,btc->btr", sqrt, tokens) + mean
+        elif self.config.normalization == "radial_standardize":
             std = self.bin_std[bins]
             out = tokens * std + mean
         else:
@@ -529,6 +606,42 @@ class FrequencyCodec(nn.Module):
         weights = powers[self.radius_bin].clamp_min(1e-8).pow(exponent)
         return weights / weights.mean().clamp_min(1e-8)
 
+    @torch.no_grad()
+    def orbit_covariance_power_metric(self, exponent: float) -> torch.Tensor:
+        """Globally normalize m_i Sigma_i^exponent without per-orbit rescaling."""
+        self.assert_fitted()
+        if self.config.normalization != "orbit_whiten":
+            raise ValueError("Covariance-power metrics require orbit_whiten statistics.")
+        if not 0.0 <= exponent <= 1.0:
+            raise ValueError(f"Covariance exponent must be in [0,1], got {exponent}.")
+        cache_key = (float(exponent), str(self.orbit_cov.device))
+        cached = self._orbit_metric_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        metric = torch.zeros_like(self.orbit_cov)
+        for position in range(self.seq_len_int):
+            active = self.component_mask[position].bool()
+            indices = active.nonzero(as_tuple=False).flatten()
+            sub = self.orbit_cov[position][indices][:, indices]
+            eigenvalues, eigenvectors = torch.linalg.eigh(sub.float())
+            powered = (
+                eigenvectors
+                * eigenvalues.clamp_min(self.config.covariance_eps)
+                .pow(exponent)
+                .unsqueeze(0)
+            ) @ eigenvectors.T
+            metric[position][indices[:, None], indices[None, :]] = powered.to(
+                metric.dtype
+            )
+        metric = metric * self.conjugate_multiplicity[:, None, None]
+        global_scale = self.seq_len_int / torch.diagonal(
+            metric, dim1=-2, dim2=-1
+        ).sum().clamp_min(self.config.covariance_eps)
+        metric = metric * global_scale
+        self._orbit_metric_cache[cache_key] = metric
+        return metric
+
     def polar_history_features(
         self,
         normalized_tokens: torch.Tensor,
@@ -559,15 +672,34 @@ class FrequencyCodec(nn.Module):
                     f"positions length {positions.numel()} != token length {t}"
                 )
 
-        bins = self.radius_bin[positions]
         denorm = self.denormalize_at(normalized_tokens, positions)
-        raw = self._invert_value_transform_at(denorm, bins)
+        raw = self._invert_value_transform_at(denorm, positions)
         # Re-apply self-conjugate imag mask after inverse transform.
         is_self = self.is_self_conjugate[positions]
         raw = raw.clone()
         raw[..., 3:] = raw[..., 3:] * (~is_self).to(raw.dtype)[None, :, None]
 
-        amp_scale = self.channel_amplitude_scale()[bins]  # [T, 3]
+        if self.config.normalization == "orbit_whiten":
+            cov = self.orbit_cov[positions]
+            mean = self.orbit_mean[positions]
+            amp_scale = torch.stack(
+                [
+                    (
+                        cov[:, c, c]
+                        + mean[:, c].square()
+                        + cov[:, c + 3, c + 3]
+                        + mean[:, c + 3].square()
+                    )
+                    .clamp_min(0.0)
+                    .sqrt()
+                    .clamp_min(1e-4)
+                    for c in range(NUM_CHANNELS)
+                ],
+                dim=-1,
+            )
+        else:
+            bins = self.radius_bin[positions]
+            amp_scale = self.channel_amplitude_scale()[bins]  # [T, 3]
         amp_scale = amp_scale.to(device=device, dtype=dtype).clamp_min(1e-4)
 
         feats = []
@@ -652,6 +784,86 @@ class FrequencyCodec(nn.Module):
         self._finalize_moments(count, sum_x, sum_xx, sum_sq)
 
     @torch.no_grad()
+    def _fit_orbit_from_loader(
+        self,
+        loader: Sequence[Any],
+        max_batches: Optional[int],
+        device: torch.device,
+    ) -> None:
+        length = self.seq_len_int
+        raw_sum_sq = torch.zeros(length, TOKEN_DIM, dtype=torch.double, device=device)
+        raw_count = 0
+        for bi, batch in enumerate(loader):
+            if max_batches is not None and bi >= max_batches:
+                break
+            images = batch[0] if isinstance(batch, (list, tuple)) else batch
+            raw = self.encode_raw(images.to(device=device, dtype=torch.float32)).double()
+            raw_sum_sq += raw.square().sum(dim=0)
+            raw_count += raw.shape[0]
+        if raw_count == 0:
+            raise ValueError("No samples seen while fitting orbit statistics")
+
+        mask = self.component_mask.double()
+        if self.config.value_transform == "asinh":
+            scales = (raw_sum_sq / raw_count).clamp_min(1e-12).sqrt()
+            scales = scales * mask + (1.0 - mask)
+        else:
+            scales = torch.ones_like(raw_sum_sq)
+        self.orbit_asinh_scale.copy_(scales.float())
+
+        sums = torch.zeros(length, TOKEN_DIM, dtype=torch.double, device=device)
+        crosses = torch.zeros(length, TOKEN_DIM, TOKEN_DIM, dtype=torch.double, device=device)
+        count = 0
+        for bi, batch in enumerate(loader):
+            if max_batches is not None and bi >= max_batches:
+                break
+            images = batch[0] if isinstance(batch, (list, tuple)) else batch
+            x = self.encode_raw(images.to(device=device, dtype=torch.float32)).double()
+            if self.config.value_transform == "asinh":
+                x = torch.asinh(x / scales.clamp_min(1e-12))
+            sums += x.sum(dim=0)
+            crosses += torch.einsum("bli,blj->lij", x, x)
+            count += x.shape[0]
+        if count == 0:
+            raise ValueError("No samples seen while fitting orbit statistics")
+
+        means = sums / count
+        covariances = (
+            crosses - count * torch.einsum("li,lj->lij", means, means)
+        ) / max(count - 1, 1)
+        eye = torch.eye(TOKEN_DIM, dtype=torch.double, device=device)
+        covariance = torch.zeros(length, TOKEN_DIM, TOKEN_DIM, dtype=torch.double, device=device)
+        sqrt = eye.unsqueeze(0).repeat(length, 1, 1)
+        inv_sqrt = sqrt.clone()
+        std = torch.ones(length, TOKEN_DIM, dtype=torch.double, device=device)
+
+        for position in range(length):
+            active = self.component_mask[position].bool()
+            indices = active.nonzero(as_tuple=False).flatten()
+            sub = covariances[position][indices][:, indices]
+            eigenvalues, eigenvectors = torch.linalg.eigh(sub)
+            eigenvalues = eigenvalues.clamp_min(self.config.covariance_eps)
+            regularized = (eigenvectors * eigenvalues.unsqueeze(0)) @ eigenvectors.T
+            root = (eigenvectors * eigenvalues.sqrt().unsqueeze(0)) @ eigenvectors.T
+            inverse_root = (
+                eigenvectors * eigenvalues.rsqrt().unsqueeze(0)
+            ) @ eigenvectors.T
+            covariance[position][indices[:, None], indices[None, :]] = regularized
+            sqrt[position][indices[:, None], indices[None, :]] = root
+            inv_sqrt[position][indices[:, None], indices[None, :]] = inverse_root
+            std[position, active] = torch.diagonal(regularized).sqrt()
+
+        means = means * mask
+        self.orbit_counts.fill_(count)
+        self.orbit_mean.copy_(means.float())
+        self.orbit_cov.copy_(covariance.float())
+        self.orbit_sqrt.copy_(sqrt.float())
+        self.orbit_inv_sqrt.copy_(inv_sqrt.float())
+        self.orbit_std.copy_(std.float())
+        self._orbit_metric_cache.clear()
+        self.is_fitted.fill_(True)
+
+    @torch.no_grad()
     def fit_from_loader(
         self,
         loader: Sequence[Any],
@@ -663,6 +875,10 @@ class FrequencyCodec(nn.Module):
             device = self.ky.device
         else:
             self.to(device)
+
+        if self.config.normalization == "orbit_whiten":
+            self._fit_orbit_from_loader(loader, max_batches, device)
+            return
 
         n_bins = self.num_bins
 
@@ -830,6 +1046,7 @@ class FrequencyCodec(nn.Module):
     def load_exported(self, payload: Dict[str, Any], strict: bool = True) -> None:
         self.validate_compatible(payload)
         self.load_state_dict(payload["state_dict"], strict=strict)
+        self._orbit_metric_cache.clear()
         self.is_fitted.fill_(True)
 
     # ------------------------------------------------------------------
@@ -852,5 +1069,6 @@ class FrequencyCodec(nn.Module):
             "angle": self.angle,
             "radius_bin": self.radius_bin,
             "is_self_conjugate": self.is_self_conjugate.float(),
+            "conjugate_multiplicity": self.conjugate_multiplicity,
             "component_mask": self.component_mask,
         }

@@ -36,8 +36,22 @@ Sequence length is **514** autoregressive coefficient steps (plus a learned BOS)
 
 Configured in `DiffusionDecoderConfig` / CLI:
 
-- `--prediction_type epsilon|v_prediction` (default `epsilon`)
-- `--loss_weighting none|min_snr` (default `none`, γ via `--min_snr_gamma 5`)
+- `--objective ddpm|flow` (default `ddpm`)
+- `--prediction_type epsilon|v_prediction|x0`
+- `--loss_space native|v`; `v` enables JiT-style x-output / v-loss
+- `--loss_weighting none|min_snr|logit_normal`
+- Min-SNR γ via `--min_snr_gamma`; x₀ uses normalized
+  `min(SNR, γ) / γ`.
+- `--rescale_betas_zero_snr --timestep_spacing trailing` makes DDPM/DDIM
+  sampling begin from the zero-terminal-SNR endpoint instead of skipping the
+  noisiest training timesteps.
+- Flow uses `z_t = t·x₀ + (1-t)·ε`. Direct velocity predicts `x₀-ε`;
+  x₀/v mode converts `(x̂₀-z_t)/(1-t)` with `--flow_t_eps 0.05`.
+- Logit-normal flow loss weighting uses `--logit_normal_mean` and
+  `--logit_normal_std` (defaults `0, 1`), with uniform flow-time sampling.
+  This is equivalent in expectation to sampling flow time from the same
+  logit-normal distribution; JiT's reference parameters are `-0.8, 0.8`.
+- Flow sampling supports `--flow_solver euler|heun` (default `heun`).
 - `--radial_power_weighting`: multiply per-token whitened MSE by normalized
   tempered radial power `(tr(Σ_b) / d_b)^α` (mean 1 across orbits). The default
   `--radial_power_exponent 0.5` weights by expected amplitude; `1.0` restores

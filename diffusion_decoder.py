@@ -1,9 +1,4 @@
-"""Conditional diffusion-loss head for continuous AFIG tokens.
-
-Implements an AdaLN residual MLP denoiser with Diffusers DDPM/DDIM
-schedulers, ε / v-prediction objectives, optional Min-SNR weighting,
-component masking, and a diffusion batch multiplier.
-"""
+"""Conditional diffusion/flow head for continuous AFIG tokens."""
 
 from __future__ import annotations
 
@@ -25,20 +20,28 @@ class DiffusionDecoderConfig:
     target_condition_dim: int = 0
     width: int = 512
     depth: int = 3
+    objective: str = "ddpm"  # ddpm | flow
     num_train_timesteps: int = 1000
     beta_schedule: str = "squaredcos_cap_v2"
-    prediction_type: str = "epsilon"  # epsilon | v_prediction
-    loss_weighting: str = "none"  # none | min_snr
+    rescale_betas_zero_snr: bool = False
+    timestep_spacing: str = "leading"
+    prediction_type: str = "epsilon"  # epsilon | v_prediction | x0
+    loss_space: str = "native"  # native | v (x0 prediction only)
+    loss_weighting: str = "none"  # none | min_snr | logit_normal
     min_snr_gamma: float = 5.0
+    logit_normal_mean: float = 0.0
+    logit_normal_std: float = 1.0
+    flow_t_eps: float = 0.05
+    flow_solver: str = "heun"  # euler | heun
     # Independent of loss_weighting: multiplies per-token MSE by radial
     # expected-centered-power weights (normalized mean 1 across orbits).
     radial_power_weighting: bool = False
     radial_power_exponent: float = 0.5
+    loss_metric: str = "normalized"  # normalized | orbit_covariance_power
+    orbit_covariance_exponent: float = 0.0
     diffusion_batch_mul: int = 4
     num_inference_steps: int = 20
     clip_sample: bool = False
-    # Flow matching is intentionally not selectable yet.
-    # TODO(flow): implement rectified-flow training + Euler sampling.
 
     def fingerprint(self) -> Dict[str, Any]:
         return asdict(self)
@@ -186,19 +189,55 @@ class DiffusionDecoder(nn.Module):
     def __init__(self, config: Optional[DiffusionDecoderConfig] = None):
         super().__init__()
         self.config = config or DiffusionDecoderConfig()
-        if self.config.prediction_type not in ("epsilon", "v_prediction"):
+        if self.config.objective not in ("ddpm", "flow"):
+            raise ValueError(f"Unsupported objective={self.config.objective}")
+        if self.config.prediction_type not in ("epsilon", "v_prediction", "x0"):
             raise ValueError(
                 f"Unsupported prediction_type={self.config.prediction_type}. "
-                "Supported: epsilon, v_prediction. "
-                "TODO(flow): add flow-matching objective."
+                "Supported: epsilon, v_prediction, x0."
             )
-        if self.config.loss_weighting not in ("none", "min_snr"):
+        if self.config.objective == "flow" and self.config.prediction_type == "epsilon":
+            raise ValueError("Flow objective supports x0 or v_prediction outputs.")
+        if self.config.loss_space not in ("native", "v"):
+            raise ValueError(f"Unsupported loss_space={self.config.loss_space}")
+        if self.config.loss_space == "v" and self.config.prediction_type != "x0":
+            raise ValueError("loss_space='v' requires prediction_type='x0'.")
+        if self.config.loss_weighting not in ("none", "min_snr", "logit_normal"):
             raise ValueError(f"Unknown loss_weighting={self.config.loss_weighting}")
+        if self.config.loss_weighting == "logit_normal" and self.config.objective != "flow":
+            raise ValueError("logit_normal weighting is only supported for flow.")
+        if self.config.logit_normal_std <= 0:
+            raise ValueError("logit_normal_std must be positive.")
+        if not 0.0 < self.config.flow_t_eps < 0.5:
+            raise ValueError("flow_t_eps must be in (0, 0.5).")
+        if self.config.flow_solver not in ("euler", "heun"):
+            raise ValueError(f"Unsupported flow_solver={self.config.flow_solver}")
+        if self.config.timestep_spacing not in ("leading", "trailing", "linspace"):
+            raise ValueError(
+                f"Unsupported timestep_spacing={self.config.timestep_spacing}"
+            )
         if not 0.0 <= self.config.radial_power_exponent <= 1.0:
             raise ValueError(
                 "radial_power_exponent must be in [0, 1], "
                 f"got {self.config.radial_power_exponent}"
             )
+        if self.config.loss_metric not in ("normalized", "orbit_covariance_power"):
+            raise ValueError(f"Unsupported loss_metric={self.config.loss_metric}")
+        if not 0.0 <= self.config.orbit_covariance_exponent <= 1.0:
+            raise ValueError("orbit_covariance_exponent must be in [0, 1].")
+        if self.config.loss_metric == "orbit_covariance_power":
+            if (
+                self.config.objective != "ddpm"
+                or self.config.prediction_type != "x0"
+                or self.config.loss_space != "native"
+            ):
+                raise ValueError(
+                    "orbit_covariance_power initially requires DDPM native x0 prediction."
+                )
+            if self.config.radial_power_weighting:
+                raise ValueError(
+                    "orbit_covariance_power is mutually exclusive with radial weighting."
+                )
 
         self.net = SimpleMLPAdaLN(
             in_channels=self.config.target_dim,
@@ -209,14 +248,38 @@ class DiffusionDecoder(nn.Module):
             num_res_blocks=self.config.depth,
         )
 
+        scheduler_prediction_type = {
+            "epsilon": "epsilon",
+            "v_prediction": "v_prediction",
+            "x0": "sample",
+        }[self.config.prediction_type]
         common = dict(
             num_train_timesteps=self.config.num_train_timesteps,
             beta_schedule=self.config.beta_schedule,
-            prediction_type=self.config.prediction_type,
+            rescale_betas_zero_snr=self.config.rescale_betas_zero_snr,
+            timestep_spacing=self.config.timestep_spacing,
+            prediction_type=scheduler_prediction_type,
             clip_sample=self.config.clip_sample,
         )
         self.train_scheduler = DDPMScheduler(**common)
         self.sample_scheduler = DDIMScheduler(**common)
+        self.register_buffer(
+            "logit_normal_weights",
+            self._build_logit_normal_weights(),
+            persistent=False,
+        )
+
+    def _build_logit_normal_weights(self) -> torch.Tensor:
+        """Mean-one logit-normal density over uniform flow-time bins."""
+        n = self.config.num_train_timesteps
+        t = (torch.arange(n, dtype=torch.float64) + 0.5) / float(n)
+        logit = torch.log(t) - torch.log1p(-t)
+        mean = self.config.logit_normal_mean
+        std = self.config.logit_normal_std
+        density = torch.exp(-0.5 * ((logit - mean) / std).square())
+        density = density / (std * math.sqrt(2.0 * math.pi) * t * (1.0 - t))
+        density = density / density.mean().clamp_min(1e-12)
+        return density.float()
 
     def _expand_mask(
         self,
@@ -240,10 +303,12 @@ class DiffusionDecoder(nn.Module):
         component_mask: Optional[torch.Tensor] = None,
         radius_bin: Optional[torch.Tensor] = None,
         radial_weights: Optional[torch.Tensor] = None,
+        covariance_metric: Optional[torch.Tensor] = None,
         target_condition: Optional[torch.Tensor] = None,
     ) -> Tuple[
         torch.Tensor,
         torch.Tensor,
+        Optional[torch.Tensor],
         Optional[torch.Tensor],
         Optional[torch.Tensor],
         Optional[torch.Tensor],
@@ -273,6 +338,12 @@ class DiffusionDecoder(nn.Module):
                 if radial_weights.ndim == 1:
                     radial_weights = radial_weights[None, :].expand(b, -1)
                 radial_weights = radial_weights.reshape(b * l)
+            if covariance_metric is not None:
+                if covariance_metric.ndim == 3:
+                    covariance_metric = covariance_metric[None, :, :, :].expand(
+                        b, -1, -1, -1
+                    )
+                covariance_metric = covariance_metric.reshape(b * l, d, d)
         elif target.ndim != 2:
             raise ValueError(f"Expected target [B,L,D] or [N,D], got {tuple(target.shape)}")
 
@@ -288,7 +359,17 @@ class DiffusionDecoder(nn.Module):
                 radius_bin = radius_bin.repeat(mul)
             if radial_weights is not None:
                 radial_weights = radial_weights.repeat(mul)
-        return target, z, target_condition, component_mask, radius_bin, radial_weights
+            if covariance_metric is not None:
+                covariance_metric = covariance_metric.repeat(mul, 1, 1)
+        return (
+            target,
+            z,
+            target_condition,
+            component_mask,
+            radius_bin,
+            radial_weights,
+            covariance_metric,
+        )
 
     def compute_loss(
         self,
@@ -297,6 +378,7 @@ class DiffusionDecoder(nn.Module):
         component_mask: Optional[torch.Tensor] = None,
         radius_bin: Optional[torch.Tensor] = None,
         radial_weights: Optional[torch.Tensor] = None,
+        covariance_metric: Optional[torch.Tensor] = None,
         target_condition: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         """Vectorized diffusion loss.
@@ -312,6 +394,13 @@ class DiffusionDecoder(nn.Module):
             )
         if not self.config.radial_power_weighting:
             radial_weights = None
+        if self.config.loss_metric == "orbit_covariance_power":
+            if covariance_metric is None:
+                raise ValueError(
+                    "orbit_covariance_power requires covariance_metric matrices."
+                )
+        else:
+            covariance_metric = None
 
         (
             target,
@@ -320,12 +409,14 @@ class DiffusionDecoder(nn.Module):
             component_mask,
             radius_bin,
             radial_weights,
+            covariance_metric,
         ) = self._prepare_target_batch(
             target,
             z,
             component_mask,
             radius_bin,
             radial_weights,
+            covariance_metric,
             target_condition,
         )
         n = target.shape[0]
@@ -334,56 +425,136 @@ class DiffusionDecoder(nn.Module):
         mask = self._expand_mask(component_mask, n, device, dtype)
 
         noise = torch.randn_like(target) * mask
-        timesteps = torch.randint(
-            0,
-            self.train_scheduler.config.num_train_timesteps,
-            (n,),
-            device=device,
-            dtype=torch.long,
-        )
-        noisy = self.train_scheduler.add_noise(target.float(), noise.float(), timesteps)
-        noisy = noisy.to(dtype=dtype) * mask
-
-        if self.config.prediction_type == "epsilon":
-            model_target = noise
+        if self.config.objective == "ddpm":
+            timesteps = torch.randint(
+                0,
+                self.train_scheduler.config.num_train_timesteps,
+                (n,),
+                device=device,
+                dtype=torch.long,
+            )
+            noisy = self.train_scheduler.add_noise(target.float(), noise.float(), timesteps)
+            noisy = noisy.to(dtype=dtype) * mask
+            time_condition = timesteps
         else:
-            model_target = self.train_scheduler.get_velocity(
-                target.float(), noise.float(), timesteps
-            ).to(dtype=dtype)
-        model_target = model_target * mask
+            timesteps = torch.randint(
+                0,
+                self.config.num_train_timesteps,
+                (n,),
+                device=device,
+                dtype=torch.long,
+            )
+            flow_t = (timesteps.float() + 0.5) / float(
+                self.config.num_train_timesteps
+            )
+            flow_t_col = flow_t[:, None]
+            noisy = (
+                flow_t_col * target.float()
+                + (1.0 - flow_t_col) * noise.float()
+            ).to(dtype=dtype) * mask
+            time_condition = flow_t * float(self.config.num_train_timesteps - 1)
 
-        pred = self.net(noisy, timesteps, z, target_condition=target_condition) * mask
-        per_dim = (pred.float() - model_target.float()) ** 2
+        raw_pred = self.net(
+            noisy,
+            time_condition,
+            z,
+            target_condition=target_condition,
+        ) * mask
+
+        if self.config.objective == "ddpm":
+            if self.config.prediction_type == "epsilon":
+                pred = raw_pred
+                model_target = noise
+            elif self.config.prediction_type == "v_prediction":
+                pred = raw_pred
+                model_target = self.train_scheduler.get_velocity(
+                    target.float(), noise.float(), timesteps
+                ).to(dtype=dtype)
+            else:
+                if self.config.loss_space == "native":
+                    pred = raw_pred
+                    model_target = target
+                else:
+                    alpha_bar = self.train_scheduler.alphas_cumprod.to(device)[timesteps]
+                    alpha = alpha_bar.sqrt()[:, None]
+                    sigma = (1.0 - alpha_bar).sqrt().clamp_min(1e-6)[:, None]
+                    pred = ((alpha * noisy.float() - raw_pred.float()) / sigma).to(
+                        dtype=dtype
+                    )
+                    model_target = self.train_scheduler.get_velocity(
+                        target.float(), noise.float(), timesteps
+                    ).to(dtype=dtype)
+        elif self.config.prediction_type == "x0":
+            if self.config.loss_space == "native":
+                pred = raw_pred
+                model_target = target
+            else:
+                denom = (1.0 - flow_t_col).clamp_min(self.config.flow_t_eps)
+                pred = ((raw_pred.float() - noisy.float()) / denom).to(dtype=dtype)
+                model_target = ((target.float() - noisy.float()) / denom).to(
+                    dtype=dtype
+                )
+        else:
+            pred = raw_pred
+            model_target = target - noise
+
+        model_target = model_target * mask
+        error = (pred.float() - model_target.float()) * mask.float()
+        per_dim = error.square()
         # Mean over active components only.
         denom = mask.sum(dim=-1).clamp_min(1.0)
         per_example = (per_dim * mask).sum(dim=-1) / denom
+        if covariance_metric is not None:
+            covariance_per_example = torch.einsum(
+                "ni,nij,nj->n",
+                error,
+                covariance_metric.to(device=device, dtype=error.dtype),
+                error,
+            )
+        else:
+            covariance_per_example = per_example
+        metric_per_example = (
+            covariance_per_example
+            if self.config.loss_metric == "orbit_covariance_power"
+            else per_example
+        )
 
         if self.config.loss_weighting == "min_snr":
-            snr_weights = self._min_snr_weights(timesteps)
+            snr_weights = self._min_snr_weights(
+                timesteps,
+                flow_t=flow_t if self.config.objective == "flow" else None,
+            )
+        elif self.config.loss_weighting == "logit_normal":
+            snr_weights = self.logit_normal_weights[timesteps].to(
+                device=device,
+                dtype=per_example.dtype,
+            )
         else:
-            snr_weights = torch.ones_like(per_example)
+            snr_weights = torch.ones_like(metric_per_example)
 
         if radial_weights is not None:
-            radial_w = radial_weights.to(device=device, dtype=per_example.dtype)
-            if radial_w.shape != per_example.shape:
+            radial_w = radial_weights.to(device=device, dtype=metric_per_example.dtype)
+            if radial_w.shape != metric_per_example.shape:
                 raise ValueError(
                     f"radial_weights shape {tuple(radial_w.shape)} != "
-                    f"per_example shape {tuple(per_example.shape)}"
+                    f"per_example shape {tuple(metric_per_example.shape)}"
                 )
         else:
-            radial_w = torch.ones_like(per_example)
+            radial_w = torch.ones_like(metric_per_example)
 
         weights = snr_weights * radial_w
-        weighted = per_example * weights
+        weighted = metric_per_example * weights
         radial_weighted = per_example * radial_w
 
         loss = weighted.mean()
         out: Dict[str, torch.Tensor] = {
             "loss": loss,
             "unweighted_mse": per_example.mean().detach(),
+            "covariance_metric_loss": covariance_per_example.mean().detach(),
             "weighted_loss": weighted.mean().detach(),
             "radial_weighted_mse": radial_weighted.mean().detach(),
-            "per_example": per_example.detach(),
+            "per_example": metric_per_example.detach(),
+            "normalized_per_example": per_example.detach(),
             "timesteps": timesteps.detach(),
             "weights": weights.detach(),
             "snr_weights": snr_weights.detach(),
@@ -391,15 +562,31 @@ class DiffusionDecoder(nn.Module):
         }
         if radius_bin is not None:
             out["radius_bin"] = radius_bin.detach()
+        if self.config.objective == "flow":
+            out["flow_times"] = flow_t.detach()
         return out
 
-    def _min_snr_weights(self, timesteps: torch.Tensor) -> torch.Tensor:
-        snr = compute_snr(self.train_scheduler, timesteps)
+    def _min_snr_weights(
+        self,
+        timesteps: torch.Tensor,
+        flow_t: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if self.config.objective == "ddpm":
+            snr = compute_snr(self.train_scheduler, timesteps)
+        else:
+            t = flow_t
+            if t is None:
+                t = (timesteps.float() + 0.5) / float(
+                    self.config.num_train_timesteps
+                )
+            snr = (t / (1.0 - t).clamp_min(1e-8)).square()
         gamma = self.config.min_snr_gamma
         mse_loss_weights = torch.stack(
             [snr, gamma * torch.ones_like(timesteps, dtype=snr.dtype)], dim=1
         ).min(dim=1)[0]
-        if self.config.prediction_type == "epsilon":
+        if self.config.prediction_type == "x0":
+            mse_loss_weights = mse_loss_weights / gamma
+        elif self.config.prediction_type == "epsilon":
             mse_loss_weights = mse_loss_weights / snr.clamp_min(1e-8)
         else:
             mse_loss_weights = mse_loss_weights / (snr + 1)
@@ -429,6 +616,16 @@ class DiffusionDecoder(nn.Module):
         dtype = z.dtype
         steps = num_inference_steps or self.config.num_inference_steps
         mask = self._expand_mask(component_mask, n, device, dtype)
+
+        if self.config.objective == "flow":
+            return self._sample_flow(
+                z=z,
+                target_condition=target_condition,
+                mask=mask,
+                generator=generator,
+                steps=steps,
+                temperature=temperature,
+            )
 
         # Clone scheduler config so callers can change steps safely.
         scheduler = DDIMScheduler.from_config(self.sample_scheduler.config)
@@ -463,21 +660,56 @@ class DiffusionDecoder(nn.Module):
 
         return (latents * mask.float()).to(dtype=dtype)
 
-
-# ---------------------------------------------------------------------------
-# Future extension points (documented stubs)
-# ---------------------------------------------------------------------------
-
-class FlowMatchingDecoderStub:
-    """TODO(flow): rectified-flow / flow-matching per-token decoder.
-
-    Intended interface:
-      - train with x_t = (1-t)*x0 + t*noise, target = noise - x0
-      - sample with FlowMatchEulerDiscreteScheduler
-    Not implemented in the first continuous release.
-    """
-
-    def __init__(self, *args, **kwargs):
-        raise NotImplementedError(
-            "Flow matching is stubbed. Use prediction_type in {epsilon, v_prediction}."
+    def _sample_flow(
+        self,
+        z: torch.Tensor,
+        target_condition: Optional[torch.Tensor],
+        mask: torch.Tensor,
+        generator: Optional[torch.Generator],
+        steps: int,
+        temperature: float,
+    ) -> torch.Tensor:
+        """Integrate the JiT convention from noise at t=0 to data at t=1."""
+        n = z.shape[0]
+        device = z.device
+        dtype = z.dtype
+        state = torch.randn(
+            n,
+            self.config.target_dim,
+            device=device,
+            dtype=torch.float32,
+            generator=generator,
         )
+        state = state * float(temperature) * mask.float()
+        dt = 1.0 / float(steps)
+
+        def velocity(x: torch.Tensor, t_value: float) -> torch.Tensor:
+            time_condition = torch.full(
+                (n,),
+                t_value * float(self.config.num_train_timesteps - 1),
+                device=device,
+                dtype=torch.float32,
+            )
+            raw = self.net(
+                x.to(dtype=dtype) * mask,
+                time_condition,
+                z,
+                target_condition=target_condition,
+            ).float() * mask.float()
+            if self.config.prediction_type == "x0":
+                denom = max(1.0 - t_value, self.config.flow_t_eps)
+                return (raw - x) / denom
+            return raw
+
+        for i in range(steps):
+            t_value = i / float(steps)
+            v0 = velocity(state, t_value)
+            proposed = (state + dt * v0) * mask.float()
+            if self.config.flow_solver == "heun" and i + 1 < steps:
+                v1 = velocity(proposed, (i + 1) / float(steps))
+                state = state + 0.5 * dt * (v0 + v1)
+                state = state * mask.float()
+            else:
+                state = proposed
+
+        return state.to(dtype=dtype) * mask

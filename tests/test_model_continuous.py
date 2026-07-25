@@ -160,6 +160,27 @@ class TestContinuousModel(unittest.TestCase):
         self.assertGreater(corrupted.abs().sum().item(), 0.0)
         self.assertEqual(corrupted[:, codec.is_self_conjugate, 3:].abs().max().item(), 0.0)
 
+    def test_gaussian_corruption_ramp(self):
+        codec = _fitted_codec()
+        cfg = _tiny_cfg(
+            corruption=CorruptionConfig(
+                history_corruption="gaussian",
+                history_corruption_prob=1.0,
+                history_noise_min=0.05,
+                history_noise_max=0.05,
+                history_noise_ramp_fraction=0.2,
+            )
+        )
+        model = ContinuousFFTDecoder(cfg, codec=codec)
+        tokens = torch.zeros(2, codec.seq_len, 6)
+        clean, initial = model.corrupt_history(tokens, training_progress=0.0)
+        self.assertEqual(initial.abs().max().item(), 0.0)
+        self.assertEqual(clean.abs().max().item(), 0.0)
+        _, halfway = model.corrupt_history(tokens, training_progress=0.1)
+        self.assertTrue(torch.allclose(halfway, torch.full_like(halfway, 0.025)))
+        _, complete = model.corrupt_history(tokens, training_progress=0.2)
+        self.assertTrue(torch.allclose(complete, torch.full_like(complete, 0.05)))
+
     def test_polar_disabled_matches_baseline_modules(self):
         codec = _fitted_codec()
         model = ContinuousFFTDecoder(_tiny_cfg(), codec=codec)

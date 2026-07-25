@@ -37,9 +37,10 @@ class TransformerConfig:
 @dataclass(frozen=True)
 class CorruptionConfig:
     history_corruption: str = "none"  # none | gaussian
-    history_corruption_prob: float = 0.5
+    history_corruption_prob: float = 1.0
     history_noise_min: float = 0.0
-    history_noise_max: float = 0.1
+    history_noise_max: float = 0.05
+    history_noise_ramp_fraction: float = 0.2
     # TODO(corruption): masked history replacement with missingness embedding
     # TODO(corruption): rollout_mix — stopgrad model-sampled prefix replacement
 
@@ -349,6 +350,15 @@ class ContinuousFFTDecoder(nn.Module):
             self.config.diffusion = DiffusionDecoderConfig(**diff_fp)
 
         self.codec = codec if codec is not None else FrequencyCodec(self.config.codec)
+        if self.config.diffusion.loss_metric == "orbit_covariance_power":
+            if self.config.codec.normalization != "orbit_whiten":
+                raise ValueError(
+                    "orbit_covariance_power requires codec normalization='orbit_whiten'."
+                )
+            if self.config.codec.value_transform != "identity":
+                raise ValueError(
+                    "orbit_covariance_power initially requires value_transform='identity'."
+                )
         tcfg = self.config.transformer
         self.width = tcfg.width
         self.token_proj = nn.Linear(TOKEN_DIM, tcfg.width)
@@ -480,6 +490,7 @@ class ContinuousFFTDecoder(nn.Module):
         self,
         tokens: torch.Tensor,
         generator: Optional[torch.Generator] = None,
+        training_progress: float = 1.0,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Optionally corrupt teacher-forced history tokens (not BOS).
 
@@ -501,13 +512,21 @@ class ContinuousFFTDecoder(nn.Module):
                 "TODO(corruption): masked / rollout_mix."
             )
 
-        # Per-sequence: with prob history_corruption_prob, sample strength in
-        # [min, max]; otherwise keep clean.
+        if not 0.0 <= training_progress <= 1.0:
+            raise ValueError("training_progress must be in [0, 1].")
+        if cfg.history_noise_ramp_fraction > 0:
+            ramp = min(training_progress / cfg.history_noise_ramp_fraction, 1.0)
+        else:
+            ramp = 1.0
+        noise_min = cfg.history_noise_min * ramp
+        noise_max = cfg.history_noise_max * ramp
+
+        # Isotropic normalized noise becomes position-colored after ZCA inversion.
         u = torch.rand(b, device=device, generator=generator)
         active = u < cfg.history_corruption_prob
         if bool(active.any()):
             s = torch.empty(b, device=device, dtype=tokens.dtype)
-            s.uniform_(cfg.history_noise_min, cfg.history_noise_max, generator=generator)
+            s.uniform_(noise_min, noise_max, generator=generator)
             strength = torch.where(active, s, strength)
             noise = torch.randn(
                 tokens.shape, device=device, dtype=tokens.dtype, generator=generator
@@ -652,6 +671,7 @@ class ContinuousFFTDecoder(nn.Module):
         self,
         tokens: torch.Tensor,
         corrupt: bool = True,
+        training_progress: float = 1.0,
     ) -> Dict[str, torch.Tensor]:
         """Teacher-forced training forward.
 
@@ -678,7 +698,10 @@ class ContinuousFFTDecoder(nn.Module):
 
         history = tokens[:, :-1, :]  # [B, L-1, 6]
         if corrupt and self.training:
-            history, corr_strength = self.corrupt_history(history)
+            history, corr_strength = self.corrupt_history(
+                history,
+                training_progress=training_progress,
+            )
         else:
             corr_strength = torch.zeros(b, device=tokens.device, dtype=tokens.dtype)
 
@@ -712,6 +735,11 @@ class ContinuousFFTDecoder(nn.Module):
             radial_weights = self.codec.radial_loss_weights(
                 exponent=self.config.diffusion.radial_power_exponent
             )
+        covariance_metric = None
+        if self.config.diffusion.loss_metric == "orbit_covariance_power":
+            covariance_metric = self.codec.orbit_covariance_power_metric(
+                self.config.diffusion.orbit_covariance_exponent
+            )
         loss_out = self.diffusion.compute_loss(
             target=tokens,
             z=z,
@@ -719,6 +747,7 @@ class ContinuousFFTDecoder(nn.Module):
             component_mask=self.codec.component_mask,
             radius_bin=self.codec.radius_bin,
             radial_weights=radial_weights,
+            covariance_metric=covariance_metric,
         )
         loss_out["corruption_strength"] = corr_strength.detach()
         return loss_out

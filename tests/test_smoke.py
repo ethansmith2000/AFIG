@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
+import math
 
 import torch
 
@@ -13,6 +14,33 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 
 class TestSmoke(unittest.TestCase):
+    def test_raw_weights_and_final_eval_defaults(self):
+        from train_continuous import parse_args
+
+        args = parse_args([])
+        self.assertFalse(args.use_ema)
+        self.assertTrue(args.final_eval)
+        smoke = parse_args(["--smoke"])
+        from train_continuous import apply_preset
+
+        self.assertFalse(apply_preset(smoke).final_eval)
+
+    def test_live_metric_math_is_finite(self):
+        from live_evaluation import StreamingMoments, _fid, _kid
+
+        real = torch.randn(32, 8)
+        generated = torch.randn(32, 8) + 0.1
+        real_moments = StreamingMoments(8)
+        generated_moments = StreamingMoments(8)
+        real_moments.update(real)
+        generated_moments.update(generated)
+        real_mean, real_covariance = real_moments.compute()
+        generated_mean, generated_covariance = generated_moments.compute()
+        fid = _fid(real_mean, real_covariance, generated_mean, generated_covariance)
+        kid = _kid(real, generated, subsets=2, subset_size=16)
+        self.assertTrue(math.isfinite(fid))
+        self.assertTrue(math.isfinite(kid))
+
     def test_train_and_generate_smoke(self):
         from train_continuous import main, parse_args
 

@@ -15,17 +15,25 @@ from diffusers.training_utils import compute_snr  # noqa: E402
 
 
 class TestDiffusionDecoder(unittest.TestCase):
-    def _tiny(self, prediction_type="epsilon", loss_weighting="none", mul=2):
+    def _tiny(
+        self,
+        prediction_type="epsilon",
+        loss_weighting="none",
+        mul=2,
+        **kwargs,
+    ):
+        depth = kwargs.pop("depth", 2)
         cfg = DiffusionDecoderConfig(
             target_dim=6,
             z_channels=32,
             width=64,
-            depth=2,
+            depth=depth,
             prediction_type=prediction_type,
             loss_weighting=loss_weighting,
             diffusion_batch_mul=mul,
             num_inference_steps=5,
             num_train_timesteps=100,
+            **kwargs,
         )
         return DiffusionDecoder(cfg)
 
@@ -97,9 +105,77 @@ class TestDiffusionDecoder(unittest.TestCase):
             s = model.sample(z, num_inference_steps=steps)
             self.assertTrue(torch.isfinite(s).all())
 
-    def test_rejects_flow(self):
+    def test_rejects_epsilon_output_for_flow(self):
         with self.assertRaises(ValueError):
-            DiffusionDecoder(DiffusionDecoderConfig(prediction_type="flow"))
+            DiffusionDecoder(
+                DiffusionDecoderConfig(objective="flow", prediction_type="epsilon")
+            )
+
+    def test_ddpm_x0_min_snr_weights_and_sampling(self):
+        model = self._tiny(
+            "x0",
+            loss_weighting="min_snr",
+            mul=1,
+            min_snr_gamma=0.2,
+        )
+        t = torch.tensor([0, 10, 50, 99], dtype=torch.long)
+        snr = compute_snr(model.train_scheduler, t)
+        expected = torch.minimum(snr, torch.full_like(snr, 0.2)) / 0.2
+        self.assertTrue(torch.allclose(model._min_snr_weights(t), expected))
+
+        out = model.compute_loss(torch.randn(2, 4, 6), torch.randn(2, 4, 32))
+        self.assertTrue(torch.isfinite(out["loss"]))
+        sample = model.sample(torch.randn(2, 32), num_inference_steps=3)
+        self.assertTrue(torch.isfinite(sample).all())
+
+    def test_zero_terminal_snr_and_trailing_spacing(self):
+        model = self._tiny(
+            "x0",
+            mul=1,
+            rescale_betas_zero_snr=True,
+            timestep_spacing="trailing",
+        )
+        self.assertEqual(model.train_scheduler.alphas_cumprod[-1].item(), 0.0)
+        scheduler = model.sample_scheduler.from_config(model.sample_scheduler.config)
+        scheduler.set_timesteps(20)
+        self.assertEqual(scheduler.timesteps[0].item(), 99)
+
+    def test_jit_x0_prediction_v_loss_is_finite(self):
+        model = self._tiny(
+            "x0",
+            objective="flow",
+            loss_space="v",
+            loss_weighting="logit_normal",
+            logit_normal_mean=-0.8,
+            logit_normal_std=0.8,
+            mul=1,
+        )
+        out = model.compute_loss(torch.randn(2, 4, 6), torch.randn(2, 4, 32))
+        self.assertTrue(torch.isfinite(out["loss"]))
+        self.assertTrue(torch.isfinite(out["weights"]).all())
+        self.assertTrue(torch.all((out["flow_times"] > 0) & (out["flow_times"] < 1)))
+        sample = model.sample(torch.randn(2, 32), num_inference_steps=3)
+        self.assertTrue(torch.isfinite(sample).all())
+
+    def test_flow_velocity_logit_normal_weighting(self):
+        model = self._tiny(
+            "v_prediction",
+            objective="flow",
+            loss_weighting="logit_normal",
+            logit_normal_mean=0.0,
+            logit_normal_std=1.0,
+            mul=1,
+        )
+        weights = model.logit_normal_weights
+        self.assertAlmostEqual(weights.mean().item(), 1.0, places=5)
+        self.assertGreater(weights[len(weights) // 2].item(), weights[0].item())
+        self.assertGreater(weights[len(weights) // 2].item(), weights[-1].item())
+
+        out = model.compute_loss(torch.randn(2, 4, 6), torch.randn(2, 4, 32))
+        self.assertTrue(torch.isfinite(out["loss"]))
+        self.assertTrue(torch.allclose(out["snr_weights"], weights[out["timesteps"]]))
+        sample = model.sample(torch.randn(2, 32), num_inference_steps=3)
+        self.assertTrue(torch.isfinite(sample).all())
 
     def test_radial_power_weighting_scales_loss(self):
         cfg = DiffusionDecoderConfig(
@@ -209,6 +285,59 @@ class TestDiffusionDecoder(unittest.TestCase):
             model.compute_loss(torch.randn(1, 2, 6), torch.randn(1, 2, 32))
         with self.assertRaises(ValueError):
             model.sample(torch.randn(1, 32), num_inference_steps=2)
+
+    def test_depth_six_adaln_zero_initialization_and_gradient_flow(self):
+        model = self._tiny("x0", mul=1, depth=6)
+        self.assertEqual(len(model.net.res_blocks), 6)
+        for block in model.net.res_blocks:
+            self.assertEqual(block.adaLN_modulation[-1].weight.abs().max().item(), 0)
+            self.assertEqual(block.adaLN_modulation[-1].bias.abs().max().item(), 0)
+            torch.nn.init.normal_(block.adaLN_modulation[-1].weight, std=0.02)
+        self.assertEqual(model.net.final_layer.linear.weight.abs().max().item(), 0)
+        torch.nn.init.normal_(model.net.final_layer.linear.weight, std=0.02)
+        output = model.compute_loss(
+            torch.randn(2, 3, 6),
+            torch.randn(2, 3, 32),
+        )
+        output["loss"].backward()
+        for block in model.net.res_blocks:
+            self.assertIsNotNone(block.mlp[0].weight.grad)
+            self.assertGreater(block.mlp[0].weight.grad.abs().sum().item(), 0)
+
+    def test_covariance_metric_is_reported_and_used(self):
+        model = self._tiny(
+            "x0",
+            mul=1,
+            loss_metric="orbit_covariance_power",
+            orbit_covariance_exponent=0.2,
+        )
+        target = torch.randn(2, 3, 6)
+        z = torch.randn(2, 3, 32)
+        metric = torch.eye(6).repeat(3, 1, 1)
+        metric[1] *= 2
+        metric[2] *= 4
+        output = model.compute_loss(target, z, covariance_metric=metric)
+        self.assertTrue(torch.isfinite(output["loss"]))
+        self.assertTrue(torch.isfinite(output["unweighted_mse"]))
+        self.assertTrue(torch.isfinite(output["covariance_metric_loss"]))
+        self.assertTrue(
+            torch.allclose(output["loss"], output["covariance_metric_loss"])
+        )
+
+    def test_covariance_metric_rejects_incompatible_objectives(self):
+        with self.assertRaises(ValueError):
+            self._tiny(
+                "epsilon",
+                mul=1,
+                loss_metric="orbit_covariance_power",
+            )
+        with self.assertRaises(ValueError):
+            self._tiny(
+                "x0",
+                mul=1,
+                loss_metric="orbit_covariance_power",
+                radial_power_weighting=True,
+            )
 
 
 if __name__ == "__main__":
