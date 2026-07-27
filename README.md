@@ -33,6 +33,12 @@ https://www.ethansmith2000.com/post/mimicking-diffusion-models-by-sequencing-fre
   complex orbit, or centers only the four real-only self-conjugate orbits. The
   RMS variant gives ordinary complex coefficients unit paired second moment
   without moving their physical phase origin.
+- New ablations separate that legacy combined switch into
+  `--diffusion_mean_policy legacy|per_orbit|pooled_ordinary|self_only` and
+  `--diffusion_scale_policy legacy|centered_std|uncentered_rms`.
+  `pooled_ordinary` subtracts one RGB-complex offset after scaling across all
+  ordinary orbits, while DC and the other self-conjugates remain per-orbit
+  centered. The fitted orbit moments are reusable across these policies.
 - `--learned_output_gain` adds zero-initialized per-orbit RGB log gains on top of
   fixed `orbit_standardize` statistics.
 - Optional value transform: `--value_transform identity|asinh`.
@@ -85,9 +91,11 @@ with deterministic physical-space polar features
   `[log1p(a), g·cos θ, g·sin θ]` with `a = amp / expected_rms` and `g = a/(1+a)`.
 - Projected by a zero-initialized `Linear(9, width)` and added to the Cartesian
   token embedding. Does **not** change the diffusion state manifold.
-- `--history_cartesian_features centered|phase_preserving` independently chooses
-  the Transformer history coordinates. The latter reconstructs completed
-  physical coefficients and centers only self-conjugates.
+- `--history_cartesian_features centered|phase_preserving|policy` independently
+  chooses the Transformer history coordinates. `policy` reconstructs completed
+  physical coefficients and uses explicit `--history_mean_policy` and
+  `--history_scale_policy`, so Transformer features need not match diffusion
+  coordinates.
 
 ## Frequency position conditioning
 
@@ -107,15 +115,23 @@ The three routes can be ablated independently:
 - `--[no-]position-input-addition`
 - `--[no-]transformer-position-film`
 - `--[no-]diffusion-target-conditioning`
+- `--[no-]decoder-target-position-conditioning` (alias)
 - `--position-rms-normalize` optionally controls the shared position RMS.
 - `--backbone_position_mode none|legacy_hybrid|random_table|sincos_table`
   chooses the backbone input representation independently from decoder target
   conditioning. New tables have a learned input scale initialized to `0.1`;
   BOS remains separate.
 
-`--input_timestep_conditioning film` adds zero-initialized timestep FiLM directly
-after the diffusion `6 -> width` projection. `--input_projection_init
+`--input_stem_time_film` (clear alias for `--input_timestep_conditioning film`)
+adds zero-initialized timestep FiLM directly after the diffusion `6 -> width`
+projection. Standard diffusion-block timestep AdaLN remains active regardless.
+`--input_projection_init
 xavier|kaiming_linear` controls the corresponding initializer ablation.
+
+For native x0 prediction, `--phase_aux_weight` adds an amplitude-gated physical
+Fourier phase loss over ordinary complex orbits. It uses timestep weights but
+not orbit-scale loss weights; `--phase_gradient_diagnostic_step` logs its
+weighted output-gradient norm relative to the base objective once for calibration.
 
 For a clean content-only input stream while retaining conditional position,
 use `--no-position-input-addition --position-rms-normalize`.
@@ -187,11 +203,17 @@ Useful flags:
 - `--codec_stats_path PATH` (defaults to `$output_dir/codec_stats.pt`)
 - `--history_corruption none|gaussian`
 - `--history_polar_features none|log_amp_gated_phase`
-- `--history_cartesian_features centered|phase_preserving`
+- `--history_cartesian_features centered|phase_preserving|policy`
+- `--history_mean_policy legacy|per_orbit|pooled_ordinary|self_only`
+- `--history_scale_policy legacy|centered_std|uncentered_rms`
 - `--centering all|self_conjugate_std|self_conjugate_rms`
+- `--diffusion_mean_policy legacy|per_orbit|pooled_ordinary|self_only`
+- `--diffusion_scale_policy legacy|centered_std|uncentered_rms`
 - `--frequency_conditioning`
 - `--backbone_position_mode none|legacy_hybrid|random_table|sincos_table`
 - `--input_timestep_conditioning none|film`
+- `--[no-]input_stem_time_film`
+- `--phase_aux_weight FLOAT --phase_aux_gate FLOAT`
 - `--input_projection_init xavier|kaiming_linear`
 - `--position_num_frequencies 4 --position_max_frequency 8`
 - `--[no-]position-input-addition`

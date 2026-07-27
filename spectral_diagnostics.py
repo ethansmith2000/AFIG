@@ -343,6 +343,60 @@ def compute_normalization_phase_distortion(
         quantiles,
         eps,
     )
+    if (
+        codec.uses_orbit_statistics
+        and codec.config.value_transform == "identity"
+    ):
+        ordinary = ~codec.is_self_conjugate
+        for scale_name in ("centered_std", "uncentered_rms"):
+            scale = codec.orbit_scale_for_policy(scale_name).to(
+                device=physical_tokens.device,
+                dtype=physical_tokens.dtype,
+            )
+            mean_complex = _complex(physical_mean)
+            scaled_mean = mean_complex / scale[:, :3].clamp_min(eps)
+            magnitudes = scaled_mean[ordinary].abs().float().flatten()
+            for quantile in quantiles:
+                metrics[
+                    f"mu_over_{scale_name}/{_quantile_label(quantile)}"
+                ] = torch.quantile(magnitudes, quantile)
+            pooled = scaled_mean[ordinary].mean(dim=0)
+            residual = scaled_mean[ordinary] - pooled[None, :]
+            for channel, name in enumerate(("r", "g", "b")):
+                metrics[f"pooled_scaled_mean/{scale_name}/{name}_real"] = (
+                    pooled[channel].real
+                )
+                metrics[f"pooled_scaled_mean/{scale_name}/{name}_imag"] = (
+                    pooled[channel].imag
+                )
+            metrics[f"pooled_residual_rms/{scale_name}"] = (
+                residual.abs().square().mean().sqrt()
+            )
+
+        rms_scale = codec.orbit_scale_for_policy("uncentered_rms").to(
+            device=physical_tokens.device,
+            dtype=physical_tokens.dtype,
+        )
+        pooled_offset = codec.orbit_scaled_offset(
+            "pooled_ordinary",
+            "uncentered_rms",
+        ).to(device=physical_tokens.device, dtype=physical_tokens.dtype)
+        pooled_physical_mean = pooled_offset * rms_scale
+        pooled_summary = _phase_distortion_summary(
+            physical_tokens,
+            pooled_physical_mean,
+            codec,
+            amplitude_gate,
+            dominance_c,
+            quantiles,
+            eps,
+        )
+        for name, value in pooled_summary.items():
+            if name.startswith("phase_distortion_"):
+                metrics[f"pooled_rms/{name}"] = value
+        metrics["scale_only_rms/phase_distortion_circular_error"] = (
+            physical_tokens.new_zeros(())
+        )
     if timesteps is not None:
         for timestep in torch.unique(timesteps, sorted=True):
             selected = timesteps == timestep

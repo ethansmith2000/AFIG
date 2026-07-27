@@ -28,6 +28,8 @@ class FrequencyCodecConfig:
     value_transform: str = "identity"  # identity | asinh
     normalization: str = "radial_whiten"  # radial_whiten | radial_standardize | orbit_whiten | orbit_standardize
     centering: str = "all"  # all | self_conjugate_std | self_conjugate_rms
+    mean_policy: str = "legacy"  # legacy | per_orbit | pooled_ordinary | self_only
+    scale_policy: str = "legacy"  # legacy | centered_std | uncentered_rms
     covariance_eps: float = 1e-5
     fft_norm: str = "ortho"
 
@@ -204,16 +206,36 @@ class FrequencyCodec(nn.Module):
             "self_conjugate_rms",
         ):
             raise ValueError(f"Unknown centering policy: {self.config.centering}")
+        if self.config.mean_policy not in (
+            "legacy",
+            "per_orbit",
+            "pooled_ordinary",
+            "self_only",
+        ):
+            raise ValueError(f"Unknown mean policy: {self.config.mean_policy}")
+        if self.config.scale_policy not in (
+            "legacy",
+            "centered_std",
+            "uncentered_rms",
+        ):
+            raise ValueError(f"Unknown scale policy: {self.config.scale_policy}")
+        explicit_policy = (
+            self.config.mean_policy != "legacy"
+            or self.config.scale_policy != "legacy"
+        )
         if (
-            self.config.centering != "all"
+            (self.config.centering != "all" or explicit_policy)
             and self.config.normalization != "orbit_standardize"
         ):
             raise ValueError(
-                "Phase-preserving centering policies require orbit_standardize."
+                "Configurable mean/scale policies require orbit_standardize."
             )
-        if self.config.centering != "all" and self.config.value_transform != "identity":
+        if (
+            (self.config.centering != "all" or explicit_policy)
+            and self.config.value_transform != "identity"
+        ):
             raise ValueError(
-                "Phase-preserving centering policies require value_transform='identity'."
+                "Configurable mean/scale policies require value_transform='identity'."
             )
 
         table = build_orbit_table(
@@ -339,6 +361,11 @@ class FrequencyCodec(nn.Module):
             )
         cfg = meta.get("config", {})
         for key, value in self.config.fingerprint().items():
+            # Mean/scale policies are deterministic post-fit transforms of the
+            # same orbit moments, so one fitted statistics payload can serve all
+            # policy ablations.
+            if key in ("mean_policy", "scale_policy"):
+                continue
             # Version-2 codec payloads predate configurable centering and are
             # exactly equivalent to the new default.
             observed = cfg.get(key, "all" if key == "centering" else None)
@@ -466,13 +493,17 @@ class FrequencyCodec(nn.Module):
             device=self.orbit_cov.device,
             dtype=self.orbit_cov.dtype,
         )
+        count = self.orbit_counts.to(dtype=self.orbit_cov.dtype).clamp_min(1.0)
+        covariance_to_population = ((count - 1.0) / count)[:, None]
         for channel in range(NUM_CHANNELS):
             real = (
-                self.orbit_cov[:, channel, channel]
+                covariance_to_population[:, 0]
+                * self.orbit_cov[:, channel, channel]
                 + self.orbit_mean[:, channel].square()
             )
             imag = (
-                self.orbit_cov[:, channel + NUM_CHANNELS, channel + NUM_CHANNELS]
+                covariance_to_population[:, 0]
+                * self.orbit_cov[:, channel + NUM_CHANNELS, channel + NUM_CHANNELS]
                 + self.orbit_mean[:, channel + NUM_CHANNELS].square()
             )
             imag_active = self.component_mask[:, channel + NUM_CHANNELS]
@@ -481,19 +512,61 @@ class FrequencyCodec(nn.Module):
         scale = torch.cat([rgb, rgb], dim=-1)
         return scale * self.component_mask + (1.0 - self.component_mask)
 
-    def _orbit_normalization_mean(self) -> torch.Tensor:
-        if self.config.centering == "all":
-            return self.orbit_mean
-        return self.orbit_mean * self.is_self_conjugate[:, None].to(
-            self.orbit_mean.dtype
+    def effective_mean_policy(self) -> str:
+        if self.config.mean_policy != "legacy":
+            return self.config.mean_policy
+        return "per_orbit" if self.config.centering == "all" else "self_only"
+
+    def effective_scale_policy(self) -> str:
+        if self.config.scale_policy != "legacy":
+            return self.config.scale_policy
+        return (
+            "uncentered_rms"
+            if self.config.centering == "self_conjugate_rms"
+            else "centered_std"
         )
 
-    def _orbit_normalization_scale(self) -> torch.Tensor:
-        if self.config.centering != "self_conjugate_rms":
+    def orbit_scale_for_policy(self, policy: str) -> torch.Tensor:
+        if policy == "centered_std":
             return self.orbit_std
+        if policy != "uncentered_rms":
+            raise ValueError(f"Unknown orbit scale policy: {policy}")
         rms = self.orbit_uncentered_rms()
         self_mask = self.is_self_conjugate[:, None]
         return torch.where(self_mask, self.orbit_std, rms)
+
+    def orbit_scaled_offset(
+        self,
+        mean_policy: str,
+        scale_policy: str,
+    ) -> torch.Tensor:
+        """Return the affine offset applied after per-orbit scaling."""
+        scale = self.orbit_scale_for_policy(scale_policy).clamp_min(1e-8)
+        per_orbit = self.orbit_mean / scale
+        self_mask = self.is_self_conjugate[:, None]
+        if mean_policy == "per_orbit":
+            offset = per_orbit
+        elif mean_policy == "self_only":
+            offset = per_orbit * self_mask.to(per_orbit.dtype)
+        elif mean_policy == "pooled_ordinary":
+            ordinary = ~self.is_self_conjugate
+            pooled = per_orbit[ordinary].mean(dim=0, keepdim=True)
+            offset = pooled.expand_as(per_orbit).clone()
+            offset[self.is_self_conjugate] = per_orbit[self.is_self_conjugate]
+        else:
+            raise ValueError(f"Unknown orbit mean policy: {mean_policy}")
+        return offset * self.component_mask
+
+    def _orbit_normalization_mean(self) -> torch.Tensor:
+        scale = self._orbit_normalization_scale()
+        offset = self.orbit_scaled_offset(
+            self.effective_mean_policy(),
+            self.effective_scale_policy(),
+        )
+        return offset * scale
+
+    def _orbit_normalization_scale(self) -> torch.Tensor:
+        return self.orbit_scale_for_policy(self.effective_scale_policy())
 
     def normalize(self, tokens: torch.Tensor) -> torch.Tensor:
         self.assert_fitted()
@@ -744,25 +817,23 @@ class FrequencyCodec(nn.Module):
         self._orbit_scale_metric_cache[cache_key] = metric
         return metric
 
-    def phase_preserving_history_features(
+    def history_cartesian_features(
         self,
         normalized_tokens: torch.Tensor,
         positions: Optional[torch.Tensor] = None,
+        *,
+        mean_policy: str,
+        scale_policy: str,
     ) -> torch.Tensor:
-        """Cartesian history with physical phase and standardized magnitude.
-
-        Ordinary complex orbits retain the physical origin. The four
-        self-conjugate real-only orbits remain centered, which handles the
-        large DC mean without changing any continuous phase.
-        """
+        """Build history Cartesian features independently of diffusion coordinates."""
         self.assert_fitted()
         if self.config.normalization != "orbit_standardize":
             raise ValueError(
-                "Phase-preserving Cartesian history requires orbit_standardize."
+                "Independent Cartesian history policies require orbit_standardize."
             )
         if self.config.value_transform != "identity":
             raise ValueError(
-                "Phase-preserving Cartesian history requires identity values."
+                "Independent Cartesian history policies require identity values."
             )
         if normalized_tokens.ndim != 3 or normalized_tokens.shape[-1] != TOKEN_DIM:
             raise ValueError(
@@ -779,15 +850,26 @@ class FrequencyCodec(nn.Module):
 
         transformed = self.denormalize_at(normalized_tokens, positions)
         raw = self._invert_value_transform_at(transformed, positions)
-        mean = self.orbit_mean[positions].to(device=device, dtype=raw.dtype)
-        self_mask = self.is_self_conjugate[positions, None].to(
-            device=device, dtype=raw.dtype
-        )
-        centered = raw - mean[None, :, :] * self_mask[None, :, :]
-        scale = self.orbit_std[positions].to(device=device, dtype=raw.dtype)
-        features = centered / scale.clamp_min(1e-8)[None, :, :]
+        scale_all = self.orbit_scale_for_policy(scale_policy)
+        offset_all = self.orbit_scaled_offset(mean_policy, scale_policy)
+        scale = scale_all[positions].to(device=device, dtype=raw.dtype)
+        offset = offset_all[positions].to(device=device, dtype=raw.dtype)
+        features = raw / scale.clamp_min(1e-8)[None, :, :] - offset[None, :, :]
         mask = self.component_mask[positions].to(device=device, dtype=raw.dtype)
         return features * mask[None, :, :]
+
+    def phase_preserving_history_features(
+        self,
+        normalized_tokens: torch.Tensor,
+        positions: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Compatibility wrapper: self-only mean and centered standard deviation."""
+        return self.history_cartesian_features(
+            normalized_tokens,
+            positions,
+            mean_policy="self_only",
+            scale_policy="centered_std",
+        )
 
     def polar_history_features(
         self,

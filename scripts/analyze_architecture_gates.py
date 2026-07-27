@@ -9,6 +9,7 @@ import json
 import math
 import os
 import re
+import sys
 from collections import defaultdict
 from pathlib import Path
 from statistics import mean, stdev
@@ -39,6 +40,16 @@ ROBUSTNESS_METRICS = (
     "robustness/condition_cosine",
     "robustness/condition_relative_rms",
 )
+NORMALIZATION_METRICS = (
+    "normalization/mu_over_centered_std/q50",
+    "normalization/mu_over_centered_std/q90",
+    "normalization/mu_over_centered_std/q99",
+    "normalization/mu_over_uncentered_rms/q50",
+    "normalization/mu_over_uncentered_rms/q90",
+    "normalization/mu_over_uncentered_rms/q99",
+    "normalization/pooled_residual_rms/uncentered_rms",
+    "normalization/pooled_rms/phase_distortion_circular_error",
+)
 OPTIMIZATION_METRICS = (
     "grad_norm",
     "projection_grad_rms/token_proj",
@@ -47,11 +58,15 @@ OPTIMIZATION_METRICS = (
     "output_gain/mean",
     "output_gain/min",
     "output_gain/max",
+    "base_loss",
+    "phase_aux_loss",
+    "phase_aux_output_grad_ratio",
 )
 PROFILES = {
     "core": CORE_METRICS,
     "timestep": TIMESTEP_METRICS,
     "robustness": ROBUSTNESS_METRICS,
+    "normalization": NORMALIZATION_METRICS,
     "optimization": OPTIMIZATION_METRICS,
 }
 
@@ -68,13 +83,18 @@ CONFIG_KEYS = (
     "adam_beta1",
     "adam_beta2",
     "history_cartesian_features",
+    "history_mean_policy",
+    "history_scale_policy",
     "history_polar_features",
     "centering",
+    "diffusion_mean_policy",
+    "diffusion_scale_policy",
     "input_timestep_conditioning",
     "input_projection_init",
     "loss_metric",
     "orbit_scale_exponent",
     "learned_output_gain",
+    "phase_aux_weight",
     "history_corruption",
 )
 
@@ -177,6 +197,22 @@ def control_arm(arm: str) -> str | None:
         return "g-clean"
     if arm in ("h-finalist1", "h-finalist2"):
         return "h-anchor"
+    if arm == "h-sincos":
+        return "h-finalist1"
+    if arm in ("t-scaleonly", "t-pooled"):
+        return "t-perorbit"
+    if arm in ("d-selfrms", "d-pooled"):
+        return "d-perorbit"
+    if arm == "a-phase":
+        return "d-pooled"
+    followup_controls = {
+        "c-polar-on": "c-polar-off",
+        "c-target-off": "c-target-on",
+        "c-stem-on": "c-stem-off",
+        "c-noise": "c-clean",
+    }
+    if arm in followup_controls:
+        return followup_controls[arm]
     return None
 
 
@@ -219,7 +255,7 @@ def is_higher_better(metric: str) -> bool:
 def metric_improvement(metric: str, value: float, baseline: float) -> float | None:
     if metric == "spectral/log_amplitude_bias":
         return abs(baseline) - abs(value)
-    if metric == "grad_norm" or metric.startswith(
+    if metric in ("grad_norm", "phase_aux_output_grad_ratio") or metric.startswith(
         ("projection_grad_rms/", "output_gain/")
     ):
         return None
@@ -334,15 +370,41 @@ def run_rows(
         if not available:
             continue
         max_requested = min(max(requested_steps), identity["budget_steps"])
-        history = list(
-            run.scan_history(
-                keys=["_step", *available],
-                min_step=max(0, min(requested_steps) - tolerance),
-                # W&B scan_history treats max_step as an exclusive bound.
-                max_step=max_requested + 1,
-                page_size=1000,
+        history_keys = ["_step", *available]
+        try:
+            history = list(
+                run.scan_history(
+                    keys=history_keys,
+                    min_step=max(0, min(requested_steps) - tolerance),
+                    # W&B scan_history treats max_step as an exclusive bound.
+                    max_step=max_requested + 1,
+                    page_size=1000,
+                )
             )
-        )
+        except Exception as error:
+            # Some otherwise complete W&B runs expose a malformed scan schema
+            # ("Step column '_step' not found") while sampled history remains
+            # available. Request enough samples to preserve sparse diagnostic
+            # rows, then apply the normal exact-step matching below.
+            print(
+                f"scan_history failed for {run.name}; using sampled history: {error}",
+                file=sys.stderr,
+            )
+            history = list(
+                run.history(
+                    keys=history_keys,
+                    samples=max(10_000, max_requested + 1),
+                    pandas=False,
+                )
+            )
+            history = [
+                row
+                for row in history
+                if "_step" in row
+                and max(0, min(requested_steps) - tolerance)
+                <= int(row["_step"])
+                <= max_requested
+            ]
         for requested_step in requested_steps:
             if requested_step > identity["budget_steps"]:
                 continue
@@ -362,8 +424,16 @@ def run_rows(
             }
             for key in CONFIG_KEYS:
                 row[f"config/{key}"] = run.config.get(key)
+            summary_step = finite_number(run.summary.get("_step"))
             for metric in available:
                 value = finite_number(matched.get(metric))
+                if (
+                    requested_step == identity["budget_steps"]
+                    and summary_step == requested_step
+                ):
+                    summary_value = finite_number(run.summary.get(metric))
+                    if summary_value is not None:
+                        value = summary_value
                 if value is not None:
                     row[metric] = value
             output.append(row)

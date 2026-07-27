@@ -41,6 +41,8 @@ class DiffusionDecoderConfig:
     orbit_covariance_exponent: float = 0.0
     orbit_scale_exponent: float = 0.0
     learned_output_gain: bool = False
+    phase_aux_weight: float = 0.0
+    phase_aux_gate: float = 0.1
     input_timestep_conditioning: str = "none"  # none | film
     input_projection_init: str = "xavier"  # xavier | kaiming_linear
     diffusion_batch_mul: int = 4
@@ -254,6 +256,17 @@ class DiffusionDecoder(nn.Module):
         if self.config.input_timestep_conditioning not in ("none", "film"):
             raise ValueError(
                 "input_timestep_conditioning must be 'none' or 'film'."
+            )
+        if self.config.phase_aux_weight < 0.0:
+            raise ValueError("phase_aux_weight must be non-negative")
+        if self.config.phase_aux_gate <= 0.0:
+            raise ValueError("phase_aux_gate must be positive")
+        if self.config.phase_aux_weight > 0.0 and not (
+            self.config.prediction_type == "x0"
+            and self.config.loss_space == "native"
+        ):
+            raise ValueError(
+                "Phase auxiliary currently requires native x0 prediction."
             )
         if self.config.input_projection_init not in ("xavier", "kaiming_linear"):
             raise ValueError(
@@ -665,6 +678,9 @@ class DiffusionDecoder(nn.Module):
             "snr_weights": snr_weights.detach(),
             "radial_weights": radial_w.detach(),
         }
+        if self.config.phase_aux_weight > 0.0:
+            out["predicted_x0_for_phase"] = raw_pred
+            out["target_x0_for_phase"] = target
         if radius_bin is not None:
             out["radius_bin"] = radius_bin.detach()
         if self.config.objective == "flow":

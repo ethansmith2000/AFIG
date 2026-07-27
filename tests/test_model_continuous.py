@@ -75,6 +75,45 @@ class TestContinuousModel(unittest.TestCase):
         # Grad reaches an early transformer layer.
         self.assertIsNotNone(model.layers[0].attn.qkv.weight.grad)
 
+    def test_physical_phase_auxiliary_is_finite_and_differentiable(self):
+        codec_config = FrequencyCodecConfig(
+            normalization="orbit_standardize",
+            value_transform="identity",
+        )
+        codec = FrequencyCodec(codec_config)
+
+        class Loader:
+            def __iter__(self):
+                generator = torch.Generator().manual_seed(41)
+                for _ in range(6):
+                    yield torch.rand(4, 3, 32, 32, generator=generator)
+
+        codec.fit_from_loader(Loader())
+        config = _tiny_cfg()
+        config.codec = codec_config
+        diff = config.diffusion.fingerprint()
+        diff.update(
+            prediction_type="x0",
+            loss_space="native",
+            phase_aux_weight=0.05,
+            phase_aux_gate=0.1,
+        )
+        config.diffusion = DiffusionDecoderConfig(**diff)
+        model = ContinuousFFTDecoder(config, codec=codec)
+        tokens = codec.encode(torch.rand(1, 3, 32, 32))
+        out = model(tokens, corrupt=False)
+        self.assertTrue(torch.isfinite(out["phase_aux_loss"]))
+        self.assertAlmostEqual(
+            out["loss"].item(),
+            out["base_loss"].item() + 0.05 * out["phase_aux_loss"].item(),
+            places=5,
+        )
+        out["loss"].backward()
+        self.assertGreater(
+            model.diffusion.net.final_layer.linear.weight.grad.abs().sum().item(),
+            0.0,
+        )
+
     def test_causal_invariance(self):
         codec = _fitted_codec()
         model = ContinuousFFTDecoder(_tiny_cfg(), codec=codec)
@@ -586,7 +625,9 @@ class TestContinuousModel(unittest.TestCase):
         cfg = _tiny_cfg(
             polar_history=PolarHistoryConfig(enabled=True),
             history_features=HistoryFeatureConfig(
-                cartesian_mode="phase_preserving"
+                cartesian_mode="policy",
+                mean_policy="pooled_ordinary",
+                scale_policy="uncentered_rms",
             ),
             frequency_conditioning=FrequencyConditioningConfig(
                 enabled=True,

@@ -377,6 +377,69 @@ class TestFrequencyCodec(unittest.TestCase):
             places=5,
         )
 
+    def test_pooled_ordinary_rms_policy_roundtrip_and_shared_origin(self):
+        batches = list(self._synth_loader(n_batches=24, batch_size=8, seed=31))
+        codec = FrequencyCodec(
+            FrequencyCodecConfig(
+                normalization="orbit_standardize",
+                mean_policy="pooled_ordinary",
+                scale_policy="uncentered_rms",
+            )
+        )
+        codec.fit_from_loader(batches)
+        images = torch.cat(batches[:2], dim=0)
+        tokens = codec.encode(images)
+        self.assertLess((codec.decode(tokens) - images).abs().max().item(), 2e-4)
+
+        ordinary = ~codec.is_self_conjugate
+        zero = torch.zeros(1, codec.seq_len, 6)
+        zero_normalized = codec.normalize(zero)[0, ordinary]
+        spread = zero_normalized - zero_normalized[:1]
+        self.assertLess(spread.abs().max().item(), 1e-6)
+
+        raw = codec.encode_raw(torch.cat(batches, dim=0))
+        scale = codec.orbit_scale_for_policy("uncentered_rms")
+        uncentered = raw / scale
+        paired_second_moment = 0.5 * (
+            uncentered[..., :3].square().mean(dim=0)
+            + uncentered[..., 3:].square().mean(dim=0)
+        )
+        self.assertTrue(
+            torch.allclose(
+                paired_second_moment[ordinary],
+                torch.ones_like(paired_second_moment[ordinary]),
+                atol=2e-3,
+                rtol=2e-3,
+            )
+        )
+
+    def test_history_policy_is_independent_from_diffusion_policy(self):
+        codec = FrequencyCodec(
+            FrequencyCodecConfig(
+                normalization="orbit_standardize",
+                mean_policy="per_orbit",
+                scale_policy="centered_std",
+            )
+        )
+        codec.fit_from_loader(self._synth_loader(n_batches=16, batch_size=8))
+        images = next(iter(self._synth_loader(n_batches=1, batch_size=2)))
+        tokens = codec.encode(images)
+        positions = torch.arange(codec.seq_len)
+        history = codec.history_cartesian_features(
+            tokens,
+            positions,
+            mean_policy="pooled_ordinary",
+            scale_policy="uncentered_rms",
+        )
+        raw = codec.encode_raw(images)
+        scale = codec.orbit_scale_for_policy("uncentered_rms")
+        offset = codec.orbit_scaled_offset(
+            "pooled_ordinary",
+            "uncentered_rms",
+        )
+        expected = (raw / scale - offset) * codec.component_mask
+        self.assertTrue(torch.allclose(history, expected, atol=2e-5, rtol=2e-5))
+
     def test_centering_policy_is_part_of_compatibility_fingerprint(self):
         codec = FrequencyCodec(
             FrequencyCodecConfig(normalization="orbit_standardize", centering="all")

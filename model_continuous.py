@@ -68,6 +68,8 @@ class HistoryFeatureConfig:
     """Deterministic representation of completed Transformer history."""
 
     cartesian_mode: str = "centered"  # centered | phase_preserving
+    mean_policy: str = "legacy"  # legacy | per_orbit | pooled_ordinary | self_only
+    scale_policy: str = "legacy"  # legacy | centered_std | uncentered_rms
 
     def fingerprint(self) -> Dict[str, Any]:
         return asdict(self)
@@ -458,13 +460,39 @@ class ContinuousFFTDecoder(nn.Module):
             )
         else:
             self.register_parameter("output_log_gain", None)
+        if self.config.diffusion.phase_aux_weight > 0.0 and (
+            self.config.codec.normalization != "orbit_standardize"
+            or self.config.codec.value_transform != "identity"
+        ):
+            raise ValueError(
+                "Phase auxiliary requires identity orbit_standardize coordinates."
+            )
         if self.config.history_features.cartesian_mode not in (
             "centered",
             "phase_preserving",
+            "policy",
         ):
             raise ValueError(
-                "history_features.cartesian_mode must be centered or phase_preserving"
+                "history_features.cartesian_mode must be centered, phase_preserving, or policy"
             )
+        if self.config.history_features.mean_policy not in (
+            "legacy",
+            "per_orbit",
+            "pooled_ordinary",
+            "self_only",
+        ):
+            raise ValueError("Unknown history mean policy")
+        if self.config.history_features.scale_policy not in (
+            "legacy",
+            "centered_std",
+            "uncentered_rms",
+        ):
+            raise ValueError("Unknown history scale policy")
+        if self.config.history_features.cartesian_mode == "policy" and (
+            self.config.history_features.mean_policy == "legacy"
+            or self.config.history_features.scale_policy == "legacy"
+        ):
+            raise ValueError("Policy history mode requires explicit mean and scale policies")
         tcfg = self.config.transformer
         self.width = tcfg.width
         self.token_proj = nn.Linear(TOKEN_DIM, tcfg.width)
@@ -573,7 +601,14 @@ class ContinuousFFTDecoder(nn.Module):
     ) -> torch.Tensor:
         if self.config.history_features.cartesian_mode == "centered":
             return tokens
-        return self.codec.phase_preserving_history_features(tokens, positions)
+        if self.config.history_features.cartesian_mode == "phase_preserving":
+            return self.codec.phase_preserving_history_features(tokens, positions)
+        return self.codec.history_cartesian_features(
+            tokens,
+            positions,
+            mean_policy=self.config.history_features.mean_policy,
+            scale_policy=self.config.history_features.scale_policy,
+        )
 
     def _uses_backbone_position(self) -> bool:
         pcfg = self.config.frequency_conditioning
@@ -657,6 +692,62 @@ class ContinuousFFTDecoder(nn.Module):
             return None
         rgb_gain = self.output_log_gain[positions].exp()
         return torch.cat([rgb_gain, rgb_gain], dim=-1)
+
+    def _apply_phase_auxiliary(
+        self,
+        loss_out: Dict[str, torch.Tensor],
+        batch: int,
+        length: int,
+    ) -> None:
+        weight = self.config.diffusion.phase_aux_weight
+        if weight <= 0.0:
+            return
+        predicted = loss_out.pop("predicted_x0_for_phase").float()
+        target = loss_out.pop("target_x0_for_phase").float()
+        positions = torch.arange(length, device=predicted.device).repeat(batch)
+        positions = positions.repeat(self.config.diffusion.diffusion_batch_mul)
+
+        scale = self.codec._orbit_normalization_scale()[positions].float()
+        mean = self.codec._orbit_normalization_mean()[positions].float()
+        predicted = predicted * scale + mean
+        target = target * scale + mean
+
+        pred_real, pred_imag = predicted[:, :3], predicted[:, 3:]
+        target_real, target_imag = target[:, :3], target[:, 3:]
+        eps = 1e-6
+        pred_amp = (
+            pred_real.square() + pred_imag.square() + eps * eps
+        ).sqrt()
+        target_amp = (
+            target_real.square() + target_imag.square() + eps * eps
+        ).sqrt()
+        cosine = (
+            pred_real * target_real + pred_imag * target_imag
+        ) / (pred_amp * target_amp).clamp_min(eps)
+        cosine = cosine.clamp(-1.0, 1.0)
+
+        expected_amp = (
+            math.sqrt(2.0)
+            * self.codec.orbit_uncentered_rms()[positions, :3].float()
+        ).clamp_min(eps)
+        relative_amp = target_amp / expected_amp
+        gate = relative_amp / (
+            relative_amp + self.config.diffusion.phase_aux_gate
+        )
+        phase_per_token = (gate * (1.0 - cosine)).sum(dim=-1) / gate.sum(
+            dim=-1
+        ).clamp_min(eps)
+        ordinary = ~self.codec.is_self_conjugate[positions]
+        timestep_weights = loss_out["snr_weights"].float()
+        phase_loss = (
+            phase_per_token[ordinary] * timestep_weights[ordinary]
+        ).mean()
+        base_loss = loss_out["loss"]
+        loss_out["_base_loss_component"] = base_loss
+        loss_out["_phase_loss_component"] = phase_loss
+        loss_out["base_loss"] = loss_out["loss"].detach()
+        loss_out["phase_aux_loss"] = phase_loss.detach()
+        loss_out["loss"] = base_loss + weight * phase_loss
 
     # ------------------------------------------------------------------
     # History corruption
@@ -944,6 +1035,7 @@ class ContinuousFFTDecoder(nn.Module):
             component_metric=component_metric,
             output_gain=output_gain,
         )
+        self._apply_phase_auxiliary(loss_out, b, l)
         loss_out["corruption_strength"] = corr_strength.detach()
         return loss_out
 

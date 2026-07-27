@@ -12,7 +12,11 @@ adam_beta2="${ADAM_BETA2:-0.99}"
 polar="${POLAR_MODE:-log_amp_gated_phase}"
 target_position="${TARGET_POSITION:-true}"
 history_cartesian="${HISTORY_CARTESIAN:-centered}"
+history_mean="${HISTORY_MEAN_POLICY:-legacy}"
+history_scale="${HISTORY_SCALE_POLICY:-legacy}"
 centering="${CENTERING:-all}"
+diffusion_mean="${DIFFUSION_MEAN_POLICY:-legacy}"
+diffusion_scale="${DIFFUSION_SCALE_POLICY:-legacy}"
 input_time="none"
 input_init="xavier"
 history_corruption="none"
@@ -20,6 +24,7 @@ history_noise_max="0.05"
 loss_metric="${LOSS_METRIC:-normalized}"
 loss_alpha="${LOSS_ALPHA:-0.0}"
 learned_gain="${LEARNED_GAIN:-false}"
+phase_aux_weight="${PHASE_AUX_WEIGHT:-0.0}"
 
 case "${arm}" in
   P0) position_mode="none" ;;
@@ -74,6 +79,106 @@ case "${arm}" in
     loss_alpha="0.2"
     learned_gain=true
     ;;
+  H-sincos)
+    position_mode="sincos_table"
+    history_cartesian="phase_preserving"
+    polar="none"
+    centering="all"
+    input_time="none"
+    loss_metric="orbit_scale_power"
+    loss_alpha="0.2"
+    learned_gain=true
+    ;;
+  T-perorbit)
+    polar="none"
+    loss_metric="orbit_scale_power"
+    loss_alpha="0.2"
+    learned_gain=true
+    history_cartesian="policy"
+    history_mean="per_orbit"
+    history_scale="centered_std"
+    ;;
+  T-scaleonly)
+    polar="none"
+    loss_metric="orbit_scale_power"
+    loss_alpha="0.2"
+    learned_gain=true
+    history_cartesian="policy"
+    history_mean="self_only"
+    history_scale="uncentered_rms"
+    ;;
+  T-pooled)
+    polar="none"
+    loss_metric="orbit_scale_power"
+    loss_alpha="0.2"
+    learned_gain=true
+    history_cartesian="policy"
+    history_mean="pooled_ordinary"
+    history_scale="uncentered_rms"
+    ;;
+  D-perorbit)
+    polar="none"
+    loss_metric="orbit_scale_power"
+    loss_alpha="0.2"
+    learned_gain=true
+    diffusion_mean="per_orbit"
+    diffusion_scale="centered_std"
+    history_cartesian="policy"
+    history_mean="per_orbit"
+    history_scale="centered_std"
+    ;;
+  D-selfrms)
+    polar="none"
+    loss_metric="orbit_scale_power"
+    loss_alpha="0.2"
+    learned_gain=true
+    diffusion_mean="self_only"
+    diffusion_scale="uncentered_rms"
+    history_cartesian="policy"
+    history_mean="per_orbit"
+    history_scale="centered_std"
+    ;;
+  D-pooled)
+    polar="none"
+    loss_metric="orbit_scale_power"
+    loss_alpha="0.2"
+    learned_gain=true
+    diffusion_mean="pooled_ordinary"
+    diffusion_scale="uncentered_rms"
+    history_cartesian="policy"
+    history_mean="per_orbit"
+    history_scale="centered_std"
+    ;;
+  A-phase)
+    polar="none"
+    loss_metric="orbit_scale_power"
+    loss_alpha="0.2"
+    learned_gain=true
+    diffusion_mean="pooled_ordinary"
+    diffusion_scale="uncentered_rms"
+    history_cartesian="policy"
+    history_mean="pooled_ordinary"
+    history_scale="uncentered_rms"
+    phase_aux_weight="${PHASE_AUX_WEIGHT:-0.05}"
+    ;;
+  C-polar-off|C-polar-on|C-target-on|C-target-off|C-stem-off|C-stem-on|C-clean|C-noise)
+    loss_metric="orbit_scale_power"
+    loss_alpha="0.2"
+    learned_gain=true
+    diffusion_mean="pooled_ordinary"
+    diffusion_scale="uncentered_rms"
+    history_cartesian="policy"
+    history_mean="pooled_ordinary"
+    history_scale="uncentered_rms"
+    polar="${FOLLOWUP_POLAR_MODE:-none}"
+    case "${arm}" in
+      C-polar-off) polar="none" ;;
+      C-polar-on) polar="log_amp_gated_phase" ;;
+      C-target-off) target_position=false ;;
+      C-stem-on) input_time="film" ;;
+      C-noise) history_corruption="gaussian" ;;
+    esac
+    ;;
   *)
     echo "unknown architecture arm: ${arm}" >&2
     exit 2
@@ -99,6 +204,10 @@ if [[ "${target_position}" == false ]]; then
 fi
 gain_args=()
 if [[ "${learned_gain}" == true ]]; then gain_args=(--learned_output_gain); fi
+checkpoint_args=()
+if [[ "${GRADIENT_CHECKPOINTING:-true}" == true ]]; then
+  checkpoint_args=(--gradient_checkpointing)
+fi
 
 run_name="arch-${arm,,}-s${seed}-b${batch_size}-n${steps}"
 stats="continuous_runs/codec_stats_${centering}_heldout${SPECTRAL_PANEL_SIZE:-16}.pt"
@@ -140,13 +249,19 @@ exec gpu-claim run --owner AFIG --job "${run_name}" --wait -- \
   --min_snr_gamma 0.2 \
   --loss_metric "${loss_metric}" \
   --orbit_scale_exponent "${loss_alpha}" \
+  --phase_aux_weight "${phase_aux_weight}" \
+  --phase_aux_gate "${PHASE_AUX_GATE:-0.1}" \
   "${gain_args[@]}" \
   --timestep_spacing linspace \
   --num_inference_steps 20 \
   --value_transform identity \
   --normalization orbit_standardize \
   --centering "${centering}" \
+  --diffusion_mean_policy "${diffusion_mean}" \
+  --diffusion_scale_policy "${diffusion_scale}" \
   --history_cartesian_features "${history_cartesian}" \
+  --history_mean_policy "${history_mean}" \
+  --history_scale_policy "${history_scale}" \
   --history_polar_features "${polar}" \
   --frequency_conditioning \
   --backbone_position_mode "${position_mode}" \
@@ -163,9 +278,9 @@ exec gpu-claim run --owner AFIG --job "${run_name}" --wait -- \
   --history_noise_max "${history_noise_max}" \
   --history_noise_ramp_fraction 0.2 \
   --mixed_precision bf16 \
-  --gradient_checkpointing \
+  "${checkpoint_args[@]}" \
   --allow_tf32 \
   --report_to "${REPORT_TO:-wandb}" \
   --run_name "${run_name}" \
   --run_group "afig-coefficient-architecture-gates" \
-  --run_tags "architecture-gates,${arm},seed-${seed},position-${position_mode},centering-${centering},history-${history_cartesian},polar-${polar},input-time-${input_time},input-init-${input_init},adam-${adam_beta1}-${adam_beta2},loss-${loss_metric}-${loss_alpha},batch-${batch_size},depth6"
+  --run_tags "architecture-gates,${arm},seed-${seed},position-${position_mode},centering-${centering},diff-mean-${diffusion_mean},diff-scale-${diffusion_scale},history-${history_cartesian},hist-mean-${history_mean},hist-scale-${history_scale},polar-${polar},input-time-${input_time},adam-${adam_beta1}-${adam_beta2},loss-${loss_metric}-${loss_alpha},phase-${phase_aux_weight},batch-${batch_size},depth6"

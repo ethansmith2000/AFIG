@@ -257,6 +257,14 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     p.add_argument("--orbit_covariance_exponent", type=float, default=0.0)
     p.add_argument("--orbit_scale_exponent", type=float, default=0.0)
+    p.add_argument("--phase_aux_weight", type=float, default=0.0)
+    p.add_argument("--phase_aux_gate", type=float, default=0.1)
+    p.add_argument(
+        "--phase_gradient_diagnostic_step",
+        type=int,
+        default=1,
+        help="One-based optimizer step for a phase/base output-gradient ratio; 0 disables.",
+    )
     p.add_argument("--diffusion_batch_mul", type=int, default=4)
     p.add_argument("--num_inference_steps", type=int, default=20)
     p.add_argument("--ordering", type=str, default="radial", choices=["radial", "square_spiral"])
@@ -284,6 +292,16 @@ def parse_args(argv=None) -> argparse.Namespace:
         choices=["all", "self_conjugate_std", "self_conjugate_rms"],
         help="Per-orbit complex centering and scaling policy.",
     )
+    p.add_argument(
+        "--diffusion_mean_policy",
+        default="legacy",
+        choices=["legacy", "per_orbit", "pooled_ordinary", "self_only"],
+    )
+    p.add_argument(
+        "--diffusion_scale_policy",
+        default="legacy",
+        choices=["legacy", "centered_std", "uncentered_rms"],
+    )
     p.add_argument("--history_corruption", type=str, default="none", choices=["none", "gaussian"])
     p.add_argument("--history_corruption_prob", type=float, default=1.0)
     p.add_argument("--history_noise_min", type=float, default=0.0)
@@ -300,8 +318,18 @@ def parse_args(argv=None) -> argparse.Namespace:
         "--history_cartesian_features",
         type=str,
         default="centered",
-        choices=["centered", "phase_preserving"],
+        choices=["centered", "phase_preserving", "policy"],
         help="Cartesian coordinate family used only for completed AR history.",
+    )
+    p.add_argument(
+        "--history_mean_policy",
+        default="legacy",
+        choices=["legacy", "per_orbit", "pooled_ordinary", "self_only"],
+    )
+    p.add_argument(
+        "--history_scale_policy",
+        default="legacy",
+        choices=["legacy", "centered_std", "uncentered_rms"],
     )
     p.add_argument(
         "--frequency_conditioning",
@@ -336,6 +364,12 @@ def parse_args(argv=None) -> argparse.Namespace:
         default="none",
         choices=["none", "film"],
         help="Timestep modulation immediately after the diffusion input projection.",
+    )
+    p.add_argument(
+        "--input_stem_time_film",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Clear alias for optional timestep FiLM at the diffusion input stem.",
     )
     p.add_argument(
         "--input_projection_init",
@@ -376,6 +410,13 @@ def parse_args(argv=None) -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Condition diffusion AdaLN directly on the known target frequency.",
+    )
+    p.add_argument(
+        "--decoder-target-position-conditioning",
+        dest="decoder_target_position_conditioning",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Clear alias for direct target-frequency conditioning in decoder AdaLN.",
     )
     p.add_argument("--use_ema", action="store_true", help="Opt in to EMA evaluation.")
     p.add_argument("--ema_decay", type=float, default=0.9999)
@@ -468,12 +509,22 @@ class ModelEMA:
 
 
 def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
+    input_timestep_conditioning = args.input_timestep_conditioning
+    if args.input_stem_time_film is not None:
+        input_timestep_conditioning = (
+            "film" if args.input_stem_time_film else "none"
+        )
+    decoder_target_conditioning = args.diffusion_target_conditioning
+    if args.decoder_target_position_conditioning is not None:
+        decoder_target_conditioning = args.decoder_target_position_conditioning
     return ContinuousModelConfig(
         codec=FrequencyCodecConfig(
             ordering=args.ordering,
             value_transform=args.value_transform,
             normalization=args.normalization,
             centering=args.centering,
+            mean_policy=args.diffusion_mean_policy,
+            scale_policy=args.diffusion_scale_policy,
         ),
         transformer=TransformerConfig(
             width=args.width,
@@ -504,7 +555,9 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
             orbit_covariance_exponent=args.orbit_covariance_exponent,
             orbit_scale_exponent=args.orbit_scale_exponent,
             learned_output_gain=args.learned_output_gain,
-            input_timestep_conditioning=args.input_timestep_conditioning,
+            phase_aux_weight=args.phase_aux_weight,
+            phase_aux_gate=args.phase_aux_gate,
+            input_timestep_conditioning=input_timestep_conditioning,
             input_projection_init=args.input_projection_init,
             diffusion_batch_mul=args.diffusion_batch_mul,
             num_inference_steps=args.num_inference_steps,
@@ -526,6 +579,8 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
         ),
         history_features=HistoryFeatureConfig(
             cartesian_mode=args.history_cartesian_features,
+            mean_policy=args.history_mean_policy,
+            scale_policy=args.history_scale_policy,
         ),
         frequency_conditioning=FrequencyConditioningConfig(
             enabled=bool(getattr(args, "frequency_conditioning", False)),
@@ -537,7 +592,7 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
                 getattr(args, "transformer_position_film", True)
             ),
             diffusion_target_conditioning=bool(
-                getattr(args, "diffusion_target_conditioning", True)
+                decoder_target_conditioning
             ),
             backbone_position_mode=args.backbone_position_mode,
             input_scale_init=args.input_position_scale_init,
@@ -1296,14 +1351,19 @@ def main(args: Optional[argparse.Namespace] = None):
             f"input_addition={bool(args.position_input_addition)} "
             f"rms_normalize={bool(args.position_rms_normalize)} "
             f"transformer_film={bool(args.transformer_position_film)} "
-            f"diffusion_target={bool(args.diffusion_target_conditioning)} "
+            "diffusion_target="
+            f"{config.frequency_conditioning.diffusion_target_conditioning} "
             f"backbone_mode={args.backbone_position_mode} "
             f"input_scale={args.input_position_scale_init:g}"
         )
         _log_info(
             f"Representation: centering={args.centering} "
+            f"diffusion_mean={config.codec.mean_policy} "
+            f"diffusion_scale={config.codec.scale_policy} "
             f"history_cartesian={args.history_cartesian_features} "
-            f"input_time={args.input_timestep_conditioning} "
+            f"history_mean={config.history_features.mean_policy} "
+            f"history_scale={config.history_features.scale_policy} "
+            f"input_time={config.diffusion.input_timestep_conditioning} "
             f"input_init={args.input_projection_init} "
             f"adam=({args.adam_beta1:g},{args.adam_beta2:g})"
         )
@@ -1383,9 +1443,11 @@ def main(args: Optional[argparse.Namespace] = None):
         )
         run_name = args.run_name or (
             f"{args.objective}-{args.prediction_type}-{args.normalization}-"
-            f"{args.centering}-{args.loss_metric}{metric_suffix}-"
-            f"pos-{args.backbone_position_mode}-hist-{args.history_cartesian_features}-"
-            f"stem-{args.input_timestep_conditioning}-d{args.diff_depth}-"
+            f"{args.diffusion_mean_policy}-{args.diffusion_scale_policy}-"
+            f"{args.loss_metric}{metric_suffix}-pos-{args.backbone_position_mode}-"
+            f"hist-{args.history_cartesian_features}-{args.history_mean_policy}-"
+            f"{args.history_scale_policy}-stem-"
+            f"{config.diffusion.input_timestep_conditioning}-d{args.diff_depth}-"
             f"b{args.train_batch_size}"
         )
         init_kwargs = {}
@@ -1431,6 +1493,10 @@ def main(args: Optional[argparse.Namespace] = None):
             "normalization/mu_over_z_q90",
             "normalization/mu_over_z_q99",
             "normalization/phase_distortion_circular_error",
+            "normalization/mu_over_uncentered_rms/q50",
+            "normalization/mu_over_uncentered_rms/q90",
+            "normalization/pooled_residual_rms/uncentered_rms",
+            "normalization/pooled_rms/phase_distortion_circular_error",
             "projection/history_input_rms",
             "projection/diffusion_projected_rms",
         )
@@ -1504,6 +1570,29 @@ def main(args: Optional[argparse.Namespace] = None):
                     training_progress=min(global_step / max(args.max_train_steps, 1), 1.0),
                 )
                 loss = out["loss"]
+                if (
+                    accelerator.sync_gradients
+                    and args.phase_aux_weight > 0.0
+                    and args.phase_gradient_diagnostic_step > 0
+                    and next_optimizer_step == args.phase_gradient_diagnostic_step
+                ):
+                    output_weight = accelerator.unwrap_model(
+                        model
+                    ).diffusion.net.final_layer.linear.weight
+                    base_grad = torch.autograd.grad(
+                        out["_base_loss_component"],
+                        output_weight,
+                        retain_graph=True,
+                    )[0]
+                    phase_grad = torch.autograd.grad(
+                        args.phase_aux_weight * out["_phase_loss_component"],
+                        output_weight,
+                        retain_graph=True,
+                    )[0]
+                    out["phase_aux_output_grad_ratio"] = (
+                        phase_grad.float().norm()
+                        / base_grad.float().norm().clamp_min(1e-12)
+                    ).detach()
                 if step_timer is not None:
                     step_timer.record("after_forward")
                 accelerator.backward(loss)
@@ -1561,6 +1650,15 @@ def main(args: Optional[argparse.Namespace] = None):
                 if step_timer is not None:
                     timing_logs = step_timer.logs()
                     timing_logs["timing/data_load_ms"] = data_load_ms
+                    timing_logs["performance/cuda_memory_allocated_gib"] = (
+                        torch.cuda.memory_allocated() / (1024**3)
+                    )
+                    timing_logs["performance/cuda_memory_reserved_gib"] = (
+                        torch.cuda.memory_reserved() / (1024**3)
+                    )
+                    timing_logs["performance/cuda_peak_allocated_gib"] = (
+                        torch.cuda.max_memory_allocated() / (1024**3)
+                    )
                 if ema is not None:
                     ema.update(accelerator.unwrap_model(model))
                 progress.update(1)
@@ -1574,6 +1672,10 @@ def main(args: Optional[argparse.Namespace] = None):
                     benchmark_start_step = global_step
 
                 logs: Dict[str, Any] = dict(timing_logs)
+                if "phase_aux_output_grad_ratio" in out:
+                    logs["phase_aux_output_grad_ratio"] = out[
+                        "phase_aux_output_grad_ratio"
+                    ].item()
                 if routine_log_step:
                     logs.update(
                         {
@@ -1604,6 +1706,9 @@ def main(args: Optional[argparse.Namespace] = None):
                         ].item()
                     if "scale_metric_loss" in out:
                         logs["scale_metric_loss"] = out["scale_metric_loss"].item()
+                    if "phase_aux_loss" in out:
+                        logs["phase_aux_loss"] = out["phase_aux_loss"].item()
+                        logs["base_loss"] = out["base_loss"].item()
                     if "radial_weighted_mse" in out:
                         logs["radial_weighted_mse"] = out["radial_weighted_mse"].item()
                     if "radial_weights" in out:
