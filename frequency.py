@@ -26,7 +26,8 @@ class FrequencyCodecConfig:
     width: int = 32
     ordering: str = "radial"  # radial | square_spiral
     value_transform: str = "identity"  # identity | asinh
-    normalization: str = "radial_whiten"  # radial_whiten | radial_standardize | orbit_whiten
+    normalization: str = "radial_whiten"  # radial_whiten | radial_standardize | orbit_whiten | orbit_standardize
+    centering: str = "all"  # all | self_conjugate_std | self_conjugate_rms
     covariance_eps: float = 1e-5
     fft_norm: str = "ortho"
 
@@ -194,8 +195,26 @@ class FrequencyCodec(nn.Module):
             "radial_whiten",
             "radial_standardize",
             "orbit_whiten",
+            "orbit_standardize",
         ):
             raise ValueError(f"Unknown normalization: {self.config.normalization}")
+        if self.config.centering not in (
+            "all",
+            "self_conjugate_std",
+            "self_conjugate_rms",
+        ):
+            raise ValueError(f"Unknown centering policy: {self.config.centering}")
+        if (
+            self.config.centering != "all"
+            and self.config.normalization != "orbit_standardize"
+        ):
+            raise ValueError(
+                "Phase-preserving centering policies require orbit_standardize."
+            )
+        if self.config.centering != "all" and self.config.value_transform != "identity":
+            raise ValueError(
+                "Phase-preserving centering policies require value_transform='identity'."
+            )
 
         table = build_orbit_table(
             self.config.height,
@@ -292,6 +311,7 @@ class FrequencyCodec(nn.Module):
             "config": self.config.fingerprint(),
         }
         self._orbit_metric_cache: Dict[Tuple[float, str], torch.Tensor] = {}
+        self._orbit_scale_metric_cache: Dict[Tuple[float, str], torch.Tensor] = {}
 
     # ------------------------------------------------------------------
     # Properties
@@ -304,6 +324,10 @@ class FrequencyCodec(nn.Module):
     def component_mask_tensor(self) -> torch.Tensor:
         return self.component_mask
 
+    @property
+    def uses_orbit_statistics(self) -> bool:
+        return self.config.normalization in ("orbit_whiten", "orbit_standardize")
+
     def assert_fitted(self) -> None:
         if not bool(self.is_fitted.item()):
             raise RuntimeError("FrequencyCodec statistics are not fitted/loaded.")
@@ -315,9 +339,12 @@ class FrequencyCodec(nn.Module):
             )
         cfg = meta.get("config", {})
         for key, value in self.config.fingerprint().items():
-            if cfg.get(key) != value:
+            # Version-2 codec payloads predate configurable centering and are
+            # exactly equivalent to the new default.
+            observed = cfg.get(key, "all" if key == "centering" else None)
+            if observed != value:
                 raise ValueError(
-                    f"Incompatible codec config field {key}: {cfg.get(key)} vs {value}"
+                    f"Incompatible codec config field {key}: {observed} vs {value}"
                 )
 
     # ------------------------------------------------------------------
@@ -400,7 +427,7 @@ class FrequencyCodec(nn.Module):
             return tokens
         scales = (
             self.orbit_asinh_scale
-            if self.config.normalization == "orbit_whiten"
+            if self.uses_orbit_statistics
             else self.asinh_scale[self.radius_bin]
         )
         return torch.asinh(tokens / scales.clamp_min(1e-8))
@@ -410,7 +437,7 @@ class FrequencyCodec(nn.Module):
             return tokens
         scales = (
             self.orbit_asinh_scale
-            if self.config.normalization == "orbit_whiten"
+            if self.uses_orbit_statistics
             else self.asinh_scale[self.radius_bin]
         )
         return torch.sinh(tokens) * scales
@@ -423,7 +450,7 @@ class FrequencyCodec(nn.Module):
             return tokens
         scales = (
             self.orbit_asinh_scale[positions]
-            if self.config.normalization == "orbit_whiten"
+            if self.uses_orbit_statistics
             else self.asinh_scale[self.radius_bin[positions]]
         )
         return torch.sinh(tokens) * scales
@@ -431,12 +458,49 @@ class FrequencyCodec(nn.Module):
     # ------------------------------------------------------------------
     # Whitening
     # ------------------------------------------------------------------
+    def orbit_uncentered_rms(self) -> torch.Tensor:
+        """Per-orbit RGB complex RMS, shared across real/imaginary parts."""
+        second_moment = torch.zeros(
+            self.seq_len_int,
+            NUM_CHANNELS,
+            device=self.orbit_cov.device,
+            dtype=self.orbit_cov.dtype,
+        )
+        for channel in range(NUM_CHANNELS):
+            real = (
+                self.orbit_cov[:, channel, channel]
+                + self.orbit_mean[:, channel].square()
+            )
+            imag = (
+                self.orbit_cov[:, channel + NUM_CHANNELS, channel + NUM_CHANNELS]
+                + self.orbit_mean[:, channel + NUM_CHANNELS].square()
+            )
+            imag_active = self.component_mask[:, channel + NUM_CHANNELS]
+            second_moment[:, channel] = (real + imag) / (1.0 + imag_active)
+        rgb = second_moment.clamp_min(self.config.covariance_eps).sqrt()
+        scale = torch.cat([rgb, rgb], dim=-1)
+        return scale * self.component_mask + (1.0 - self.component_mask)
+
+    def _orbit_normalization_mean(self) -> torch.Tensor:
+        if self.config.centering == "all":
+            return self.orbit_mean
+        return self.orbit_mean * self.is_self_conjugate[:, None].to(
+            self.orbit_mean.dtype
+        )
+
+    def _orbit_normalization_scale(self) -> torch.Tensor:
+        if self.config.centering != "self_conjugate_rms":
+            return self.orbit_std
+        rms = self.orbit_uncentered_rms()
+        self_mask = self.is_self_conjugate[:, None]
+        return torch.where(self_mask, self.orbit_std, rms)
+
     def normalize(self, tokens: torch.Tensor) -> torch.Tensor:
         self.assert_fitted()
         bins = self.radius_bin
         mean = (
-            self.orbit_mean
-            if self.config.normalization == "orbit_whiten"
+            self._orbit_normalization_mean()
+            if self.uses_orbit_statistics
             else self.bin_mean[bins]
         )
         centered = tokens - mean
@@ -444,6 +508,8 @@ class FrequencyCodec(nn.Module):
 
         if self.config.normalization == "orbit_whiten":
             out = torch.einsum("lrc,blc->blr", self.orbit_inv_sqrt, centered)
+        elif self.config.normalization == "orbit_standardize":
+            out = centered / self._orbit_normalization_scale().clamp_min(1e-8)
         elif self.config.normalization == "radial_standardize":
             std = self.bin_std[bins].clamp_min(1e-8)
             out = centered / std
@@ -459,14 +525,16 @@ class FrequencyCodec(nn.Module):
         self.assert_fitted()
         bins = self.radius_bin
         mean = (
-            self.orbit_mean
-            if self.config.normalization == "orbit_whiten"
+            self._orbit_normalization_mean()
+            if self.uses_orbit_statistics
             else self.bin_mean[bins]
         )
         mask = self.component_mask
 
         if self.config.normalization == "orbit_whiten":
             out = torch.einsum("lrc,blc->blr", self.orbit_sqrt, tokens) + mean
+        elif self.config.normalization == "orbit_standardize":
+            out = tokens * self._orbit_normalization_scale() + mean
         elif self.config.normalization == "radial_standardize":
             std = self.bin_std[bins]
             out = tokens * std + mean
@@ -493,8 +561,8 @@ class FrequencyCodec(nn.Module):
         self.assert_fitted()
         bins = self.radius_bin[positions]
         mean = (
-            self.orbit_mean[positions]
-            if self.config.normalization == "orbit_whiten"
+            self._orbit_normalization_mean()[positions]
+            if self.uses_orbit_statistics
             else self.bin_mean[bins]
         )
         mask = self.component_mask[positions]
@@ -503,6 +571,8 @@ class FrequencyCodec(nn.Module):
         if self.config.normalization == "orbit_whiten":
             sqrt = self.orbit_sqrt[positions]
             out = torch.einsum("trc,btc->btr", sqrt, tokens) + mean
+        elif self.config.normalization == "orbit_standardize":
+            out = tokens * self._orbit_normalization_scale()[positions] + mean
         elif self.config.normalization == "radial_standardize":
             std = self.bin_std[bins]
             out = tokens * std + mean
@@ -642,6 +712,83 @@ class FrequencyCodec(nn.Module):
         self._orbit_metric_cache[cache_key] = metric
         return metric
 
+    @torch.no_grad()
+    def orbit_scale_power_metric(self, exponent: float) -> torch.Tensor:
+        """Diagonal physical-error weights for orbit-standardized coordinates.
+
+        For normalized error ``e`` and fitted diagonal scale ``s``, physical
+        squared error is ``s^2 e^2``. Tempering by ``exponent`` gives
+        ``s^(2*exponent)``. Conjugate multiplicity is included and one global
+        scale makes the expected loss of unit-variance errors equal to one.
+        """
+        self.assert_fitted()
+        if self.config.normalization != "orbit_standardize":
+            raise ValueError("Scale-power metrics require orbit_standardize statistics.")
+        if not 0.0 <= exponent <= 1.0:
+            raise ValueError(f"Scale exponent must be in [0,1], got {exponent}.")
+        cache_key = (float(exponent), str(self.orbit_std.device))
+        cached = self._orbit_scale_metric_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        scale = self._orbit_normalization_scale()
+        metric = (
+            scale.float().pow(2.0 * exponent)
+            * self.conjugate_multiplicity[:, None].float()
+            * self.component_mask.float()
+        )
+        global_scale = self.seq_len_int / metric.sum().clamp_min(
+            self.config.covariance_eps
+        )
+        metric = metric * global_scale
+        self._orbit_scale_metric_cache[cache_key] = metric
+        return metric
+
+    def phase_preserving_history_features(
+        self,
+        normalized_tokens: torch.Tensor,
+        positions: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Cartesian history with physical phase and standardized magnitude.
+
+        Ordinary complex orbits retain the physical origin. The four
+        self-conjugate real-only orbits remain centered, which handles the
+        large DC mean without changing any continuous phase.
+        """
+        self.assert_fitted()
+        if self.config.normalization != "orbit_standardize":
+            raise ValueError(
+                "Phase-preserving Cartesian history requires orbit_standardize."
+            )
+        if self.config.value_transform != "identity":
+            raise ValueError(
+                "Phase-preserving Cartesian history requires identity values."
+            )
+        if normalized_tokens.ndim != 3 or normalized_tokens.shape[-1] != TOKEN_DIM:
+            raise ValueError(
+                f"Expected normalized tokens [B,T,6], got {tuple(normalized_tokens.shape)}"
+            )
+        t = normalized_tokens.shape[1]
+        device = normalized_tokens.device
+        if positions is None:
+            positions = torch.arange(t, device=device, dtype=torch.long)
+        else:
+            positions = positions.to(device=device, dtype=torch.long)
+        if positions.numel() != t:
+            raise ValueError(f"positions length {positions.numel()} != token length {t}")
+
+        transformed = self.denormalize_at(normalized_tokens, positions)
+        raw = self._invert_value_transform_at(transformed, positions)
+        mean = self.orbit_mean[positions].to(device=device, dtype=raw.dtype)
+        self_mask = self.is_self_conjugate[positions, None].to(
+            device=device, dtype=raw.dtype
+        )
+        centered = raw - mean[None, :, :] * self_mask[None, :, :]
+        scale = self.orbit_std[positions].to(device=device, dtype=raw.dtype)
+        features = centered / scale.clamp_min(1e-8)[None, :, :]
+        mask = self.component_mask[positions].to(device=device, dtype=raw.dtype)
+        return features * mask[None, :, :]
+
     def polar_history_features(
         self,
         normalized_tokens: torch.Tensor,
@@ -679,7 +826,7 @@ class FrequencyCodec(nn.Module):
         raw = raw.clone()
         raw[..., 3:] = raw[..., 3:] * (~is_self).to(raw.dtype)[None, :, None]
 
-        if self.config.normalization == "orbit_whiten":
+        if self.uses_orbit_statistics:
             cov = self.orbit_cov[positions]
             mean = self.orbit_mean[positions]
             amp_scale = torch.stack(
@@ -853,6 +1000,24 @@ class FrequencyCodec(nn.Module):
             inv_sqrt[position][indices[:, None], indices[None, :]] = inverse_root
             std[position, active] = torch.diagonal(regularized).sqrt()
 
+        if self.config.normalization == "orbit_standardize":
+            for channel in range(NUM_CHANNELS):
+                real_variance = covariance[:, channel, channel]
+                imag_variance = covariance[:, channel + NUM_CHANNELS, channel + NUM_CHANNELS]
+                imag_active = self.component_mask[:, channel + NUM_CHANNELS].double()
+                complex_variance = (
+                    real_variance + imag_variance
+                ) / (1.0 + imag_active)
+                complex_scale = complex_variance.clamp_min(
+                    self.config.covariance_eps
+                ).sqrt()
+                std[:, channel] = complex_scale
+                std[:, channel + NUM_CHANNELS] = torch.where(
+                    imag_active.bool(),
+                    complex_scale,
+                    torch.ones_like(complex_scale),
+                )
+
         means = means * mask
         self.orbit_counts.fill_(count)
         self.orbit_mean.copy_(means.float())
@@ -861,6 +1026,7 @@ class FrequencyCodec(nn.Module):
         self.orbit_inv_sqrt.copy_(inv_sqrt.float())
         self.orbit_std.copy_(std.float())
         self._orbit_metric_cache.clear()
+        self._orbit_scale_metric_cache.clear()
         self.is_fitted.fill_(True)
 
     @torch.no_grad()
@@ -876,7 +1042,7 @@ class FrequencyCodec(nn.Module):
         else:
             self.to(device)
 
-        if self.config.normalization == "orbit_whiten":
+        if self.uses_orbit_statistics:
             self._fit_orbit_from_loader(loader, max_batches, device)
             return
 
@@ -1047,6 +1213,7 @@ class FrequencyCodec(nn.Module):
         self.validate_compatible(payload)
         self.load_state_dict(payload["state_dict"], strict=strict)
         self._orbit_metric_cache.clear()
+        self._orbit_scale_metric_cache.clear()
         self.is_fitted.fill_(True)
 
     # ------------------------------------------------------------------

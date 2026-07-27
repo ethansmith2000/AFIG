@@ -10,7 +10,7 @@ https://www.ethansmith2000.com/post/mimicking-diffusion-models-by-sequencing-fre
 
 | Path | Role |
 | --- | --- |
-| `frequency.py` | Canonical 514-orbit Hermitian Fourier codec + radial whitening |
+| `frequency.py` | Canonical 514-orbit Hermitian Fourier codec + radial/per-orbit normalization |
 | `diffusion_decoder.py` | AdaLN MLP diffusion loss head + DDIM sampler |
 | `model_continuous.py` | Causal Transformer + KV cache + continuous generation |
 | `train_continuous.py` | Accelerate training entrypoint |
@@ -25,9 +25,16 @@ https://www.ethansmith2000.com/post/mimicking-diffusion-models-by-sequencing-fre
 - Four self-conjugate frequencies keep imag components masked to zero.
 - Default order: exact Euclidean radius, then angle (`--ordering radial`).
   Legacy L∞ square spiral remains available (`--ordering square_spiral`).
-- Normalization bins: **one per integer radius** `floor(sqrt(kx²+ky²))`.
-- Default whitening: dataset-level radial Cholesky whitening
-  (`--normalization radial_whiten`). Diagonal standardize is also supported.
+- Legacy normalization bins use integer radius `floor(sqrt(kx²+ky²))`.
+- Exact-position modes fit all 514 orbit representatives independently:
+  symmetric ZCA (`orbit_whiten`) or RGB-complex diagonal standardization
+  (`orbit_standardize`), whose RGB scales are shared across real/imaginary parts.
+- `--centering all|self_conjugate_std|self_conjugate_rms` either centers every
+  complex orbit, or centers only the four real-only self-conjugate orbits. The
+  RMS variant gives ordinary complex coefficients unit paired second moment
+  without moving their physical phase origin.
+- `--learned_output_gain` adds zero-initialized per-orbit RGB log gains on top of
+  fixed `orbit_standardize` statistics.
 - Optional value transform: `--value_transform identity|asinh`.
 
 Sequence length is **514** autoregressive coefficient steps (plus a learned BOS).
@@ -56,12 +63,17 @@ Configured in `DiffusionDecoderConfig` / CLI:
   tempered radial power `(tr(Σ_b) / d_b)^α` (mean 1 across orbits). The default
   `--radial_power_exponent 0.5` weights by expected amplitude; `1.0` restores
   the much more concentrated expected-power objective. Independent of Min-SNR.
+- `--loss_metric orbit_scale_power --orbit_scale_exponent α`: for
+  `orbit_standardize`, apply fixed diagonal weights
+  `m_i·s_(i,c)^(2α)` to normalized errors. This preserves shared real/imaginary
+  channel scaling without covariance matrices; α=0.2 gives tempered natural
+  spectral emphasis.
 - Cosine (`squaredcos_cap_v2`) schedule, 1000 train steps
 - DDIM sampling, default 20 steps, `eta=0`
 - Diffusion batch multiplier `--diffusion_batch_mul` (default 4): reuse each
   `(token, condition)` with independent `(t, ε)` draws
 
-Flow matching is intentionally **not** selectable yet (stub only).
+Flow matching supports direct velocity or x₀ outputs with Euler/Heun sampling.
 
 ## Polar history conditioning
 
@@ -73,6 +85,9 @@ with deterministic physical-space polar features
   `[log1p(a), g·cos θ, g·sin θ]` with `a = amp / expected_rms` and `g = a/(1+a)`.
 - Projected by a zero-initialized `Linear(9, width)` and added to the Cartesian
   token embedding. Does **not** change the diffusion state manifold.
+- `--history_cartesian_features centered|phase_preserving` independently chooses
+  the Transformer history coordinates. The latter reconstructs completed
+  physical coefficients and centers only self-conjugates.
 
 ## Frequency position conditioning
 
@@ -93,6 +108,14 @@ The three routes can be ablated independently:
 - `--[no-]transformer-position-film`
 - `--[no-]diffusion-target-conditioning`
 - `--position-rms-normalize` optionally controls the shared position RMS.
+- `--backbone_position_mode none|legacy_hybrid|random_table|sincos_table`
+  chooses the backbone input representation independently from decoder target
+  conditioning. New tables have a learned input scale initialized to `0.1`;
+  BOS remains separate.
+
+`--input_timestep_conditioning film` adds zero-initialized timestep FiLM directly
+after the diffusion `6 -> width` projection. `--input_projection_init
+xavier|kaiming_linear` controls the corresponding initializer ablation.
 
 For a clean content-only input stream while retaining conditional position,
 use `--no-position-input-addition --position-rms-normalize`.
@@ -164,7 +187,12 @@ Useful flags:
 - `--codec_stats_path PATH` (defaults to `$output_dir/codec_stats.pt`)
 - `--history_corruption none|gaussian`
 - `--history_polar_features none|log_amp_gated_phase`
+- `--history_cartesian_features centered|phase_preserving`
+- `--centering all|self_conjugate_std|self_conjugate_rms`
 - `--frequency_conditioning`
+- `--backbone_position_mode none|legacy_hybrid|random_table|sincos_table`
+- `--input_timestep_conditioning none|film`
+- `--input_projection_init xavier|kaiming_linear`
 - `--position_num_frequencies 4 --position_max_frequency 8`
 - `--[no-]position-input-addition`
 - `--[no-]transformer-position-film`
@@ -184,11 +212,54 @@ Checkpoint saving is disabled by default. When explicitly enabled, versioned
 
 Logged / saved periodically:
 
-- sample image grid `samples_{step}.png`
+- fixed-seed sample image grid `samples_{step}.png` every 5,000 steps by
+  default (`--preview_steps`; set to 0 to disable)
 - Hermitian violation and imaginary reconstruction energy
 - backbone vs denoiser wall time
-- loss by timestep bucket and selected radius bins (flat and radially weighted)
+- deterministic held-out normalized Cartesian, physical complex/amplitude/phase,
+  radial-power, timestep/radius, normalization-distortion, and perturbation
+  diagnostics (`--spectral_diagnostic_steps`)
+- instantaneous loss by timestep bucket and selected radius bins
+- GPU-side timestep EMAs for raw MSE, unweighted objective, time weight, and
+  effective weighted objective (`--timestep_histogram_bins`,
+  `--timestep_histogram_decay`, `--timestep_histogram_log_steps`)
+- routine training metrics and throughput every 25 optimizer steps
+  (`--logging_steps`), avoiding per-step device synchronization
+- sparse CUDA-event timings for Fourier encoding, forward, backward, gradient
+  processing, optimizer, total GPU step, and CPU data wait
+  (`--timing_steps`, default 100; set to 0 to disable)
 - radial weight mean / range at startup
+
+Checkpoint-free FID/KID is independent of previews and disabled by default.
+Enable it explicitly with `--final_eval`; `--final_eval_samples` controls its
+sample count.
+
+Read-only W&B run selection and exact history export is available through
+`scripts/wandb_runs.py`. For example:
+
+```bash
+python scripts/wandb_runs.py \
+  --entity "$WANDB_ENTITY" \
+  --group orbit-standardize-output-gain \
+  --metric loss,grad_norm \
+  --min-step 10000 --max-step 20000 --step-interval 100 \
+  --output flow_metrics.csv
+```
+
+Architecture campaigns use the matched-step scorecard:
+
+```bash
+python scripts/analyze_architecture_gates.py \
+  --entity "$WANDB_ENTITY" \
+  --steps 5000,30000,100000 \
+  --output-dir analysis/architecture_gates
+```
+
+It resolves duplicate reruns, tolerates optional metrics, matches only at or
+before each requested optimizer step, computes paired-seed deltas against each
+gate control, and writes run-level CSV plus aggregate CSV/JSON/Markdown. Steps
+below 30k are labeled exploratory; future promotions should normally use at
+least 30k steps because 10k and shorter runs are often not intelligible.
 
 ## Tests
 

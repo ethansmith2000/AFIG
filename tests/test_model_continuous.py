@@ -18,6 +18,7 @@ from model_continuous import (  # noqa: E402
     CorruptionConfig,
     FrequencyConditioningConfig,
     GenerationConfig,
+    HistoryFeatureConfig,
     PolarHistoryConfig,
     TransformerConfig,
 )
@@ -181,6 +182,38 @@ class TestContinuousModel(unittest.TestCase):
         _, complete = model.corrupt_history(tokens, training_progress=0.2)
         self.assertTrue(torch.allclose(complete, torch.full_like(complete, 0.05)))
 
+        encoded = codec.encode(torch.rand(1, 3, 32, 32))
+        output = model(encoded, corrupt=True, training_progress=0.2)
+        self.assertTrue(torch.isfinite(output["loss"]))
+
+    def test_learned_orbit_output_gain_initialization_and_gradient(self):
+        codec_config = FrequencyCodecConfig(normalization="orbit_standardize")
+        codec = FrequencyCodec(codec_config)
+
+        class Loader:
+            def __iter__(self):
+                generator = torch.Generator().manual_seed(17)
+                for _ in range(8):
+                    yield torch.rand(8, 3, 32, 32, generator=generator)
+
+        codec.fit_from_loader(Loader())
+        cfg = _tiny_cfg()
+        cfg.codec = codec_config
+        diffusion = cfg.diffusion.fingerprint()
+        diffusion["prediction_type"] = "x0"
+        diffusion["learned_output_gain"] = True
+        cfg.diffusion = DiffusionDecoderConfig(**diffusion)
+        model = ContinuousFFTDecoder(cfg, codec=codec)
+        self.assertEqual(tuple(model.output_log_gain.shape), (codec.seq_len, 3))
+        self.assertEqual(model.output_log_gain.abs().max().item(), 0.0)
+
+        nn.init.normal_(model.diffusion.net.final_layer.linear.weight, std=0.02)
+        tokens = codec.encode(torch.rand(2, 3, 32, 32))
+        output = model(tokens, corrupt=False)
+        output["loss"].backward()
+        self.assertIsNotNone(model.output_log_gain.grad)
+        self.assertGreater(model.output_log_gain.grad.abs().sum().item(), 0.0)
+
     def test_polar_disabled_matches_baseline_modules(self):
         codec = _fitted_codec()
         model = ContinuousFFTDecoder(_tiny_cfg(), codec=codec)
@@ -297,6 +330,14 @@ class TestContinuousModel(unittest.TestCase):
         )
         rms = condition.square().mean(dim=-1).sqrt()
         self.assertTrue(torch.allclose(rms, torch.ones_like(rms), atol=1e-5))
+        full_tokens = torch.randn(1, codec.seq_len, 6)
+        full_tokens = full_tokens * codec.component_mask[None]
+        predicted = model.predict_x0_diagnostics(
+            full_tokens,
+            torch.zeros(1, codec.seq_len, dtype=torch.long),
+            torch.zeros_like(full_tokens),
+        )
+        self.assertEqual(tuple(predicted.shape), tuple(full_tokens.shape))
 
     def test_frequency_conditioning_reaches_diffusion_target_adaln(self):
         codec = _fitted_codec()
@@ -368,6 +409,211 @@ class TestContinuousModel(unittest.TestCase):
             self.assertTrue(
                 torch.allclose(h_full[:, :6], h_mutated[:, :6], atol=1e-5)
             )
+
+    def test_sincos_backbone_table_exact_bos_trainable_and_independent(self):
+        codec = _fitted_codec()
+        position = FrequencyConditioningConfig(
+            enabled=True,
+            transformer_film=False,
+            backbone_position_mode="sincos_table",
+            input_scale_init=0.1,
+        )
+        model = ContinuousFFTDecoder(
+            _tiny_cfg(frequency_conditioning=position),
+            codec=codec,
+        )
+        coordinates = torch.stack([codec.ky_signed, codec.kx_signed], dim=-1)
+        expected = model.backbone_pos_embed._sincos_table(
+            coordinates,
+            width=model.width,
+            max_seq_len=model.config.transformer.max_seq_len,
+        )
+        self.assertTrue(
+            torch.equal(model.backbone_pos_embed.seq_embed.weight, expected)
+        )
+        empty = torch.empty(2, 0, 6)
+        embedded = model.embed_tokens(empty, include_bos=True)
+        self.assertTrue(torch.equal(embedded, model.bos.expand(2, -1, -1)))
+
+        tokens = torch.randn(1, 4, 6) * codec.component_mask[None, :4]
+        model.embed_tokens(tokens, include_bos=True).sum().backward()
+        self.assertGreater(
+            model.backbone_pos_embed.seq_embed.weight.grad.abs().sum().item(),
+            0.0,
+        )
+        self.assertGreater(model.input_position_scale.grad.abs().item(), 0.0)
+
+        torch.manual_seed(123)
+        random_model = ContinuousFFTDecoder(
+            _tiny_cfg(
+                frequency_conditioning=FrequencyConditioningConfig(
+                    enabled=True,
+                    transformer_film=False,
+                    backbone_position_mode="random_table",
+                )
+            ),
+            codec=codec,
+        )
+        torch.manual_seed(123)
+        sincos_model = ContinuousFFTDecoder(
+            _tiny_cfg(frequency_conditioning=position),
+            codec=codec,
+        )
+        self.assertTrue(
+            torch.equal(
+                random_model.pos_embed.seq_embed.weight,
+                sincos_model.pos_embed.seq_embed.weight,
+            )
+        )
+        self.assertTrue(
+            torch.equal(
+                random_model.layers[0].attn.qkv.weight,
+                sincos_model.layers[0].attn.qkv.weight,
+            )
+        )
+
+    def test_sincos_backbone_cache_parity_and_causality(self):
+        codec = _fitted_codec()
+        model = ContinuousFFTDecoder(
+            _tiny_cfg(
+                frequency_conditioning=FrequencyConditioningConfig(
+                    enabled=True,
+                    transformer_film=False,
+                    backbone_position_mode="sincos_table",
+                )
+            ),
+            codec=codec,
+        )
+        model.eval()
+        prefix = torch.randn(1, 8, 6) * codec.component_mask[None, :8]
+        with torch.no_grad():
+            full, _ = model.forward_backbone(
+                model.embed_tokens(prefix, include_bos=True)
+            )
+            cached, caches = model.init_cache(
+                1, torch.device("cpu"), model.token_proj.weight.dtype
+            )
+            for position in range(prefix.shape[1]):
+                cached, caches = model.forward_step(
+                    prefix[:, position],
+                    position,
+                    caches,
+                )
+            self.assertTrue(
+                torch.allclose(full[:, -1], cached, atol=1e-4, rtol=1e-4)
+            )
+
+    def test_phase_preserving_history_teacher_and_cache_alignment(self):
+        config = FrequencyCodecConfig(
+            normalization="orbit_standardize",
+            centering="all",
+        )
+        codec = FrequencyCodec(config)
+
+        class Loader:
+            def __iter__(self):
+                generator = torch.Generator().manual_seed(19)
+                for _ in range(8):
+                    yield torch.rand(8, 3, 32, 32, generator=generator)
+
+        codec.fit_from_loader(Loader())
+        cfg = _tiny_cfg(
+            history_features=HistoryFeatureConfig(
+                cartesian_mode="phase_preserving"
+            )
+        )
+        cfg.codec = config
+        model = ContinuousFFTDecoder(cfg, codec=codec)
+        model.eval()
+        prefix = codec.encode(torch.rand(1, 3, 32, 32))[:, :8]
+        with torch.no_grad():
+            features = model._history_cartesian_features(
+                prefix,
+                torch.arange(prefix.shape[1]),
+            )
+            expected = codec.phase_preserving_history_features(
+                prefix,
+                torch.arange(prefix.shape[1]),
+            )
+            self.assertTrue(torch.equal(features, expected))
+            full, _ = model.forward_backbone(
+                model.embed_tokens(prefix, include_bos=True)
+            )
+            cached, caches = model.init_cache(
+                1, torch.device("cpu"), model.token_proj.weight.dtype
+            )
+            for position in range(prefix.shape[1]):
+                cached, caches = model.forward_step(
+                    prefix[:, position],
+                    position,
+                    caches,
+                )
+            self.assertTrue(
+                torch.allclose(full[:, -1], cached, atol=1e-4, rtol=1e-4)
+            )
+
+    def test_optional_polar_module_does_not_change_shared_initialization(self):
+        codec = _fitted_codec()
+        torch.manual_seed(71)
+        plain = ContinuousFFTDecoder(_tiny_cfg(), codec=codec)
+        torch.manual_seed(71)
+        polar = ContinuousFFTDecoder(
+            _tiny_cfg(polar_history=PolarHistoryConfig(enabled=True)),
+            codec=codec,
+        )
+        for name in (
+            "token_proj.weight",
+            "bos",
+            "layers.0.attn.qkv.weight",
+            "diffusion.net.input_proj.weight",
+        ):
+            self.assertTrue(
+                torch.equal(plain.state_dict()[name], polar.state_dict()[name]),
+                name,
+            )
+
+    def test_cached_and_uncached_generation_match_new_feature_routes(self):
+        codec_config = FrequencyCodecConfig(normalization="orbit_standardize")
+        codec = FrequencyCodec(codec_config)
+
+        class Loader:
+            def __iter__(self):
+                generator = torch.Generator().manual_seed(41)
+                for _ in range(4):
+                    yield torch.rand(4, 3, 32, 32, generator=generator)
+
+        codec.fit_from_loader(Loader())
+        cfg = _tiny_cfg(
+            polar_history=PolarHistoryConfig(enabled=True),
+            history_features=HistoryFeatureConfig(
+                cartesian_mode="phase_preserving"
+            ),
+            frequency_conditioning=FrequencyConditioningConfig(
+                enabled=True,
+                transformer_film=False,
+                backbone_position_mode="sincos_table",
+            ),
+        )
+        cfg.codec = codec_config
+        model = ContinuousFFTDecoder(cfg, codec=codec)
+        model.eval()
+        cached_generator = torch.Generator().manual_seed(333)
+        uncached_generator = torch.Generator().manual_seed(333)
+        with torch.no_grad():
+            cached = model.generate(
+                batch_size=1,
+                generator=cached_generator,
+                num_inference_steps=2,
+                return_tokens=True,
+                max_tokens=6,
+            )["tokens"][:, :6]
+            uncached = model.generate_uncached_prefix(
+                batch_size=1,
+                generator=uncached_generator,
+                num_inference_steps=2,
+                max_tokens=6,
+            )
+        self.assertTrue(torch.allclose(cached, uncached, atol=1e-5, rtol=1e-5))
 
 
 if __name__ == "__main__":

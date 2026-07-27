@@ -25,7 +25,7 @@ import torchvision
 import torchvision.transforms as transforms
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import ProjectConfiguration, set_seed
+from accelerate.utils import DataLoaderConfiguration, ProjectConfiguration, set_seed
 from diffusers.optimization import get_scheduler
 from tqdm.auto import tqdm
 
@@ -37,8 +37,14 @@ from model_continuous import (
     CorruptionConfig,
     FrequencyConditioningConfig,
     GenerationConfig,
+    HistoryFeatureConfig,
     PolarHistoryConfig,
     TransformerConfig,
+)
+from spectral_diagnostics import (
+    compute_normalization_phase_distortion,
+    compute_perturbation_diagnostics,
+    compute_spectral_diagnostics,
 )
 
 logger = get_logger(__name__)
@@ -73,6 +79,13 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--adam_beta2", type=float, default=0.95)
     p.add_argument("--adam_weight_decay", type=float, default=0.02)
     p.add_argument("--adam_epsilon", type=float, default=1e-8)
+    p.add_argument(
+        "--grad_norm_mode",
+        type=str,
+        default="clip",
+        choices=["off", "track", "clip"],
+        help="Disable gradient norms, track without clipping, or clip and track.",
+    )
     p.add_argument("--max_grad_norm", type=float, default=1.0)
     p.add_argument("--gradient_accumulation_steps", type=int, default=1)
     p.add_argument("--gradient_checkpointing", action="store_true")
@@ -91,6 +104,36 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     p.add_argument("--logging_dir", type=str, default="logs")
     p.add_argument(
+        "--logging_steps",
+        type=int,
+        default=25,
+        help="Log routine training metrics every N optimizer steps.",
+    )
+    p.add_argument(
+        "--timing_steps",
+        type=int,
+        default=100,
+        help="Measure one training step with CUDA events every N optimizer steps; 0 disables.",
+    )
+    p.add_argument(
+        "--timestep_histogram_bins",
+        type=int,
+        default=20,
+        help="Number of EMA timestep-loss bins; 0 disables the diagnostic.",
+    )
+    p.add_argument(
+        "--timestep_histogram_decay",
+        type=float,
+        default=0.98,
+        help="Per-update EMA decay for timestep diagnostics.",
+    )
+    p.add_argument(
+        "--timestep_histogram_log_steps",
+        type=int,
+        default=100,
+        help="Log timestep EMA bins every N optimizer steps.",
+    )
+    p.add_argument(
         "--checkpointing_steps",
         type=int,
         default=0,
@@ -102,13 +145,44 @@ def parse_args(argv=None) -> argparse.Namespace:
         help="Save one resumable checkpoint at the end (disabled by default).",
     )
     p.add_argument("--checkpoints_total_limit", type=int, default=5)
-    p.add_argument("--validation_steps", type=int, default=500)
+    p.add_argument(
+        "--preview_steps",
+        type=int,
+        default=5000,
+        help="Generate and log a small image preview every N optimizer steps; 0 disables.",
+    )
+    p.add_argument(
+        "--validation_steps",
+        type=int,
+        default=None,
+        help="Deprecated alias for --preview_steps.",
+    )
+    p.add_argument(
+        "--preview_seed",
+        type=int,
+        default=12345,
+        help="Fixed sampling seed used for comparable preview grids.",
+    )
+    p.add_argument(
+        "--condition_diagnostic_steps",
+        type=int,
+        default=500,
+        help="Compare clean and batch-shuffled AR history; 0 disables.",
+    )
+    p.add_argument(
+        "--spectral_diagnostic_steps",
+        type=int,
+        default=1000,
+        help="Evaluate the fixed held-out spectral panel every N steps; 0 disables.",
+    )
+    p.add_argument("--spectral_panel_size", type=int, default=16)
+    p.add_argument("--spectral_diagnostic_seed", type=int, default=1729)
     p.add_argument("--num_validation_images", type=int, default=4)
     p.add_argument(
         "--final_eval",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Run checkpoint-free FID/KID and diagnostics after training.",
+        default=False,
+        help="Opt into checkpoint-free FID/KID and diagnostics after training.",
     )
     p.add_argument("--final_eval_samples", type=int, default=5000)
     p.add_argument("--final_eval_batch_size", type=int, default=32)
@@ -179,9 +253,10 @@ def parse_args(argv=None) -> argparse.Namespace:
         "--loss_metric",
         type=str,
         default="normalized",
-        choices=["normalized", "orbit_covariance_power"],
+        choices=["normalized", "orbit_covariance_power", "orbit_scale_power"],
     )
     p.add_argument("--orbit_covariance_exponent", type=float, default=0.0)
+    p.add_argument("--orbit_scale_exponent", type=float, default=0.0)
     p.add_argument("--diffusion_batch_mul", type=int, default=4)
     p.add_argument("--num_inference_steps", type=int, default=20)
     p.add_argument("--ordering", type=str, default="radial", choices=["radial", "square_spiral"])
@@ -190,7 +265,24 @@ def parse_args(argv=None) -> argparse.Namespace:
         "--normalization",
         type=str,
         default="radial_whiten",
-        choices=["radial_whiten", "radial_standardize", "orbit_whiten"],
+        choices=[
+            "radial_whiten",
+            "radial_standardize",
+            "orbit_whiten",
+            "orbit_standardize",
+        ],
+    )
+    p.add_argument(
+        "--learned_output_gain",
+        action="store_true",
+        help="Learn per-orbit RGB log gains shared across real/imaginary outputs.",
+    )
+    p.add_argument(
+        "--centering",
+        type=str,
+        default="all",
+        choices=["all", "self_conjugate_std", "self_conjugate_rms"],
+        help="Per-orbit complex centering and scaling policy.",
     )
     p.add_argument("--history_corruption", type=str, default="none", choices=["none", "gaussian"])
     p.add_argument("--history_corruption_prob", type=float, default=1.0)
@@ -205,6 +297,13 @@ def parse_args(argv=None) -> argparse.Namespace:
         help="Deterministic polar features fused into history embeddings (Cartesian diffusion targets unchanged).",
     )
     p.add_argument(
+        "--history_cartesian_features",
+        type=str,
+        default="centered",
+        choices=["centered", "phase_preserving"],
+        help="Cartesian coordinate family used only for completed AR history.",
+    )
+    p.add_argument(
         "--frequency_conditioning",
         action="store_true",
         help=(
@@ -217,6 +316,33 @@ def parse_args(argv=None) -> argparse.Namespace:
         type=int,
         default=4,
         help="Number of log-spaced sinusoidal bands per kx/ky/radius coordinate.",
+    )
+    p.add_argument(
+        "--backbone_position_mode",
+        type=str,
+        default="legacy_hybrid",
+        choices=["none", "legacy_hybrid", "random_table", "sincos_table"],
+        help="Backbone input position representation, independent of decoder target position.",
+    )
+    p.add_argument(
+        "--input_position_scale_init",
+        type=float,
+        default=0.1,
+        help="Initial learned scalar for random/sin-cos backbone position tables.",
+    )
+    p.add_argument(
+        "--input_timestep_conditioning",
+        type=str,
+        default="none",
+        choices=["none", "film"],
+        help="Timestep modulation immediately after the diffusion input projection.",
+    )
+    p.add_argument(
+        "--input_projection_init",
+        type=str,
+        default="xavier",
+        choices=["xavier", "kaiming_linear"],
+        help="Initializer for the unbalanced 6-to-width diffusion input projection.",
     )
     p.add_argument(
         "--position_max_frequency",
@@ -260,16 +386,25 @@ def parse_args(argv=None) -> argparse.Namespace:
         action="store_true",
         help="Disable tracking/evaluation and report throughput plus peak CUDA memory.",
     )
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    if args.validation_steps is not None:
+        args.preview_steps = args.validation_steps
+    if args.logging_steps <= 0:
+        p.error("--logging_steps must be positive")
+    if args.timing_steps < 0:
+        p.error("--timing_steps must be non-negative")
+    return args
 
 
 def apply_preset(args: argparse.Namespace) -> argparse.Namespace:
     if args.benchmark:
         args.report_to = "none"
         args.final_eval = False
-        args.validation_steps = max(args.validation_steps, 10**9)
+        args.preview_steps = max(args.preview_steps, 10**9)
         args.checkpointing_steps = 0
         args.save_final_checkpoint = False
+        args.logging_steps = max(args.logging_steps, 10**9)
+        args.timing_steps = 0
     if args.smoke:
         args.preset = "tiny"
         args.mixed_precision = "no"
@@ -278,7 +413,7 @@ def apply_preset(args: argparse.Namespace) -> argparse.Namespace:
         args.train_batch_size = 2
         args.max_train_steps = 1
         args.num_train_epochs = 1
-        args.validation_steps = 1
+        args.preview_steps = 1
         args.dataloader_num_workers = 0
         args.diffusion_batch_mul = 1
         args.num_inference_steps = 2
@@ -338,6 +473,7 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
             ordering=args.ordering,
             value_transform=args.value_transform,
             normalization=args.normalization,
+            centering=args.centering,
         ),
         transformer=TransformerConfig(
             width=args.width,
@@ -366,6 +502,10 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
             radial_power_exponent=args.radial_power_exponent,
             loss_metric=args.loss_metric,
             orbit_covariance_exponent=args.orbit_covariance_exponent,
+            orbit_scale_exponent=args.orbit_scale_exponent,
+            learned_output_gain=args.learned_output_gain,
+            input_timestep_conditioning=args.input_timestep_conditioning,
+            input_projection_init=args.input_projection_init,
             diffusion_batch_mul=args.diffusion_batch_mul,
             num_inference_steps=args.num_inference_steps,
         ),
@@ -384,6 +524,9 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
                 else args.history_polar_features
             ),
         ),
+        history_features=HistoryFeatureConfig(
+            cartesian_mode=args.history_cartesian_features,
+        ),
         frequency_conditioning=FrequencyConditioningConfig(
             enabled=bool(getattr(args, "frequency_conditioning", False)),
             num_frequencies=args.position_num_frequencies,
@@ -396,6 +539,8 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
             diffusion_target_conditioning=bool(
                 getattr(args, "diffusion_target_conditioning", True)
             ),
+            backbone_position_mode=args.backbone_position_mode,
+            input_scale_init=args.input_position_scale_init,
         ),
         generation=GenerationConfig(
             num_inference_steps=args.num_inference_steps,
@@ -504,8 +649,11 @@ def make_dataloader(args: argparse.Namespace):
 
     if dataset_choice == "synthetic" or getattr(args, "synthetic_data", False):
         dataset = _synthetic_dataset(n=64 if args.smoke else 1024)
+        panel_size = int(getattr(args, "spectral_panel_size", 16))
+        train_size = max(len(dataset) - min(panel_size, len(dataset) // 4), 1)
+        train_dataset = torch.utils.data.Subset(dataset, range(train_size))
         loader = torch.utils.data.DataLoader(
-            dataset,
+            train_dataset,
             batch_size=args.train_batch_size,
             shuffle=True,
             num_workers=0,
@@ -582,14 +730,32 @@ def make_dataloader(args: argparse.Namespace):
     else:
         use_workers = args.dataloader_num_workers
 
+    panel_size = int(getattr(args, "spectral_panel_size", 16))
+    train_size = max(len(dataset) - min(panel_size, len(dataset) // 4), 1)
+    train_dataset = torch.utils.data.Subset(dataset, range(train_size))
     loader = torch.utils.data.DataLoader(
-        dataset,
+        train_dataset,
         batch_size=args.train_batch_size,
         shuffle=True,
         num_workers=use_workers,
         drop_last=True,
+        pin_memory=torch.cuda.is_available(),
+        persistent_workers=use_workers > 0,
     )
     return dataset, loader
+
+
+def make_spectral_panel(dataset, panel_size: int) -> torch.Tensor:
+    """Stack the deterministic tail split that is excluded from training."""
+    if panel_size <= 0:
+        raise ValueError("spectral_panel_size must be positive")
+    count = min(panel_size, max(len(dataset) - 1, 1))
+    start = len(dataset) - count
+    images = []
+    for index in range(start, len(dataset)):
+        item = dataset[index]
+        images.append(item[0] if isinstance(item, (list, tuple)) else item)
+    return torch.stack(images)
 
 
 def fit_or_load_codec(
@@ -699,8 +865,12 @@ def validate(
         ema.copy_to(unwrapped)
 
     unwrapped.eval()
+    generator = torch.Generator(
+        device=next(unwrapped.parameters()).device
+    ).manual_seed(args.preview_seed)
     out = unwrapped.generate(
         batch_size=args.num_validation_images,
+        generator=generator,
         num_inference_steps=args.num_inference_steps,
         return_tokens=True,
         progress=False,
@@ -757,17 +927,295 @@ def validate(
     return logs
 
 
-def bucket_timestep_loss(timesteps: torch.Tensor, per_example: torch.Tensor, num_buckets: int = 5) -> Dict[str, float]:
-    t = timesteps.float()
-    t_max = float(t.max().clamp_min(1.0))
-    out = {}
-    for i in range(num_buckets):
-        lo = i / num_buckets * t_max
-        hi = (i + 1) / num_buckets * t_max
-        sel = (t >= lo) & (t < hi if i < num_buckets - 1 else t <= hi)
-        if bool(sel.any()):
-            out[f"loss/t_bucket_{i}"] = per_example[sel].mean().item()
-    return out
+@torch.no_grad()
+def evaluate_spectral_panel(
+    model: ContinuousFFTDecoder,
+    panel_images: torch.Tensor,
+    args: argparse.Namespace,
+) -> Dict[str, float]:
+    """Run objective-independent metrics with fixed images, times, and noise."""
+    was_training = model.training
+    model.eval()
+    device = next(model.parameters()).device
+    images = panel_images.to(device=device, dtype=torch.float32)
+    tokens = model.codec.encode(images)
+    batch, length, _ = tokens.shape
+    timesteps = torch.linspace(
+        0,
+        model.config.diffusion.num_train_timesteps - 1,
+        batch,
+        device=device,
+    ).round().long()
+    token_timesteps = timesteps[:, None].expand(batch, length)
+    generator = torch.Generator(device=device).manual_seed(
+        args.spectral_diagnostic_seed
+    )
+    noise = torch.randn(
+        tokens.shape,
+        device=device,
+        dtype=tokens.dtype,
+        generator=generator,
+    )
+    noise = noise * model.codec.component_mask[None].to(noise.dtype)
+    predicted = model.predict_x0_diagnostics(tokens, token_timesteps, noise)
+
+    metrics = {
+        f"spectral/{key}": value
+        for key, value in compute_spectral_diagnostics(
+            predicted,
+            tokens,
+            model.codec,
+            timesteps=timesteps,
+        ).items()
+    }
+    history_mask = model.codec.component_mask[:-1][None].to(tokens.dtype)
+    history_perturbation = (
+        noise[:, :-1] * float(args.history_noise_max) * history_mask
+    )
+    perturbed_history = tokens[:, :-1] + history_perturbation
+    perturbed_prediction = model.predict_x0_diagnostics(
+        tokens,
+        token_timesteps,
+        noise,
+        history_override=perturbed_history,
+    )
+    perturbed_metrics = compute_spectral_diagnostics(
+        perturbed_prediction,
+        tokens,
+        model.codec,
+        timesteps=timesteps,
+    )
+    for key, value in perturbed_metrics.items():
+        metrics[f"robustness/gaussian/{key}"] = value
+        clean_key = f"spectral/{key}"
+        if clean_key in metrics:
+            metrics[f"robustness/gaussian_delta/{key}"] = value - metrics[clean_key]
+
+    clean_conditions, _ = model.forward_backbone(
+        model.embed_tokens(tokens[:, :-1], include_bos=True)
+    )
+    perturbed_conditions, _ = model.forward_backbone(
+        model.embed_tokens(perturbed_history, include_bos=True)
+    )
+    metrics["robustness/condition_cosine"] = F.cosine_similarity(
+        clean_conditions.float(),
+        perturbed_conditions.float(),
+        dim=-1,
+    ).mean()
+    metrics["robustness/condition_relative_rms"] = (
+        (perturbed_conditions.float() - clean_conditions.float())
+        .square()
+        .mean()
+        .sqrt()
+        / clean_conditions.float().square().mean().sqrt().clamp_min(1e-8)
+    )
+    physical = model.codec.encode_raw(images)
+    metrics.update(
+        {
+            f"normalization/{key}": value
+            for key, value in compute_normalization_phase_distortion(
+                physical,
+                model.codec,
+            ).items()
+        }
+    )
+    perturbation = noise * float(args.history_noise_max)
+    metrics.update(
+        {
+            f"perturbation/{key}": value
+            for key, value in compute_perturbation_diagnostics(
+                tokens,
+                noise,
+                perturbation,
+                codec=model.codec,
+                timesteps=timesteps,
+            ).items()
+        }
+    )
+
+    positions = torch.arange(length - 1, device=device)
+    history = model._history_cartesian_features(tokens[:, :-1], positions)
+    token_projected = model.token_proj(history.to(model.token_proj.weight.dtype))
+    metrics["projection/history_input_rms"] = history.float().square().mean().sqrt()
+    metrics["projection/token_output_rms"] = (
+        token_projected.float().square().mean().sqrt()
+    )
+    if model.polar_proj is not None:
+        polar = model.codec.polar_history_features(tokens[:, :-1], positions)
+        polar_projected = model.polar_proj(polar.to(model.polar_proj.weight.dtype))
+        metrics["projection/polar_input_rms"] = polar.float().square().mean().sqrt()
+        metrics["projection/polar_output_rms"] = (
+            polar_projected.float().square().mean().sqrt()
+        )
+    input_projected = model.diffusion.net.input_proj(
+        tokens.to(model.diffusion.net.input_proj.weight.dtype)
+    )
+    metrics["projection/diffusion_input_rms"] = tokens.float().square().mean().sqrt()
+    metrics["projection/diffusion_projected_rms"] = (
+        input_projected.float().square().mean().sqrt()
+    )
+    position_values = model._backbone_position_embedding(
+        torch.arange(1, length + 1, device=device),
+        model._position_meta(device, model.token_proj.weight.dtype),
+    )
+    metrics["projection/backbone_position_rms"] = (
+        position_values.float().square().mean().sqrt()
+    )
+
+    logs: Dict[str, float] = {}
+    for key, value in metrics.items():
+        scalar = value.detach().float()
+        if scalar.numel() == 1 and bool(torch.isfinite(scalar)):
+            logs[key] = scalar.item()
+    if was_training:
+        model.train()
+    return logs
+
+
+def _bucket_means(
+    timesteps: torch.Tensor,
+    values: torch.Tensor,
+    num_buckets: int,
+    num_timesteps: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Vectorized per-timestep-bin means on the input device."""
+    indices = torch.div(
+        timesteps.long() * num_buckets,
+        num_timesteps,
+        rounding_mode="floor",
+    ).clamp_(0, num_buckets - 1)
+    counts = torch.bincount(indices, minlength=num_buckets)
+    sums = torch.zeros(num_buckets, device=values.device, dtype=torch.float32)
+    sums.scatter_add_(0, indices, values.detach().float())
+    means = sums / counts.clamp_min(1).to(sums.dtype)
+    return means, counts
+
+
+def bucket_timestep_loss(
+    timesteps: torch.Tensor,
+    per_example: torch.Tensor,
+    num_buckets: int = 5,
+    num_timesteps: int = 1000,
+) -> Dict[str, float]:
+    means, counts = _bucket_means(
+        timesteps,
+        per_example,
+        num_buckets=num_buckets,
+        num_timesteps=num_timesteps,
+    )
+    means_cpu = means.cpu().tolist()
+    counts_cpu = counts.cpu().tolist()
+    return {
+        f"loss/t_bucket_{index}": means_cpu[index]
+        for index in range(num_buckets)
+        if counts_cpu[index] > 0
+    }
+
+
+class TimestepLossEMA:
+    """Low-overhead GPU EMA of raw and effective loss by flow/DDPM time."""
+
+    metric_names = (
+        "raw_mse",
+        "unweighted_objective",
+        "time_weight",
+        "weighted_objective",
+    )
+
+    def __init__(self, num_buckets: int, num_timesteps: int, decay: float):
+        if num_buckets <= 0:
+            raise ValueError("num_buckets must be positive")
+        if num_timesteps <= 0:
+            raise ValueError("num_timesteps must be positive")
+        if not 0.0 <= decay < 1.0:
+            raise ValueError("EMA decay must be in [0, 1)")
+        self.num_buckets = num_buckets
+        self.num_timesteps = num_timesteps
+        self.decay = decay
+        self.ema: Optional[torch.Tensor] = None
+        self.initialized: Optional[torch.Tensor] = None
+
+    @torch.no_grad()
+    def update(self, out: Dict[str, torch.Tensor]) -> None:
+        timesteps = out["timesteps"]
+        series = (
+            out["normalized_per_example"],
+            out["per_example"],
+            out["snr_weights"],
+            out["per_example"] * out["weights"],
+        )
+        means = []
+        counts = None
+        for values in series:
+            bucketed, current_counts = _bucket_means(
+                timesteps,
+                values,
+                num_buckets=self.num_buckets,
+                num_timesteps=self.num_timesteps,
+            )
+            means.append(bucketed)
+            if counts is None:
+                counts = current_counts
+        current = torch.stack(means)
+        if self.ema is None:
+            self.ema = torch.zeros_like(current)
+            self.initialized = torch.zeros(
+                self.num_buckets,
+                device=current.device,
+                dtype=torch.bool,
+            )
+        assert self.initialized is not None
+        valid = counts > 0
+        continuing = valid & self.initialized
+        starting = valid & ~self.initialized
+        self.ema[:, continuing] = (
+            self.decay * self.ema[:, continuing]
+            + (1.0 - self.decay) * current[:, continuing]
+        )
+        self.ema[:, starting] = current[:, starting]
+        self.initialized |= valid
+
+    def logs(self) -> Dict[str, float]:
+        if self.ema is None or self.initialized is None:
+            return {}
+        values = self.ema.cpu().tolist()
+        initialized = self.initialized.cpu().tolist()
+        logs: Dict[str, float] = {}
+        for metric_index, metric_name in enumerate(self.metric_names):
+            for bucket in range(self.num_buckets):
+                if initialized[bucket]:
+                    logs[
+                        f"timestep_ema/{metric_name}/bin_{bucket:02d}"
+                    ] = values[metric_index][bucket]
+        return logs
+
+
+class CudaStepTimer:
+    """Sparse CUDA-event timer that synchronizes only when a sample is reported."""
+
+    intervals = (
+        ("encode", "start", "after_encode"),
+        ("forward", "after_encode", "after_forward"),
+        ("backward", "after_forward", "after_backward"),
+        ("grad_processing", "after_backward", "after_grad"),
+        ("optimizer", "after_grad", "after_optimizer"),
+        ("train_step_gpu", "start", "after_optimizer"),
+    )
+
+    def __init__(self) -> None:
+        self.events: Dict[str, torch.cuda.Event] = {}
+
+    def record(self, name: str) -> None:
+        event = torch.cuda.Event(enable_timing=True)
+        event.record()
+        self.events[name] = event
+
+    def logs(self) -> Dict[str, float]:
+        self.events["after_optimizer"].synchronize()
+        return {
+            f"timing/{name}_ms": self.events[start].elapsed_time(self.events[end])
+            for name, start, end in self.intervals
+        }
 
 
 def main(args: Optional[argparse.Namespace] = None):
@@ -783,6 +1231,9 @@ def main(args: Optional[argparse.Namespace] = None):
         mixed_precision=args.mixed_precision if args.mixed_precision != "no" else "no",
         log_with=log_with,
         project_config=ProjectConfiguration(project_dir=args.output_dir, logging_dir=str(logging_dir)),
+        dataloader_config=DataLoaderConfiguration(
+            non_blocking=torch.cuda.is_available() and not args.smoke,
+        ),
     )
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -799,16 +1250,32 @@ def main(args: Optional[argparse.Namespace] = None):
         torch.backends.cuda.matmul.allow_tf32 = True
 
     dataset, train_loader = make_dataloader(args)
+    spectral_panel_images = (
+        make_spectral_panel(dataset, args.spectral_panel_size)
+        if args.spectral_diagnostic_steps > 0
+        else None
+    )
     config = build_model_config(args)
     codec = fit_or_load_codec(args, accelerator, train_loader, config)
-    if accelerator.is_main_process and args.normalization != "orbit_whiten":
-        rw = codec.radial_loss_weights(exponent=args.radial_power_exponent)
+    if accelerator.is_main_process and args.loss_metric == "orbit_scale_power":
+        scale_weights = codec.orbit_scale_power_metric(args.orbit_scale_exponent)
+        active_weights = scale_weights[codec.component_mask.bool()]
         _log_info(
-            f"Radial loss weights: mean={rw.mean().item():.4f} "
-            f"min={rw.min().item():.4f} max={rw.max().item():.4f} "
-            f"exponent={args.radial_power_exponent:.3f} "
-            f"(radial_power_weighting={bool(args.radial_power_weighting)})"
+            "Orbit scale-power weights: "
+            f"mean={active_weights.mean().item():.4f} "
+            f"p99={torch.quantile(active_weights, 0.99).item():.4f} "
+            f"max={active_weights.max().item():.4f} "
+            f"exponent={args.orbit_scale_exponent:.3f}"
         )
+    if accelerator.is_main_process:
+        if not args.normalization.startswith("orbit_"):
+            rw = codec.radial_loss_weights(exponent=args.radial_power_exponent)
+            _log_info(
+                f"Radial loss weights: mean={rw.mean().item():.4f} "
+                f"min={rw.min().item():.4f} max={rw.max().item():.4f} "
+                f"exponent={args.radial_power_exponent:.3f} "
+                f"(radial_power_weighting={bool(args.radial_power_weighting)})"
+            )
         _log_info(
             f"Generative objective: objective={args.objective} "
             f"prediction={args.prediction_type} loss_space={args.loss_space} "
@@ -829,14 +1296,44 @@ def main(args: Optional[argparse.Namespace] = None):
             f"input_addition={bool(args.position_input_addition)} "
             f"rms_normalize={bool(args.position_rms_normalize)} "
             f"transformer_film={bool(args.transformer_position_film)} "
-            f"diffusion_target={bool(args.diffusion_target_conditioning)}"
+            f"diffusion_target={bool(args.diffusion_target_conditioning)} "
+            f"backbone_mode={args.backbone_position_mode} "
+            f"input_scale={args.input_position_scale_init:g}"
+        )
+        _log_info(
+            f"Representation: centering={args.centering} "
+            f"history_cartesian={args.history_cartesian_features} "
+            f"input_time={args.input_timestep_conditioning} "
+            f"input_init={args.input_projection_init} "
+            f"adam=({args.adam_beta1:g},{args.adam_beta2:g})"
         )
     model = ContinuousFFTDecoder(config, codec=codec)
     if args.gradient_checkpointing:
         model.enable_gradient_checkpointing()
 
+    no_decay_names = {"input_position_scale"}
+    if model.output_log_gain is not None:
+        no_decay_names.add("output_log_gain")
+    optimizer_parameters: Any = [
+        {
+            "params": [
+                parameter
+                for name, parameter in model.named_parameters()
+                if name not in no_decay_names
+            ],
+            "weight_decay": args.adam_weight_decay,
+        },
+        {
+            "params": [
+                parameter
+                for name, parameter in model.named_parameters()
+                if name in no_decay_names
+            ],
+            "weight_decay": 0.0,
+        },
+    ]
     optimizer = torch.optim.AdamW(
-        model.parameters(),
+        optimizer_parameters,
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -875,14 +1372,21 @@ def main(args: Optional[argparse.Namespace] = None):
             f"-a{args.orbit_covariance_exponent:g}"
             if args.loss_metric == "orbit_covariance_power"
             else (
-                f"-radial{args.radial_power_exponent:g}"
-                if args.radial_power_weighting
-                else ""
+                f"-a{args.orbit_scale_exponent:g}"
+                if args.loss_metric == "orbit_scale_power"
+                else (
+                    f"-radial{args.radial_power_exponent:g}"
+                    if args.radial_power_weighting
+                    else ""
+                )
             )
         )
         run_name = args.run_name or (
             f"{args.objective}-{args.prediction_type}-{args.normalization}-"
-            f"{args.loss_metric}{metric_suffix}-d{args.diff_depth}-b{args.train_batch_size}"
+            f"{args.centering}-{args.loss_metric}{metric_suffix}-"
+            f"pos-{args.backbone_position_mode}-hist-{args.history_cartesian_features}-"
+            f"stem-{args.input_timestep_conditioning}-d{args.diff_depth}-"
+            f"b{args.train_batch_size}"
         )
         init_kwargs = {}
         if log_with == "wandb":
@@ -914,6 +1418,32 @@ def main(args: Optional[argparse.Namespace] = None):
             first_epoch = global_step // num_update_steps_per_epoch
             logger.info(f"Resumed from {path} at step {global_step}")
 
+    if accelerator.is_main_process and spectral_panel_images is not None:
+        initial_spectral_logs = evaluate_spectral_panel(
+            accelerator.unwrap_model(model),
+            spectral_panel_images,
+            args,
+        )
+        if log_with is not None:
+            accelerator.log(initial_spectral_logs, step=global_step)
+        summary_keys = (
+            "normalization/mu_over_z_q50",
+            "normalization/mu_over_z_q90",
+            "normalization/mu_over_z_q99",
+            "normalization/phase_distortion_circular_error",
+            "projection/history_input_rms",
+            "projection/diffusion_projected_rms",
+        )
+        _log_info(
+            "SPECTRAL_STARTUP "
+            + " ".join(
+                f"{key}={initial_spectral_logs[key]:.6g}"
+                for key in summary_keys
+                if key in initial_spectral_logs
+            )
+        )
+    accelerator.wait_for_everyone()
+
     progress = tqdm(
         range(args.max_train_steps),
         initial=global_step,
@@ -922,33 +1452,115 @@ def main(args: Optional[argparse.Namespace] = None):
     )
     benchmark_start = None
     benchmark_start_step = 0
+    timestep_loss_ema = (
+        TimestepLossEMA(
+            num_buckets=args.timestep_histogram_bins,
+            num_timesteps=config.diffusion.num_train_timesteps,
+            decay=args.timestep_histogram_decay,
+        )
+        if args.timestep_histogram_bins > 0
+        else None
+    )
+    data_wait_started = time.perf_counter()
+    throughput_window_started = time.perf_counter()
+    throughput_window_step = global_step
 
     for epoch in range(first_epoch, args.num_train_epochs):
         model.train()
         for step, batch in enumerate(train_loader):
+            data_load_ms = (time.perf_counter() - data_wait_started) * 1000.0
+            projection_grad_logs: Dict[str, Any] = {}
+            timing_logs: Dict[str, float] = {}
+            step_timer = None
             with accelerator.accumulate(model):
+                next_optimizer_step = global_step + 1
+                routine_log_step = (
+                    accelerator.sync_gradients
+                    and (
+                        next_optimizer_step % args.logging_steps == 0
+                        or next_optimizer_step >= args.max_train_steps
+                    )
+                )
+                timing_sample = (
+                    accelerator.sync_gradients
+                    and args.timing_steps > 0
+                    and next_optimizer_step % args.timing_steps == 0
+                    and torch.cuda.is_available()
+                    and not args.smoke
+                )
+                if timing_sample:
+                    step_timer = CudaStepTimer()
+                    step_timer.record("start")
                 images = batch[0]
                 # Encode under no_grad; tokens are continuous targets.
                 with torch.no_grad():
                     unwrapped = accelerator.unwrap_model(model)
                     tokens = unwrapped.codec.encode(images)
+                if step_timer is not None:
+                    step_timer.record("after_encode")
                 out = model(
                     tokens,
                     corrupt=True,
                     training_progress=min(global_step / max(args.max_train_steps, 1), 1.0),
                 )
                 loss = out["loss"]
+                if step_timer is not None:
+                    step_timer.record("after_forward")
                 accelerator.backward(loss)
-                grad_norm = 0.0
+                if step_timer is not None:
+                    step_timer.record("after_backward")
+                grad_norm = None
                 if accelerator.sync_gradients:
-                    grad_norm = accelerator.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-                    if hasattr(grad_norm, "item"):
-                        grad_norm = grad_norm.item()
+                    if args.grad_norm_mode == "clip":
+                        grad_norm = accelerator.clip_grad_norm_(
+                            model.parameters(),
+                            args.max_grad_norm,
+                        )
+                    elif args.grad_norm_mode == "track":
+                        grad_norm = accelerator.clip_grad_norm_(
+                            model.parameters(),
+                            float("inf"),
+                        )
+                    if routine_log_step:
+                        unwrapped_for_grads = accelerator.unwrap_model(model)
+                        for name, parameter in (
+                            ("token_proj", unwrapped_for_grads.token_proj.weight),
+                            (
+                                "diffusion_input",
+                                unwrapped_for_grads.diffusion.net.input_proj.weight,
+                            ),
+                            (
+                                "diffusion_output",
+                                unwrapped_for_grads.diffusion.net.final_layer.linear.weight,
+                            ),
+                        ):
+                            if parameter.grad is not None:
+                                projection_grad_logs[
+                                    f"projection_grad_rms/{name}"
+                                ] = parameter.grad.detach().float().square().mean().sqrt()
+                        if (
+                            unwrapped_for_grads.polar_proj is not None
+                            and unwrapped_for_grads.polar_proj.weight.grad is not None
+                        ):
+                            projection_grad_logs["projection_grad_rms/polar"] = (
+                                unwrapped_for_grads.polar_proj.weight.grad.detach()
+                                .float()
+                                .square()
+                                .mean()
+                                .sqrt()
+                            )
+                if step_timer is not None:
+                    step_timer.record("after_grad")
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
+                if step_timer is not None:
+                    step_timer.record("after_optimizer")
 
             if accelerator.sync_gradients:
+                if step_timer is not None:
+                    timing_logs = step_timer.logs()
+                    timing_logs["timing/data_load_ms"] = data_load_ms
                 if ema is not None:
                     ema.update(accelerator.unwrap_model(model))
                 progress.update(1)
@@ -961,26 +1573,65 @@ def main(args: Optional[argparse.Namespace] = None):
                     benchmark_start = time.perf_counter()
                     benchmark_start_step = global_step
 
-                logs = {
-                    "loss": loss.detach().item(),
-                    "unweighted_mse": out["unweighted_mse"].item(),
-                    "weighted_loss": out["weighted_loss"].item(),
-                    "lr": lr_scheduler.get_last_lr()[0],
-                    "grad_norm": float(grad_norm),
-                    "corruption_strength": out["corruption_strength"].mean().item(),
-                }
-                if "covariance_metric_loss" in out:
-                    logs["covariance_metric_loss"] = out[
-                        "covariance_metric_loss"
-                    ].item()
-                if "radial_weighted_mse" in out:
-                    logs["radial_weighted_mse"] = out["radial_weighted_mse"].item()
-                if "radial_weights" in out:
-                    logs["radial_weight_mean"] = out["radial_weights"].float().mean().item()
-                # Timestep buckets
-                logs.update(bucket_timestep_loss(out["timesteps"], out["per_example"]))
-                # Radius-bin loss (cheap aggregate)
-                if "radius_bin" in out:
+                logs: Dict[str, Any] = dict(timing_logs)
+                if routine_log_step:
+                    logs.update(
+                        {
+                            "loss": loss.detach().item(),
+                            "unweighted_mse": out["unweighted_mse"].item(),
+                            "weighted_loss": out["weighted_loss"].item(),
+                            "lr": lr_scheduler.get_last_lr()[0],
+                            "corruption_strength": out[
+                                "corruption_strength"
+                            ].mean().item(),
+                        }
+                    )
+                    logs.update(
+                        {
+                            key: value.item() if hasattr(value, "item") else float(value)
+                            for key, value in projection_grad_logs.items()
+                        }
+                    )
+                    if grad_norm is not None:
+                        logs["grad_norm"] = (
+                            grad_norm.item()
+                            if hasattr(grad_norm, "item")
+                            else float(grad_norm)
+                        )
+                    if "covariance_metric_loss" in out:
+                        logs["covariance_metric_loss"] = out[
+                            "covariance_metric_loss"
+                        ].item()
+                    if "scale_metric_loss" in out:
+                        logs["scale_metric_loss"] = out["scale_metric_loss"].item()
+                    if "radial_weighted_mse" in out:
+                        logs["radial_weighted_mse"] = out["radial_weighted_mse"].item()
+                    if "radial_weights" in out:
+                        logs["radial_weight_mean"] = (
+                            out["radial_weights"].float().mean().item()
+                        )
+                    unwrapped = accelerator.unwrap_model(model)
+                    if unwrapped.output_log_gain is not None:
+                        gains = unwrapped.output_log_gain.detach().exp()
+                        logs["output_gain/mean"] = gains.mean().item()
+                        logs["output_gain/min"] = gains.min().item()
+                        logs["output_gain/max"] = gains.max().item()
+                    logs.update(
+                        bucket_timestep_loss(
+                            out["timesteps"],
+                            out["per_example"],
+                            num_timesteps=config.diffusion.num_train_timesteps,
+                        )
+                    )
+                if timestep_loss_ema is not None:
+                    timestep_loss_ema.update(out)
+                    if (
+                        args.timestep_histogram_log_steps > 0
+                        and global_step % args.timestep_histogram_log_steps == 0
+                    ):
+                        logs.update(timestep_loss_ema.logs())
+                # Radius-bin loss is cheap on-device but synchronizes when exported.
+                if routine_log_step and "radius_bin" in out:
                     rb = out["radius_bin"]
                     pe = out["per_example"]
                     rw = out.get("radial_weights")
@@ -993,8 +1644,83 @@ def main(args: Optional[argparse.Namespace] = None):
                                     (pe[sel] * rw[sel]).mean().item()
                                 )
 
-                progress.set_postfix(**{k: logs[k] for k in ("loss", "lr", "grad_norm")})
-                accelerator.log(logs, step=global_step)
+                if (
+                    args.condition_diagnostic_steps > 0
+                    and global_step % args.condition_diagnostic_steps == 0
+                ):
+                    condition_started = time.perf_counter()
+                    cpu_rng_state = torch.random.get_rng_state()
+                    cuda_rng_state = (
+                        torch.cuda.get_rng_state(tokens.device)
+                        if tokens.is_cuda
+                        else None
+                    )
+                    with torch.no_grad(), accelerator.autocast():
+                        conditioned = model(tokens, corrupt=False)
+                    torch.random.set_rng_state(cpu_rng_state)
+                    if cuda_rng_state is not None:
+                        torch.cuda.set_rng_state(cuda_rng_state, tokens.device)
+                    shuffled_history = tokens.roll(1, dims=0)[:, :-1, :]
+                    with torch.no_grad(), accelerator.autocast():
+                        shuffled = model(
+                            tokens,
+                            corrupt=False,
+                            history_override=shuffled_history,
+                        )
+                    conditioned_loss = conditioned["loss"].item()
+                    shuffled_loss = shuffled["loss"].item()
+                    logs["condition/clean_loss"] = conditioned_loss
+                    logs["condition/shuffled_history_loss"] = shuffled_loss
+                    logs["condition/shuffle_gap"] = (
+                        shuffled_loss - conditioned_loss
+                    )
+                    logs["timing/condition_diagnostic_wall_ms"] = (
+                        time.perf_counter() - condition_started
+                    ) * 1000.0
+                    _log_info(
+                        "CONDITION_DIAGNOSTIC "
+                        f"step={global_step} clean={conditioned_loss:.6f} "
+                        f"shuffled={shuffled_loss:.6f} "
+                        f"gap={shuffled_loss - conditioned_loss:.6f}"
+                    )
+
+                if (
+                    accelerator.is_main_process
+                    and spectral_panel_images is not None
+                    and args.spectral_diagnostic_steps > 0
+                    and global_step % args.spectral_diagnostic_steps == 0
+                ):
+                    spectral_started = time.perf_counter()
+                    logs.update(
+                        evaluate_spectral_panel(
+                            accelerator.unwrap_model(model),
+                            spectral_panel_images,
+                            args,
+                        )
+                    )
+                    logs["timing/spectral_diagnostic_wall_ms"] = (
+                        time.perf_counter() - spectral_started
+                    ) * 1000.0
+
+                if routine_log_step:
+                    window_elapsed = max(
+                        time.perf_counter() - throughput_window_started,
+                        1e-9,
+                    )
+                    window_steps = max(global_step - throughput_window_step, 1)
+                    logs["performance/steps_per_sec"] = window_steps / window_elapsed
+                    logs["performance/examples_per_sec"] = (
+                        window_steps * args.train_batch_size / window_elapsed
+                    )
+                if logs:
+                    progress_keys = ("loss", "lr", "grad_norm")
+                    progress.set_postfix(
+                        **{key: logs[key] for key in progress_keys if key in logs}
+                    )
+                    accelerator.log(logs, step=global_step)
+                    if routine_log_step:
+                        throughput_window_started = time.perf_counter()
+                        throughput_window_step = global_step
 
                 if (
                     accelerator.is_main_process
@@ -1021,13 +1747,21 @@ def main(args: Optional[argparse.Namespace] = None):
                         while len(cands) > args.checkpoints_total_limit:
                             os.remove(os.path.join(args.output_dir, cands.pop(0)))
 
-                if global_step % args.validation_steps == 0:
+                if (
+                    args.preview_steps > 0
+                    and global_step % args.preview_steps == 0
+                ):
+                    preview_started = time.perf_counter()
                     max_tokens = 8 if args.smoke else None
                     val_logs = validate(
                         model, args, accelerator, global_step, ema=ema, max_tokens=max_tokens
                     )
+                    val_logs["timing/preview_wall_ms"] = (
+                        time.perf_counter() - preview_started
+                    ) * 1000.0
                     accelerator.log(val_logs, step=global_step)
 
+                data_wait_started = time.perf_counter()
                 if global_step >= args.max_train_steps:
                     break
         if global_step >= args.max_train_steps:

@@ -7,6 +7,7 @@ import sys
 import unittest
 
 import torch
+import torch.nn as nn
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -70,6 +71,29 @@ class TestDiffusionDecoder(unittest.TestCase):
         snr = compute_snr(model.train_scheduler, t)
         expected = torch.minimum(snr, torch.full_like(snr, model.config.min_snr_gamma)) / (snr + 1)
         self.assertTrue(torch.allclose(w, expected, atol=1e-5))
+
+    def test_min_snr_follows_v_loss_space_for_x0_head(self):
+        model = self._tiny(
+            "x0",
+            loss_weighting="min_snr",
+            mul=1,
+            objective="flow",
+            loss_space="v",
+        )
+        t = torch.tensor([0, 10, 50, 99], dtype=torch.long)
+        flow_t = (t.float() + 0.5) / model.config.num_train_timesteps
+        snr = (flow_t / (1.0 - flow_t)).square()
+        expected = torch.minimum(
+            snr,
+            torch.full_like(snr, model.config.min_snr_gamma),
+        ) / (snr + 1)
+        self.assertTrue(
+            torch.allclose(
+                model._min_snr_weights(t, flow_t=flow_t),
+                expected,
+                atol=1e-5,
+            )
+        )
 
     def test_multiplier_loss_scale_invariance(self):
         torch.manual_seed(0)
@@ -338,6 +362,88 @@ class TestDiffusionDecoder(unittest.TestCase):
                 loss_metric="orbit_covariance_power",
                 radial_power_weighting=True,
             )
+
+    def test_scale_metric_is_reported_and_used(self):
+        model = self._tiny(
+            "x0",
+            mul=1,
+            loss_metric="orbit_scale_power",
+            orbit_scale_exponent=0.2,
+        )
+        target = torch.randn(2, 3, 6)
+        z = torch.randn(2, 3, 32)
+        metric = torch.ones(3, 6)
+        metric[1] *= 2
+        metric[2] *= 4
+        output = model.compute_loss(target, z, component_metric=metric)
+        self.assertTrue(torch.isfinite(output["loss"]))
+        self.assertTrue(torch.isfinite(output["scale_metric_loss"]))
+        self.assertTrue(torch.allclose(output["loss"], output["scale_metric_loss"]))
+
+    def test_scale_metric_requires_native_x0(self):
+        with self.assertRaises(ValueError):
+            self._tiny(
+                "epsilon",
+                mul=1,
+                loss_metric="orbit_scale_power",
+            )
+
+    def test_input_timestep_film_step_zero_equivalence_and_rng_stability(self):
+        common = dict(
+            target_dim=6,
+            z_channels=16,
+            width=32,
+            depth=2,
+            num_train_timesteps=20,
+            num_inference_steps=3,
+            diffusion_batch_mul=1,
+        )
+        torch.manual_seed(91)
+        plain = DiffusionDecoder(
+            DiffusionDecoderConfig(**common, input_timestep_conditioning="none")
+        )
+        torch.manual_seed(91)
+        film = DiffusionDecoder(
+            DiffusionDecoderConfig(**common, input_timestep_conditioning="film")
+        )
+        film_state = film.state_dict()
+        for name, value in plain.state_dict().items():
+            self.assertTrue(torch.equal(value, film_state[name]), name)
+
+        nn.init.normal_(plain.net.final_layer.linear.weight, std=0.02)
+        film.net.final_layer.linear.weight.data.copy_(
+            plain.net.final_layer.linear.weight
+        )
+        x = torch.randn(5, 6)
+        t = torch.arange(5)
+        z = torch.randn(5, 16)
+        self.assertTrue(torch.equal(plain.net(x, t, z), film.net(x, t, z)))
+
+    def test_input_timestep_film_gradient_and_objective_shapes(self):
+        for objective in ("ddpm", "flow"):
+            config = DiffusionDecoderConfig(
+                target_dim=6,
+                z_channels=16,
+                width=32,
+                depth=2,
+                objective=objective,
+                prediction_type="x0",
+                input_timestep_conditioning="film",
+                num_train_timesteps=20,
+                num_inference_steps=3,
+                diffusion_batch_mul=1,
+            )
+            decoder = DiffusionDecoder(config)
+            nn.init.normal_(decoder.net.final_layer.linear.weight, std=0.02)
+            target = torch.randn(4, 6)
+            z = torch.randn(4, 16)
+            output = decoder.compute_loss(target, z)
+            output["loss"].backward()
+            gradient = decoder.net.input_time_modulation[-1].weight.grad
+            self.assertIsNotNone(gradient)
+            self.assertGreater(gradient.abs().sum().item(), 0.0)
+            sample = decoder.sample(z, num_inference_steps=2)
+            self.assertEqual(tuple(sample.shape), (4, 6))
 
 
 if __name__ == "__main__":

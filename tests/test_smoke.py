@@ -14,16 +14,47 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 
 class TestSmoke(unittest.TestCase):
-    def test_raw_weights_and_final_eval_defaults(self):
+    def test_raw_weights_preview_and_final_eval_defaults(self):
         from train_continuous import parse_args
 
         args = parse_args([])
         self.assertFalse(args.use_ema)
-        self.assertTrue(args.final_eval)
+        self.assertFalse(args.final_eval)
+        self.assertEqual(args.preview_steps, 5000)
+        self.assertEqual(args.logging_steps, 25)
+        self.assertEqual(args.timing_steps, 100)
+        legacy = parse_args(["--validation_steps", "123"])
+        self.assertEqual(legacy.preview_steps, 123)
         smoke = parse_args(["--smoke"])
         from train_continuous import apply_preset
 
         self.assertFalse(apply_preset(smoke).final_eval)
+        self.assertEqual(apply_preset(smoke).preview_steps, 1)
+
+    def test_timestep_loss_ema_tracks_raw_and_weighted_bins(self):
+        from train_continuous import TimestepLossEMA
+
+        tracker = TimestepLossEMA(num_buckets=2, num_timesteps=10, decay=0.5)
+        tracker.update(
+            {
+                "timesteps": torch.tensor([0, 4, 5, 9]),
+                "normalized_per_example": torch.tensor([1.0, 3.0, 2.0, 4.0]),
+                "per_example": torch.tensor([2.0, 4.0, 3.0, 5.0]),
+                "snr_weights": torch.tensor([0.5, 0.5, 2.0, 2.0]),
+                "weights": torch.tensor([0.5, 0.5, 2.0, 2.0]),
+            }
+        )
+        logs = tracker.logs()
+        self.assertAlmostEqual(logs["timestep_ema/raw_mse/bin_00"], 2.0)
+        self.assertAlmostEqual(logs["timestep_ema/raw_mse/bin_01"], 3.0)
+        self.assertAlmostEqual(
+            logs["timestep_ema/weighted_objective/bin_00"],
+            1.5,
+        )
+        self.assertAlmostEqual(
+            logs["timestep_ema/weighted_objective/bin_01"],
+            8.0,
+        )
 
     def test_live_metric_math_is_finite(self):
         from live_evaluation import StreamingMoments, _fid, _kid

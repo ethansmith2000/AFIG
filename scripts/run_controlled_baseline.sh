@@ -34,7 +34,7 @@ exec gpu-claim run --owner AFIG --job "${mode}-30k" --wait -- \
   --codec_stats_path "${codec_stats}" \
   --dataset huggingface_cifar \
   --max_train_steps 30000 \
-  --validation_steps 5000 \
+  --preview_steps 5000 \
   --num_layers 10 \
   --width 768 \
   --num_heads 12 \

@@ -118,6 +118,49 @@ class TestFrequencyCodec(unittest.TestCase):
                 )
             )
 
+    def test_orbit_complex_diagonal_standardization(self):
+        config = FrequencyCodecConfig(
+            value_transform="identity",
+            normalization="orbit_standardize",
+        )
+        codec = FrequencyCodec(config)
+        batches = list(self._synth_loader(n_batches=32, batch_size=8))
+        codec.fit_from_loader(batches)
+        images = torch.cat(batches, dim=0)
+        tokens = codec.encode(images)
+        reconstruction = codec.decode(tokens)
+        self.assertLess((images - reconstruction).abs().max().item(), 2e-4)
+
+        non_self = ~codec.is_self_conjugate
+        self.assertTrue(
+            torch.allclose(
+                codec.orbit_std[non_self, :3],
+                codec.orbit_std[non_self, 3:],
+            )
+        )
+        for position in (1, 10, 100):
+            variance = tokens[:, position].var(dim=0, unbiased=True)
+            for channel in range(3):
+                complex_variance = 0.5 * (
+                    variance[channel] + variance[channel + 3]
+                )
+                self.assertAlmostEqual(complex_variance.item(), 1.0, places=3)
+
+        alpha_zero = codec.orbit_scale_power_metric(0.0)
+        alpha_one = codec.orbit_scale_power_metric(1.0)
+        active = codec.component_mask.bool()
+        self.assertLess(
+            abs(alpha_zero[active].sum().item() - codec.seq_len),
+            1e-3,
+        )
+        expected = (
+            codec.orbit_std.square()
+            * codec.conjugate_multiplicity[:, None]
+            * codec.component_mask
+        )
+        expected = expected * (codec.seq_len / expected.sum())
+        self.assertTrue(torch.allclose(alpha_one, expected, atol=1e-6, rtol=1e-5))
+
     def test_orbit_statistics_separate_axis_and_off_axis(self):
         generator = torch.Generator().manual_seed(4)
 
@@ -266,6 +309,88 @@ class TestFrequencyCodec(unittest.TestCase):
         # For self-conjugate, imag is forced 0 → sin phase terms for all channels ≈ 0
         # when amp from real only; sin features are indices 2,5,8.
         self.assertTrue(feats[0, 0, [2, 5, 8]].abs().max().item() < 1e-5)
+
+    def test_phase_preserving_centering_roundtrip_and_identities(self):
+        batches = list(self._synth_loader(n_batches=32, batch_size=8, seed=23))
+        for policy in ("self_conjugate_std", "self_conjugate_rms"):
+            codec = FrequencyCodec(
+                FrequencyCodecConfig(
+                    normalization="orbit_standardize",
+                    centering=policy,
+                )
+            )
+            codec.fit_from_loader(batches)
+            images = torch.cat(batches[:2], dim=0)
+            tokens = codec.encode(images)
+            self.assertLess((codec.decode(tokens) - images).abs().max().item(), 2e-4)
+
+            ordinary = ~codec.is_self_conjugate
+            if policy == "self_conjugate_std":
+                centered = codec.encode_raw(torch.cat(batches, dim=0)) - codec.orbit_mean
+                transformed = centered / codec.orbit_std
+                paired = 0.5 * (
+                    transformed[..., :3].var(dim=0, unbiased=True)
+                    + transformed[..., 3:].var(dim=0, unbiased=True)
+                )
+            else:
+                raw = codec.encode_raw(torch.cat(batches, dim=0))
+                scale = codec.orbit_uncentered_rms()
+                transformed = raw / scale
+                paired = 0.5 * (
+                    transformed[..., :3].square().mean(dim=0)
+                    + transformed[..., 3:].square().mean(dim=0)
+                )
+            self.assertTrue(
+                torch.allclose(
+                    paired[ordinary],
+                    torch.ones_like(paired[ordinary]),
+                    atol=2e-3,
+                    rtol=2e-3,
+                )
+            )
+
+    def test_phase_preserving_policy_keeps_ordinary_complex_angle(self):
+        codec = FrequencyCodec(
+            FrequencyCodecConfig(
+                normalization="orbit_standardize",
+                centering="self_conjugate_std",
+            )
+        )
+        codec.fit_from_loader(self._synth_loader(n_batches=16, batch_size=8))
+        position = int((~codec.is_self_conjugate).nonzero()[10].item())
+        raw = torch.zeros(1, codec.seq_len, 6)
+        raw[0, position, 0] = 3.0
+        raw[0, position, 3] = 4.0
+        normalized = codec.normalize(raw)
+        self.assertAlmostEqual(
+            torch.atan2(normalized[0, position, 3], normalized[0, position, 0]).item(),
+            math.atan2(4.0, 3.0),
+            places=5,
+        )
+        features = codec.phase_preserving_history_features(
+            normalized[:, position : position + 1],
+            positions=torch.tensor([position]),
+        )
+        self.assertAlmostEqual(
+            torch.atan2(features[0, 0, 3], features[0, 0, 0]).item(),
+            math.atan2(4.0, 3.0),
+            places=5,
+        )
+
+    def test_centering_policy_is_part_of_compatibility_fingerprint(self):
+        codec = FrequencyCodec(
+            FrequencyCodecConfig(normalization="orbit_standardize", centering="all")
+        )
+        codec.fit_from_loader(self._synth_loader())
+        payload = codec.export_state()
+        other = FrequencyCodec(
+            FrequencyCodecConfig(
+                normalization="orbit_standardize",
+                centering="self_conjugate_std",
+            )
+        )
+        with self.assertRaises(ValueError):
+            other.load_exported(payload)
 
 
 if __name__ == "__main__":

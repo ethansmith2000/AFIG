@@ -64,6 +64,16 @@ class PolarHistoryConfig:
 
 
 @dataclass(frozen=True)
+class HistoryFeatureConfig:
+    """Deterministic representation of completed Transformer history."""
+
+    cartesian_mode: str = "centered"  # centered | phase_preserving
+
+    def fingerprint(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class FrequencyConditioningConfig:
     """Known-frequency conditioning shared by input, backbone, and decoder."""
 
@@ -74,6 +84,8 @@ class FrequencyConditioningConfig:
     rms_normalize: bool = False
     transformer_film: bool = True
     diffusion_target_conditioning: bool = True
+    backbone_position_mode: str = "legacy_hybrid"
+    input_scale_init: float = 0.1
     # TODO(position): add 2D RoPE as a separate relative-geometry ablation.
 
     def fingerprint(self) -> Dict[str, Any]:
@@ -103,6 +115,7 @@ class ContinuousModelConfig:
     diffusion: DiffusionDecoderConfig = field(default_factory=DiffusionDecoderConfig)
     corruption: CorruptionConfig = field(default_factory=CorruptionConfig)
     polar_history: PolarHistoryConfig = field(default_factory=PolarHistoryConfig)
+    history_features: HistoryFeatureConfig = field(default_factory=HistoryFeatureConfig)
     frequency_conditioning: FrequencyConditioningConfig = field(
         default_factory=FrequencyConditioningConfig
     )
@@ -115,6 +128,7 @@ class ContinuousModelConfig:
             "diffusion": self.diffusion.fingerprint(),
             "corruption": self.corruption.fingerprint(),
             "polar_history": self.polar_history.fingerprint(),
+            "history_features": self.history_features.fingerprint(),
             "frequency_conditioning": self.frequency_conditioning.fingerprint(),
             "generation": self.generation.fingerprint(),
         }
@@ -269,15 +283,38 @@ class FrequencyPositionEmbed(nn.Module):
         functional: bool = False,
         num_frequencies: int = 4,
         max_frequency: float = 8.0,
+        mode: str = "legacy_hybrid",
+        signed_coordinates: Optional[torch.Tensor] = None,
     ):
         super().__init__()
         if num_frequencies < 1:
             raise ValueError("num_frequencies must be >= 1")
         if max_frequency < 1.0:
             raise ValueError("max_frequency must be >= 1")
-        self.functional = functional
+        if mode not in ("legacy_hybrid", "random_table", "sincos_table"):
+            raise ValueError(f"Unknown position embedding mode: {mode}")
+        self.functional = functional and mode == "legacy_hybrid"
+        self.mode = mode
         self.seq_embed = nn.Embedding(max_seq_len, width)
-        if functional:
+        if mode == "sincos_table":
+            if signed_coordinates is None:
+                raise ValueError("sincos_table requires signed_coordinates")
+            table = self._sincos_table(
+                signed_coordinates,
+                width=width,
+                max_seq_len=max_seq_len,
+            )
+            with torch.no_grad():
+                self.seq_embed.weight.copy_(table)
+            self.register_buffer("frequency_bands", torch.empty(0), persistent=False)
+            self.meta_mlp = None
+        elif mode == "random_table":
+            nn.init.normal_(self.seq_embed.weight, std=0.02)
+            with torch.no_grad():
+                self.seq_embed.weight[0].zero_()
+            self.register_buffer("frequency_bands", torch.empty(0), persistent=False)
+            self.meta_mlp = None
+        elif functional:
             nn.init.normal_(self.seq_embed.weight, std=0.02)
             bands = torch.logspace(
                 0.0,
@@ -289,14 +326,54 @@ class FrequencyPositionEmbed(nn.Module):
             # normalized kx, ky, radius, cos(angle), sin(angle), is_self,
             # plus sin/cos bands for the first three continuous coordinates.
             meta_dim = 6 + 2 * 3 * num_frequencies
+            self.meta_mlp = nn.Sequential(
+                nn.Linear(meta_dim, width),
+                nn.SiLU(),
+                nn.Linear(width, width),
+            )
         else:
             self.register_buffer("frequency_bands", torch.empty(0), persistent=False)
             meta_dim = 5
-        self.meta_mlp = nn.Sequential(
-            nn.Linear(meta_dim, width),
-            nn.SiLU(),
-            nn.Linear(width, width),
+            self.meta_mlp = nn.Sequential(
+                nn.Linear(meta_dim, width),
+                nn.SiLU(),
+                nn.Linear(width, width),
+            )
+
+    @staticmethod
+    def _sincos_1d(positions: torch.Tensor, dim: int) -> torch.Tensor:
+        if dim % 2 != 0:
+            raise ValueError("1D sin/cos dimension must be even")
+        half = dim // 2
+        omega = torch.arange(half, dtype=torch.float32, device=positions.device)
+        omega = 1.0 / (10000.0 ** (omega / max(float(half), 1.0)))
+        phase = positions.float()[:, None] * omega[None, :]
+        return torch.cat([phase.sin(), phase.cos()], dim=-1)
+
+    @classmethod
+    def _sincos_table(
+        cls,
+        signed_coordinates: torch.Tensor,
+        width: int,
+        max_seq_len: int,
+    ) -> torch.Tensor:
+        if width % 4 != 0:
+            raise ValueError("2D sin/cos width must be divisible by 4")
+        if signed_coordinates.ndim != 2 or signed_coordinates.shape[-1] != 2:
+            raise ValueError("signed_coordinates must have shape [L,2]")
+        if signed_coordinates.shape[0] + 1 > max_seq_len:
+            raise ValueError("Position table is too short for signed coordinates")
+        ky, kx = signed_coordinates.unbind(dim=-1)
+        values = torch.cat(
+            [
+                cls._sincos_1d(ky, width // 2),
+                cls._sincos_1d(kx, width // 2),
+            ],
+            dim=-1,
         )
+        table = torch.zeros(max_seq_len, width, dtype=torch.float32)
+        table[1 : values.shape[0] + 1] = values.cpu()
+        return table
 
     def _features(self, meta: torch.Tensor) -> torch.Tensor:
         if not self.functional:
@@ -312,7 +389,7 @@ class FrequencyPositionEmbed(nn.Module):
         meta: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         emb = self.seq_embed(seq_idx)
-        if meta is not None:
+        if meta is not None and self.meta_mlp is not None:
             functional = self.meta_mlp(self._features(meta))
             # BOS has no frequency coordinate; its learned table entry is enough.
             functional = functional * (seq_idx != 0).unsqueeze(-1).to(functional.dtype)
@@ -359,6 +436,35 @@ class ContinuousFFTDecoder(nn.Module):
                 raise ValueError(
                     "orbit_covariance_power initially requires value_transform='identity'."
                 )
+        if self.config.diffusion.loss_metric == "orbit_scale_power":
+            if self.config.codec.normalization != "orbit_standardize":
+                raise ValueError(
+                    "orbit_scale_power requires codec normalization='orbit_standardize'."
+                )
+            if self.config.codec.value_transform != "identity":
+                raise ValueError(
+                    "orbit_scale_power initially requires value_transform='identity'."
+                )
+        if (
+            self.config.diffusion.learned_output_gain
+            and self.config.codec.normalization != "orbit_standardize"
+        ):
+            raise ValueError(
+                "learned_output_gain currently requires orbit_standardize."
+            )
+        if self.config.diffusion.learned_output_gain:
+            self.output_log_gain = nn.Parameter(
+                torch.zeros(self.codec.seq_len, 3)
+            )
+        else:
+            self.register_parameter("output_log_gain", None)
+        if self.config.history_features.cartesian_mode not in (
+            "centered",
+            "phase_preserving",
+        ):
+            raise ValueError(
+                "history_features.cartesian_mode must be centered or phase_preserving"
+            )
         tcfg = self.config.transformer
         self.width = tcfg.width
         self.token_proj = nn.Linear(TOKEN_DIM, tcfg.width)
@@ -369,7 +475,9 @@ class ContinuousFFTDecoder(nn.Module):
                     f"Unsupported polar_history.mode={self.config.polar_history.mode}. "
                     "Supported: log_amp_gated_phase."
                 )
-            self.polar_proj = nn.Linear(9, tcfg.width)
+            # Optional zero-initialized modules must not perturb shared-weight RNG.
+            with torch.random.fork_rng(devices=[]):
+                self.polar_proj = nn.Linear(9, tcfg.width)
             # Zero-init so enabling polar is a soft residual at start.
             nn.init.zeros_(self.polar_proj.weight)
             nn.init.zeros_(self.polar_proj.bias)
@@ -378,12 +486,44 @@ class ContinuousFFTDecoder(nn.Module):
         self.bos = nn.Parameter(torch.zeros(1, 1, tcfg.width))
         nn.init.normal_(self.bos, std=0.02)
         pcfg = self.config.frequency_conditioning
+        if pcfg.backbone_position_mode not in (
+            "legacy_hybrid",
+            "random_table",
+            "sincos_table",
+            "none",
+        ):
+            raise ValueError(
+                f"Unknown backbone_position_mode={pcfg.backbone_position_mode}"
+            )
+        signed_coordinates = torch.stack(
+            [self.codec.ky_signed, self.codec.kx_signed],
+            dim=-1,
+        )
         self.pos_embed = FrequencyPositionEmbed(
             tcfg.width,
             tcfg.max_seq_len,
             functional=pcfg.enabled,
             num_frequencies=pcfg.num_frequencies,
             max_frequency=pcfg.max_frequency,
+            mode="legacy_hybrid",
+        )
+        backbone_mode = (
+            "legacy_hybrid"
+            if pcfg.backbone_position_mode == "none"
+            else pcfg.backbone_position_mode
+        )
+        with torch.random.fork_rng(devices=[]):
+            self.backbone_pos_embed = FrequencyPositionEmbed(
+                tcfg.width,
+                tcfg.max_seq_len,
+                functional=pcfg.enabled,
+                num_frequencies=pcfg.num_frequencies,
+                max_frequency=pcfg.max_frequency,
+                mode=backbone_mode,
+                signed_coordinates=signed_coordinates,
+            )
+        self.input_position_scale = nn.Parameter(
+            torch.tensor(float(pcfg.input_scale_init))
         )
         self.position_norm = (
             nn.RMSNorm(tcfg.width, elementwise_affine=False)
@@ -425,6 +565,35 @@ class ContinuousFFTDecoder(nn.Module):
             return x
         polar = self.codec.polar_history_features(tokens, positions=positions)
         return x + self.polar_proj(polar.to(dtype=x.dtype))
+
+    def _history_cartesian_features(
+        self,
+        tokens: torch.Tensor,
+        positions: torch.Tensor,
+    ) -> torch.Tensor:
+        if self.config.history_features.cartesian_mode == "centered":
+            return tokens
+        return self.codec.phase_preserving_history_features(tokens, positions)
+
+    def _uses_backbone_position(self) -> bool:
+        pcfg = self.config.frequency_conditioning
+        return (
+            (not pcfg.enabled or pcfg.input_addition)
+            and pcfg.backbone_position_mode != "none"
+        )
+
+    def _backbone_position_embedding(
+        self,
+        seq_idx: torch.Tensor,
+        meta: torch.Tensor,
+    ) -> torch.Tensor:
+        position = self.position_norm(self.backbone_pos_embed(seq_idx, meta))
+        if self.config.frequency_conditioning.backbone_position_mode in (
+            "random_table",
+            "sincos_table",
+        ):
+            position = position * self.input_position_scale.to(position.dtype)
+        return position
 
     # ------------------------------------------------------------------
     # Metadata helpers
@@ -483,6 +652,12 @@ class ContinuousFFTDecoder(nn.Module):
         condition = self.position_norm(condition)
         return condition[None, :, :].expand(batch_size, -1, -1)
 
+    def diffusion_output_gain(self, positions: torch.Tensor) -> Optional[torch.Tensor]:
+        if self.output_log_gain is None:
+            return None
+        rgb_gain = self.output_log_gain[positions].exp()
+        return torch.cat([rgb_gain, rgb_gain], dim=-1)
+
     # ------------------------------------------------------------------
     # History corruption
     # ------------------------------------------------------------------
@@ -531,7 +706,10 @@ class ContinuousFFTDecoder(nn.Module):
             noise = torch.randn(
                 tokens.shape, device=device, dtype=tokens.dtype, generator=generator
             )
-            mask = self.codec.component_mask.to(device=device, dtype=tokens.dtype)
+            mask = self.codec.component_mask[: tokens.shape[1]].to(
+                device=device,
+                dtype=tokens.dtype,
+            )
             noise = noise * mask[None, :, :]
             tokens = tokens + strength[:, None, None] * noise
             tokens = tokens * mask[None, :, :]
@@ -559,8 +737,6 @@ class ContinuousFFTDecoder(nn.Module):
         b, t, _ = tokens.shape
         device = tokens.device
         dtype = self.token_proj.weight.dtype
-        x = self.token_proj(tokens.to(dtype=dtype))
-
         meta_all = self._position_meta(device, dtype)
         if positions is None:
             # Assume tokens correspond to the first t frequency positions.
@@ -569,20 +745,19 @@ class ContinuousFFTDecoder(nn.Module):
         else:
             token_meta = meta_all[positions]
 
+        cartesian = self._history_cartesian_features(tokens, positions)
+        x = self.token_proj(cartesian.to(dtype=dtype))
         x = self._fuse_polar_features(x, tokens, positions)
 
         # Sequence indices: if include_bos later, token positions start at 1.
-        add_input_position = (
-            not self.config.frequency_conditioning.enabled
-            or self.config.frequency_conditioning.input_addition
-        )
+        add_input_position = self._uses_backbone_position()
         if include_bos:
             bos = self.bos.to(dtype=dtype).expand(b, -1, -1)
             if add_input_position:
                 seq_idx = positions + 1
-                pos = self.position_norm(self.pos_embed(seq_idx, token_meta))
+                pos = self._backbone_position_embedding(seq_idx, token_meta)
                 x = x + pos[None, :, :]
-                bos_pos = self.pos_embed(
+                bos_pos = self._backbone_position_embedding(
                     torch.zeros(1, device=device, dtype=torch.long),
                     self._bos_meta(device, dtype),
                 )
@@ -596,7 +771,7 @@ class ContinuousFFTDecoder(nn.Module):
                     else torch.arange(t, device=device)
                 )
                 # When used for step decode after BOS, positions are absolute seq indices.
-                pos = self.position_norm(self.pos_embed(seq_idx, token_meta))
+                pos = self._backbone_position_embedding(seq_idx, token_meta)
                 x = x + pos[None, :, :]
         return x
 
@@ -672,6 +847,7 @@ class ContinuousFFTDecoder(nn.Module):
         tokens: torch.Tensor,
         corrupt: bool = True,
         training_progress: float = 1.0,
+        history_override: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         """Teacher-forced training forward.
 
@@ -696,7 +872,16 @@ class ContinuousFFTDecoder(nn.Module):
                 f"Expected tokens [B,{self.codec.seq_len},{TOKEN_DIM}], got {tuple(tokens.shape)}"
             )
 
-        history = tokens[:, :-1, :]  # [B, L-1, 6]
+        history = (
+            tokens[:, :-1, :]
+            if history_override is None
+            else history_override
+        )
+        if history.shape != tokens[:, :-1, :].shape:
+            raise ValueError(
+                "history_override must have shape "
+                f"{tuple(tokens[:, :-1, :].shape)}, got {tuple(history.shape)}"
+            )
         if corrupt and self.training:
             history, corr_strength = self.corrupt_history(
                 history,
@@ -740,6 +925,14 @@ class ContinuousFFTDecoder(nn.Module):
             covariance_metric = self.codec.orbit_covariance_power_metric(
                 self.config.diffusion.orbit_covariance_exponent
             )
+        component_metric = None
+        if self.config.diffusion.loss_metric == "orbit_scale_power":
+            component_metric = self.codec.orbit_scale_power_metric(
+                self.config.diffusion.orbit_scale_exponent
+            )
+        output_gain = self.diffusion_output_gain(
+            torch.arange(l, device=tokens.device)
+        )
         loss_out = self.diffusion.compute_loss(
             target=tokens,
             z=z,
@@ -748,9 +941,53 @@ class ContinuousFFTDecoder(nn.Module):
             radius_bin=self.codec.radius_bin,
             radial_weights=radial_weights,
             covariance_metric=covariance_metric,
+            component_metric=component_metric,
+            output_gain=output_gain,
         )
         loss_out["corruption_strength"] = corr_strength.detach()
         return loss_out
+
+    @torch.no_grad()
+    def predict_x0_diagnostics(
+        self,
+        tokens: torch.Tensor,
+        timesteps: torch.Tensor,
+        noise: torch.Tensor,
+        history_override: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Deterministic teacher-forced x0 prediction for a held-out panel."""
+        batch, length, _ = tokens.shape
+        if length != self.codec.seq_len_int:
+            raise ValueError(
+                f"Expected {self.codec.seq_len_int} tokens, got {length}"
+            )
+        history = tokens[:, :-1] if history_override is None else history_override
+        if history.shape != tokens[:, :-1].shape:
+            raise ValueError(
+                "history_override must have shape "
+                f"{tuple(tokens[:, :-1].shape)}, got {tuple(history.shape)}"
+            )
+        hidden, _ = self.forward_backbone(
+            self.embed_tokens(history, include_bos=True)
+        )
+        positions = torch.arange(length, device=tokens.device)
+        target_condition = self.target_position_condition(
+            positions,
+            batch_size=batch,
+            dtype=hidden.dtype,
+        )
+        if self.config.diffusion.target_condition_dim == 0:
+            target_condition = None
+        output_gain = self.diffusion_output_gain(positions)
+        return self.diffusion.predict_x0_deterministic(
+            tokens,
+            hidden,
+            timesteps,
+            noise,
+            component_mask=self.codec.component_mask,
+            output_gain=output_gain,
+            target_condition=target_condition,
+        )
 
     # ------------------------------------------------------------------
     # Cached generation
@@ -759,11 +996,8 @@ class ContinuousFFTDecoder(nn.Module):
     def init_cache(self, batch_size: int, device: torch.device, dtype: torch.dtype):
         """Run BOS through the backbone and return (z0, caches)."""
         bos = self.bos.to(device=device, dtype=dtype).expand(batch_size, -1, -1)
-        if (
-            not self.config.frequency_conditioning.enabled
-            or self.config.frequency_conditioning.input_addition
-        ):
-            bos_pos = self.pos_embed(
+        if self._uses_backbone_position():
+            bos_pos = self._backbone_position_embedding(
                 torch.zeros(1, device=device, dtype=torch.long),
                 self._bos_meta(device, dtype),
             )
@@ -792,13 +1026,11 @@ class ContinuousFFTDecoder(nn.Module):
         meta = self._position_meta(device, dtype)[position : position + 1]
         positions = torch.tensor([position], device=device, dtype=torch.long)
         tok = token.to(dtype=dtype)[:, None, :]
-        x = self.token_proj(tok)
+        cartesian = self._history_cartesian_features(tok, positions)
+        x = self.token_proj(cartesian)
         x = self._fuse_polar_features(x, tok, positions)
-        if (
-            not self.config.frequency_conditioning.enabled
-            or self.config.frequency_conditioning.input_addition
-        ):
-            pos = self.position_norm(self.pos_embed(seq_idx, meta))
+        if self._uses_backbone_position():
+            pos = self._backbone_position_embedding(seq_idx, meta)
             x = x + pos[None, :, :]
         h, new_caches = self.forward_backbone(x, kv_caches=kv_caches, use_cache=True)
         return h[:, -1, :], new_caches  # type: ignore
@@ -856,6 +1088,11 @@ class ContinuousFFTDecoder(nn.Module):
                     dtype=dtype,
                 )
                 target_condition = target_condition[:, 0, :]
+            output_gain = self.diffusion_output_gain(
+                torch.tensor([i], device=device)
+            )
+            if output_gain is not None:
+                output_gain = output_gain.expand(batch_size, -1)
             sample = self.diffusion.sample(
                 z,
                 target_condition=target_condition,
@@ -864,6 +1101,7 @@ class ContinuousFFTDecoder(nn.Module):
                 num_inference_steps=steps,
                 eta=eta_v,
                 temperature=temp,
+                output_gain=output_gain,
             )
             t_denoise += time.perf_counter() - t0
             tokens.append(sample)
@@ -902,6 +1140,7 @@ class ContinuousFFTDecoder(nn.Module):
         num_inference_steps: Optional[int] = None,
         temperature: float = 1.0,
         eta: float = 0.0,
+        max_tokens: Optional[int] = None,
     ) -> torch.Tensor:
         """Slow reference sampler recomputing the full prefix each step (for tests)."""
         self.codec.assert_fitted()
@@ -911,7 +1150,10 @@ class ContinuousFFTDecoder(nn.Module):
         mask = self.codec.component_mask.to(device=device)
         tokens_so_far: List[torch.Tensor] = []
 
-        for i in range(self.codec.seq_len):
+        n_tokens = self.codec.seq_len_int
+        if max_tokens is not None:
+            n_tokens = min(n_tokens, max_tokens)
+        for i in range(n_tokens):
             if not tokens_so_far:
                 z, _ = self.init_cache(batch_size, device, dtype)
             else:
@@ -927,6 +1169,11 @@ class ContinuousFFTDecoder(nn.Module):
                     dtype=dtype,
                 )
                 target_condition = target_condition[:, 0, :]
+            output_gain = self.diffusion_output_gain(
+                torch.tensor([i], device=device)
+            )
+            if output_gain is not None:
+                output_gain = output_gain.expand(batch_size, -1)
             sample = self.diffusion.sample(
                 z,
                 target_condition=target_condition,
@@ -935,6 +1182,7 @@ class ContinuousFFTDecoder(nn.Module):
                 num_inference_steps=steps,
                 eta=eta,
                 temperature=temperature,
+                output_gain=output_gain,
             )
             tokens_so_far.append(sample)
         return torch.stack(tokens_so_far, dim=1)

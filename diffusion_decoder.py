@@ -37,8 +37,12 @@ class DiffusionDecoderConfig:
     # expected-centered-power weights (normalized mean 1 across orbits).
     radial_power_weighting: bool = False
     radial_power_exponent: float = 0.5
-    loss_metric: str = "normalized"  # normalized | orbit_covariance_power
+    loss_metric: str = "normalized"  # normalized | orbit_covariance_power | orbit_scale_power
     orbit_covariance_exponent: float = 0.0
+    orbit_scale_exponent: float = 0.0
+    learned_output_gain: bool = False
+    input_timestep_conditioning: str = "none"  # none | film
+    input_projection_init: str = "xavier"  # xavier | kaiming_linear
     diffusion_batch_mul: int = 4
     num_inference_steps: int = 20
     clip_sample: bool = False
@@ -126,6 +130,8 @@ class SimpleMLPAdaLN(nn.Module):
         z_channels: int,
         target_condition_dim: int,
         num_res_blocks: int,
+        input_timestep_conditioning: str,
+        input_projection_init: str,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -137,6 +143,18 @@ class SimpleMLPAdaLN(nn.Module):
             else None
         )
         self.input_proj = nn.Linear(in_channels, model_channels)
+        self.input_timestep_conditioning = input_timestep_conditioning
+        self.input_projection_init = input_projection_init
+        if input_timestep_conditioning == "film":
+            # Keep all subsequently constructed shared layers bit-identical to
+            # the no-FiLM arm under the same global seed.
+            with torch.random.fork_rng(devices=[]):
+                self.input_time_modulation = nn.Sequential(
+                    nn.SiLU(),
+                    nn.Linear(model_channels, 2 * model_channels, bias=True),
+                )
+        else:
+            self.input_time_modulation = None
         self.res_blocks = nn.ModuleList([ResBlock(model_channels) for _ in range(num_res_blocks)])
         self.final_layer = FinalLayer(model_channels, out_channels)
         self.initialize_weights()
@@ -144,13 +162,30 @@ class SimpleMLPAdaLN(nn.Module):
     def initialize_weights(self) -> None:
         def _basic_init(module: nn.Module) -> None:
             if isinstance(module, nn.Linear):
-                nn.init.xavier_uniform_(module.weight)
+                if (
+                    self.input_time_modulation is not None
+                    and module is self.input_time_modulation[-1]
+                ):
+                    nn.init.zeros_(module.weight)
+                else:
+                    nn.init.xavier_uniform_(module.weight)
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0)
 
         self.apply(_basic_init)
+        if self.input_projection_init == "kaiming_linear":
+            nn.init.kaiming_uniform_(
+                self.input_proj.weight,
+                a=0.0,
+                mode="fan_in",
+                nonlinearity="linear",
+            )
+            nn.init.zeros_(self.input_proj.bias)
         nn.init.normal_(self.time_embed.mlp[0].weight, std=0.02)
         nn.init.normal_(self.time_embed.mlp[2].weight, std=0.02)
+        if self.input_time_modulation is not None:
+            nn.init.zeros_(self.input_time_modulation[-1].weight)
+            nn.init.zeros_(self.input_time_modulation[-1].bias)
         for block in self.res_blocks:
             nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
             nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
@@ -167,7 +202,11 @@ class SimpleMLPAdaLN(nn.Module):
         target_condition: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         x = self.input_proj(x)
-        y = self.time_embed(t) + self.cond_embed(c)
+        time = self.time_embed(t)
+        if self.input_time_modulation is not None:
+            scale, shift = self.input_time_modulation(time).chunk(2, dim=-1)
+            x = modulate(x, shift, scale)
+        y = time + self.cond_embed(c)
         if self.target_condition_embed is not None:
             if target_condition is None:
                 raise ValueError(
@@ -212,6 +251,14 @@ class DiffusionDecoder(nn.Module):
             raise ValueError("flow_t_eps must be in (0, 0.5).")
         if self.config.flow_solver not in ("euler", "heun"):
             raise ValueError(f"Unsupported flow_solver={self.config.flow_solver}")
+        if self.config.input_timestep_conditioning not in ("none", "film"):
+            raise ValueError(
+                "input_timestep_conditioning must be 'none' or 'film'."
+            )
+        if self.config.input_projection_init not in ("xavier", "kaiming_linear"):
+            raise ValueError(
+                "input_projection_init must be 'xavier' or 'kaiming_linear'."
+            )
         if self.config.timestep_spacing not in ("leading", "trailing", "linspace"):
             raise ValueError(
                 f"Unsupported timestep_spacing={self.config.timestep_spacing}"
@@ -221,22 +268,31 @@ class DiffusionDecoder(nn.Module):
                 "radial_power_exponent must be in [0, 1], "
                 f"got {self.config.radial_power_exponent}"
             )
-        if self.config.loss_metric not in ("normalized", "orbit_covariance_power"):
+        if self.config.loss_metric not in (
+            "normalized",
+            "orbit_covariance_power",
+            "orbit_scale_power",
+        ):
             raise ValueError(f"Unsupported loss_metric={self.config.loss_metric}")
         if not 0.0 <= self.config.orbit_covariance_exponent <= 1.0:
             raise ValueError("orbit_covariance_exponent must be in [0, 1].")
-        if self.config.loss_metric == "orbit_covariance_power":
+        if not 0.0 <= self.config.orbit_scale_exponent <= 1.0:
+            raise ValueError("orbit_scale_exponent must be in [0, 1].")
+        if self.config.loss_metric in (
+            "orbit_covariance_power",
+            "orbit_scale_power",
+        ):
             if (
                 self.config.objective != "ddpm"
                 or self.config.prediction_type != "x0"
                 or self.config.loss_space != "native"
             ):
                 raise ValueError(
-                    "orbit_covariance_power initially requires DDPM native x0 prediction."
+                    f"{self.config.loss_metric} initially requires DDPM native x0 prediction."
                 )
             if self.config.radial_power_weighting:
                 raise ValueError(
-                    "orbit_covariance_power is mutually exclusive with radial weighting."
+                    f"{self.config.loss_metric} is mutually exclusive with radial weighting."
                 )
 
         self.net = SimpleMLPAdaLN(
@@ -246,6 +302,8 @@ class DiffusionDecoder(nn.Module):
             z_channels=self.config.z_channels,
             target_condition_dim=self.config.target_condition_dim,
             num_res_blocks=self.config.depth,
+            input_timestep_conditioning=self.config.input_timestep_conditioning,
+            input_projection_init=self.config.input_projection_init,
         )
 
         scheduler_prediction_type = {
@@ -304,10 +362,14 @@ class DiffusionDecoder(nn.Module):
         radius_bin: Optional[torch.Tensor] = None,
         radial_weights: Optional[torch.Tensor] = None,
         covariance_metric: Optional[torch.Tensor] = None,
+        component_metric: Optional[torch.Tensor] = None,
+        output_gain: Optional[torch.Tensor] = None,
         target_condition: Optional[torch.Tensor] = None,
     ) -> Tuple[
         torch.Tensor,
         torch.Tensor,
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
         Optional[torch.Tensor],
         Optional[torch.Tensor],
         Optional[torch.Tensor],
@@ -344,6 +406,14 @@ class DiffusionDecoder(nn.Module):
                         b, -1, -1, -1
                     )
                 covariance_metric = covariance_metric.reshape(b * l, d, d)
+            if component_metric is not None:
+                if component_metric.ndim == 2:
+                    component_metric = component_metric[None, :, :].expand(b, -1, -1)
+                component_metric = component_metric.reshape(b * l, d)
+            if output_gain is not None:
+                if output_gain.ndim == 2:
+                    output_gain = output_gain[None, :, :].expand(b, -1, -1)
+                output_gain = output_gain.reshape(b * l, d)
         elif target.ndim != 2:
             raise ValueError(f"Expected target [B,L,D] or [N,D], got {tuple(target.shape)}")
 
@@ -361,6 +431,10 @@ class DiffusionDecoder(nn.Module):
                 radial_weights = radial_weights.repeat(mul)
             if covariance_metric is not None:
                 covariance_metric = covariance_metric.repeat(mul, 1, 1)
+            if component_metric is not None:
+                component_metric = component_metric.repeat(mul, 1)
+            if output_gain is not None:
+                output_gain = output_gain.repeat(mul, 1)
         return (
             target,
             z,
@@ -369,6 +443,8 @@ class DiffusionDecoder(nn.Module):
             radius_bin,
             radial_weights,
             covariance_metric,
+            component_metric,
+            output_gain,
         )
 
     def compute_loss(
@@ -379,6 +455,8 @@ class DiffusionDecoder(nn.Module):
         radius_bin: Optional[torch.Tensor] = None,
         radial_weights: Optional[torch.Tensor] = None,
         covariance_metric: Optional[torch.Tensor] = None,
+        component_metric: Optional[torch.Tensor] = None,
+        output_gain: Optional[torch.Tensor] = None,
         target_condition: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         """Vectorized diffusion loss.
@@ -401,6 +479,17 @@ class DiffusionDecoder(nn.Module):
                 )
         else:
             covariance_metric = None
+        if self.config.loss_metric == "orbit_scale_power":
+            if component_metric is None:
+                raise ValueError(
+                    "orbit_scale_power requires per-component metric weights."
+                )
+        else:
+            component_metric = None
+        if self.config.learned_output_gain and output_gain is None:
+            raise ValueError("learned_output_gain requires output_gain values.")
+        if not self.config.learned_output_gain:
+            output_gain = None
 
         (
             target,
@@ -410,6 +499,8 @@ class DiffusionDecoder(nn.Module):
             radius_bin,
             radial_weights,
             covariance_metric,
+            component_metric,
+            output_gain,
         ) = self._prepare_target_batch(
             target,
             z,
@@ -417,6 +508,8 @@ class DiffusionDecoder(nn.Module):
             radius_bin,
             radial_weights,
             covariance_metric,
+            component_metric,
+            output_gain,
             target_condition,
         )
         n = target.shape[0]
@@ -459,7 +552,10 @@ class DiffusionDecoder(nn.Module):
             time_condition,
             z,
             target_condition=target_condition,
-        ) * mask
+        )
+        if output_gain is not None:
+            raw_pred = raw_pred * output_gain.to(device=device, dtype=raw_pred.dtype)
+        raw_pred = raw_pred * mask
 
         if self.config.objective == "ddpm":
             if self.config.prediction_type == "epsilon":
@@ -513,11 +609,19 @@ class DiffusionDecoder(nn.Module):
             )
         else:
             covariance_per_example = per_example
-        metric_per_example = (
-            covariance_per_example
-            if self.config.loss_metric == "orbit_covariance_power"
-            else per_example
-        )
+        if component_metric is not None:
+            scale_per_example = (
+                per_dim
+                * component_metric.to(device=device, dtype=per_dim.dtype)
+            ).sum(dim=-1)
+        else:
+            scale_per_example = per_example
+        if self.config.loss_metric == "orbit_covariance_power":
+            metric_per_example = covariance_per_example
+        elif self.config.loss_metric == "orbit_scale_power":
+            metric_per_example = scale_per_example
+        else:
+            metric_per_example = per_example
 
         if self.config.loss_weighting == "min_snr":
             snr_weights = self._min_snr_weights(
@@ -551,6 +655,7 @@ class DiffusionDecoder(nn.Module):
             "loss": loss,
             "unweighted_mse": per_example.mean().detach(),
             "covariance_metric_loss": covariance_per_example.mean().detach(),
+            "scale_metric_loss": scale_per_example.mean().detach(),
             "weighted_loss": weighted.mean().detach(),
             "radial_weighted_mse": radial_weighted.mean().detach(),
             "per_example": metric_per_example.detach(),
@@ -565,6 +670,97 @@ class DiffusionDecoder(nn.Module):
         if self.config.objective == "flow":
             out["flow_times"] = flow_t.detach()
         return out
+
+    @torch.no_grad()
+    def predict_x0_deterministic(
+        self,
+        target: torch.Tensor,
+        z: torch.Tensor,
+        timesteps: torch.Tensor,
+        noise: torch.Tensor,
+        component_mask: Optional[torch.Tensor] = None,
+        output_gain: Optional[torch.Tensor] = None,
+        target_condition: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Predict normalized x0 at explicitly supplied times and noise.
+
+        This path is evaluation-only and deliberately bypasses diffusion batch
+        multiplication and random sampling so different objectives can be
+        compared on one fixed held-out panel.
+        """
+        original_shape = target.shape
+        if target.ndim == 3:
+            b, length, dim = target.shape
+            target = target.reshape(b * length, dim)
+            z = z.reshape(b * length, -1)
+            timesteps = timesteps.reshape(b * length)
+            noise = noise.reshape(b * length, dim)
+            if component_mask is not None:
+                if component_mask.ndim == 2:
+                    component_mask = component_mask[None].expand(b, -1, -1)
+                component_mask = component_mask.reshape(b * length, dim)
+            if output_gain is not None:
+                if output_gain.ndim == 2:
+                    output_gain = output_gain[None].expand(b, -1, -1)
+                output_gain = output_gain.reshape(b * length, dim)
+            if target_condition is not None:
+                if target_condition.ndim == 2:
+                    target_condition = target_condition[None].expand(b, -1, -1)
+                target_condition = target_condition.reshape(b * length, -1)
+        elif target.ndim != 2:
+            raise ValueError("target must have shape [B,L,D] or [N,D]")
+
+        n = target.shape[0]
+        mask = self._expand_mask(
+            component_mask,
+            n,
+            target.device,
+            target.dtype,
+        )
+        noise = noise.to(device=target.device, dtype=target.dtype) * mask
+        timesteps = timesteps.to(device=target.device, dtype=torch.long)
+        if self.config.objective == "ddpm":
+            noisy = self.train_scheduler.add_noise(
+                target.float(), noise.float(), timesteps
+            ).to(target.dtype)
+            time_condition = timesteps
+        else:
+            flow_t = (timesteps.float() + 0.5) / float(
+                self.config.num_train_timesteps
+            )
+            noisy = (
+                flow_t[:, None] * target.float()
+                + (1.0 - flow_t[:, None]) * noise.float()
+            ).to(target.dtype)
+            time_condition = flow_t * float(self.config.num_train_timesteps - 1)
+        noisy = noisy * mask
+
+        raw = self.net(
+            noisy,
+            time_condition,
+            z,
+            target_condition=target_condition,
+        )
+        if output_gain is not None:
+            raw = raw * output_gain.to(device=raw.device, dtype=raw.dtype)
+        raw = raw * mask
+
+        if self.config.prediction_type == "x0":
+            x0 = raw
+        elif self.config.objective == "ddpm":
+            alpha_bar = self.train_scheduler.alphas_cumprod.to(raw.device)[timesteps]
+            alpha = alpha_bar.sqrt()[:, None]
+            sigma = (1.0 - alpha_bar).sqrt()[:, None]
+            if self.config.prediction_type == "epsilon":
+                x0 = (
+                    noisy.float() - sigma * raw.float()
+                ) / alpha.clamp_min(1e-6)
+            else:
+                x0 = alpha * noisy.float() - sigma * raw.float()
+        else:
+            x0 = noisy.float() + (1.0 - flow_t[:, None]) * raw.float()
+        x0 = x0.to(target.dtype) * mask
+        return x0.reshape(original_shape)
 
     def _min_snr_weights(
         self,
@@ -584,9 +780,14 @@ class DiffusionDecoder(nn.Module):
         mse_loss_weights = torch.stack(
             [snr, gamma * torch.ones_like(timesteps, dtype=snr.dtype)], dim=1
         ).min(dim=1)[0]
-        if self.config.prediction_type == "x0":
+        loss_prediction_type = (
+            "v_prediction"
+            if self.config.loss_space == "v"
+            else self.config.prediction_type
+        )
+        if loss_prediction_type == "x0":
             mse_loss_weights = mse_loss_weights / gamma
-        elif self.config.prediction_type == "epsilon":
+        elif loss_prediction_type == "epsilon":
             mse_loss_weights = mse_loss_weights / snr.clamp_min(1e-8)
         else:
             mse_loss_weights = mse_loss_weights / (snr + 1)
@@ -602,6 +803,7 @@ class DiffusionDecoder(nn.Module):
         eta: float = 0.0,
         temperature: float = 1.0,
         target_condition: Optional[torch.Tensor] = None,
+        output_gain: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """DDIM sample tokens conditioned on z.
 
@@ -616,6 +818,12 @@ class DiffusionDecoder(nn.Module):
         dtype = z.dtype
         steps = num_inference_steps or self.config.num_inference_steps
         mask = self._expand_mask(component_mask, n, device, dtype)
+        if self.config.learned_output_gain and output_gain is None:
+            raise ValueError("learned_output_gain requires output_gain values.")
+        if not self.config.learned_output_gain:
+            output_gain = None
+        elif output_gain is not None:
+            output_gain = output_gain.to(device=device, dtype=dtype)
 
         if self.config.objective == "flow":
             return self._sample_flow(
@@ -625,6 +833,7 @@ class DiffusionDecoder(nn.Module):
                 generator=generator,
                 steps=steps,
                 temperature=temperature,
+                output_gain=output_gain,
             )
 
         # Clone scheduler config so callers can change steps safely.
@@ -648,7 +857,10 @@ class DiffusionDecoder(nn.Module):
                 t_batch,
                 z,
                 target_condition=target_condition,
-            ).float() * mask.float()
+            )
+            if output_gain is not None:
+                model_output = model_output * output_gain
+            model_output = model_output.float() * mask.float()
             out = scheduler.step(
                 model_output,
                 t,
@@ -668,6 +880,7 @@ class DiffusionDecoder(nn.Module):
         generator: Optional[torch.Generator],
         steps: int,
         temperature: float,
+        output_gain: Optional[torch.Tensor],
     ) -> torch.Tensor:
         """Integrate the JiT convention from noise at t=0 to data at t=1."""
         n = z.shape[0]
@@ -695,7 +908,10 @@ class DiffusionDecoder(nn.Module):
                 time_condition,
                 z,
                 target_condition=target_condition,
-            ).float() * mask.float()
+            )
+            if output_gain is not None:
+                raw = raw * output_gain
+            raw = raw.float() * mask.float()
             if self.config.prediction_type == "x0":
                 denom = max(1.0 - t_value, self.config.flow_t_eps)
                 return (raw - x) / denom
