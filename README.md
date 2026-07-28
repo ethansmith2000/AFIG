@@ -197,6 +197,91 @@ Note: the official Toronto CIFAR tarball can be very slow from this host (~50KB/
 If `./data/cifar-10-batches-py` is missing, prefer `--dataset huggingface_cifar` or let
 `auto` pick up the existing arrow cache.
 
+## Autoencoder / VAE representation training
+
+`train_autoencoder.py` trains reconstruction codecs independently of the AR
+generator. It supports:
+
+- `causal_k`: contiguous radial-order chunks compressed to one latent each;
+- `causal_ring`: integer-radius rings split into an adaptive number of balanced
+  angular sectors and pooled to one latent per sector;
+- `spatial_downsample`: a residual convolutional AE/VAE whose real latent map
+  can be exported as channel-generic Hermitian FFT tokens.
+
+Frequency modes use a full-receptive-field causal TCN by default. `--depth 0`
+chooses the minimum dilation depth whose final position can depend on the first
+position. Pooling is configurable with `flat_mlp`, `perceiver_full`, or
+`perceiver_sector`. Perceiver pooling uses a directly learned query for every
+exported latent, a configurable higher-dimensional multi-head attention space
+(`--perceiver_width`, `--perceiver_heads`), Q/K RMS normalization, and a residual
+feed-forward block before projection to `latent_dim`. Ring-sector queries attend
+only their own dynamically sized, padded sector.
+
+Frequency codecs support symmetric target/group conditioning with
+`--group_conditioning none|film|low_rank|film_low_rank`. The condition includes
+absolute frequency coordinates, radius/angle, group size and identity,
+axis/self-conjugate status, and empirical orbit scale; it modulates encoder
+blocks, pooling, causal latent processing, and the final coordinate decoder.
+
+```bash
+# Four consecutive Fourier coefficients per latent.
+scripts/run_autoencoder_gate.sh causal_k 0 30000
+
+# Adaptive 1–4 angular-sector latents per integer-radius ring.
+TARGET_TOKENS_PER_LATENT=16 MAX_RING_LATENTS=4 \
+  scripts/run_autoencoder_gate.sh causal_ring 0 30000
+
+# 32x32 image -> 8x8 real latent map -> 34 latent FFT orbit tokens.
+SPATIAL_DOWNSAMPLE=4 SPATIAL_LATENT_CHANNELS=8 \
+  scripts/run_autoencoder_gate.sh spatial_downsample 0 30000
+```
+
+Set `VARIATIONAL=true KL_WEIGHT=... KL_FREE_BITS=...` for a VAE; deterministic
+AE training is the default. Checkpointing remains opt-in. Reconstruction logs
+include pixel MSE/PSNR, physical Fourier NRMSE, log-amplitude, phase, radial
+power, KL/rate, latent statistics, scalar compression, and throughput.
+
+Raw complex FFT MSE is disabled by default because it duplicates pixel MSE under
+the orthonormal FFT. Independent objectives are available through
+`--log_amplitude_weight`, `--phase_loss_weight`, and
+`--radial_log_power_weight`; phase uses target-amplitude gating. The normalized
+Cartesian token loss defaults to `0.01`, and sparse output-gradient ratios are
+logged to calibrate spectral auxiliaries.
+
+Latent evaluation includes radial-prefix reconstructions, Gaussian perturbation,
+Hermitian round-trip error, covariance/correlation, edge, boundary, and
+checkerboard diagnostics. Training robustness knobs include
+`--latent_noise_std`, `--latent_ring_dropout`, and
+`--latent_high_frequency_dropout`.
+
+For ImageFolder data, call `train_autoencoder.py --dataset imagefolder
+--data_root PATH --resolution 64|128`. Exported checkpoints include model
+configuration and fitted Fourier codec state where applicable. Ring-level AR
+queries and diffusion heads are intentionally not part of this trainer.
+
+Export contracts:
+
+- frequency `export_latents(tokens)` returns `[B,G,latent_dim]` plus
+  `latent_parent`, `token_parent`, padded `gather_indices`, and `gather_mask`;
+- spatial `export_latents(images)` returns the real map
+  `[B,C,H/downsample,W/downsample]` and radial Hermitian tokens
+  `[B,L,2C]`, where `L=h*w/2+2` for even latent dimensions.
+
+Existing image autoencoders can be evaluated without retraining:
+
+```bash
+gpu-claim run --owner AFIG --job external-vae-eval --wait -- \
+  python evaluate_image_autoencoder.py \
+    --model stabilityai/sd-vae-ft-mse \
+    --resolution 32 --save_latent_stats
+```
+
+The adapter performs `RGB -> existing encoder -> real latent map -> latent FFT`,
+handles model-specific scaling and posterior sampling, and reports when an
+8x-downsample VAE collapses a 32x32 image to a 4x4 latent. For a trained custom
+frequency checkpoint, `fit_autoencoder_latent_interface.py` fits per-position
+latent statistics and a small next-token causal probe.
+
 Useful flags:
 
 - `--resume_from_checkpoint PATH|latest`
