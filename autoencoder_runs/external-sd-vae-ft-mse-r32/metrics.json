@@ -1,0 +1,23 @@
+{
+  "interface/downsample": 8,
+  "interface/exported_tokens": 10,
+  "interface/input_resolution": 32,
+  "interface/latent_channels": 4,
+  "interface/latent_height": 4,
+  "interface/latent_width": 4,
+  "interface/source_to_latent_token_ratio": 51.4,
+  "latent/normalized_mean": 0.0017542100977152586,
+  "latent/normalized_rms": 0.8944272398948669,
+  "latent_prefix/pixel_mse_0.25": 0.03378235048148781,
+  "latent_prefix/pixel_mse_0.50": 0.032997040543705225,
+  "latent_prefix/pixel_mse_0.75": 0.028377583250403404,
+  "latent_prefix/psnr_0.25": 14.741575241088867,
+  "latent_prefix/psnr_0.50": 14.836155116558075,
+  "latent_prefix/psnr_0.75": 15.496948003768921,
+  "reconstruction/log_amplitude_mae": 0.8246612139046192,
+  "reconstruction/phase_circular_error": 0.8157940432429314,
+  "reconstruction/physical_fourier_nrmse": 0.28127171006053686,
+  "reconstruction/pixel_mse": 0.022696242202073336,
+  "reconstruction/psnr": 16.46599978208542,
+  "reconstruction/radial_power_relative_error": 2.0872568413615227
+}

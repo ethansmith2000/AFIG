@@ -1364,7 +1364,17 @@ class ImageAutoencoderAdapter(nn.Module):
         )
 
     def _prepare_images(self, images: torch.Tensor) -> torch.Tensor:
-        return images * 2.0 - 1.0 if self.input_range == "minus_one_one" else images
+        prepared = (
+            images * 2.0 - 1.0
+            if self.input_range == "minus_one_one"
+            else images
+        )
+        parameter = next(self.model.parameters(), None)
+        return (
+            prepared
+            if parameter is None
+            else prepared.to(device=parameter.device, dtype=parameter.dtype)
+        )
 
     def _restore_images(self, images: torch.Tensor) -> torch.Tensor:
         return (images + 1.0) * 0.5 if self.input_range == "minus_one_one" else images
@@ -1395,7 +1405,13 @@ class ImageAutoencoderAdapter(nn.Module):
         )
 
     def decode(self, scaled_latents: torch.Tensor) -> torch.Tensor:
-        decoded = self.model.decode(scaled_latents / self.scaling_factor)
+        parameter = next(self.model.parameters(), None)
+        model_latents = scaled_latents / self.scaling_factor
+        if parameter is not None:
+            model_latents = model_latents.to(
+                device=parameter.device, dtype=parameter.dtype
+            )
+        decoded = self.model.decode(model_latents)
         sample = getattr(decoded, "sample", decoded[0] if isinstance(decoded, tuple) else decoded)
         return self._restore_images(sample)
 

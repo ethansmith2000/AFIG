@@ -214,8 +214,15 @@ position. Pooling is configurable with `flat_mlp`, `perceiver_full`, or
 `perceiver_sector`. Perceiver pooling uses a directly learned query for every
 exported latent, a configurable higher-dimensional multi-head attention space
 (`--perceiver_width`, `--perceiver_heads`), Q/K RMS normalization, and a residual
-feed-forward block before projection to `latent_dim`. Ring-sector queries attend
-only their own dynamically sized, padded sector.
+feed-forward block before projection to `latent_dim`.
+
+The ring codec treats angular sectors as the causal units. Its coefficient
+Transformer is block-causal: tokens mix bidirectionally inside their own sector
+and attend every earlier sector, but never a later one. Unique sector queries
+pool only their own dynamically sized sector. The mirrored decoder causally
+mixes the sector latents and masks coordinate cross-attention so coefficients in
+sector `j` can use only latents `<= j`; no full-ring averaging is performed.
+`--ring_transformer_layers` controls the encoder and decoder depth.
 
 Frequency codecs support symmetric target/group conditioning with
 `--group_conditioning none|film|low_rank|film_low_rank`. The condition includes

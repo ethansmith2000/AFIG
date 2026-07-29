@@ -16,11 +16,6 @@ for seed in 0 1; do
     GROUP_CONDITIONING=film_low_rank TOKEN_LOSS_WEIGHT=0.01 \
     RUN_GROUP=afig-ae-perceiver-v2-30k \
     "${launcher}" causal_k "${seed}" "${steps}"
-  launch env LATENT_DIM=64 TARGET_TOKENS_PER_LATENT=16 MAX_RING_LATENTS=4 \
-    POOLER=perceiver_sector PERCEIVER_WIDTH=256 PERCEIVER_HEADS=4 \
-    GROUP_CONDITIONING=film_low_rank TOKEN_LOSS_WEIGHT=0.01 \
-    RUN_GROUP=afig-ae-perceiver-v2-30k \
-    "${launcher}" causal_ring "${seed}" "${steps}"
 done
 
 status=0

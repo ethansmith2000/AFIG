@@ -112,6 +112,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--latent_noise_std", type=float, default=0.0)
     parser.add_argument("--latent_ring_dropout", type=float, default=0.0)
     parser.add_argument("--latent_high_frequency_dropout", type=float, default=0.0)
+    parser.add_argument("--latent_moment_weight", type=float, default=0.0)
     parser.add_argument("--prefix_fractions", default="0.25,0.5,0.75")
     parser.add_argument("--eval_panel_size", type=int, default=16)
     parser.add_argument("--logging_steps", type=int, default=25)
@@ -159,6 +160,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "latent_noise_std",
         "latent_ring_dropout",
         "latent_high_frequency_dropout",
+        "latent_moment_weight",
     ):
         if getattr(args, name) < 0:
             parser.error(f"--{name} must be non-negative")
@@ -542,6 +544,20 @@ def compute_batch_loss(
             (reconstructed_tokens.float() - tokens.float()).square() * mask
         ).sum() / (mask.sum() * tokens.shape[0]).clamp_min(1.0)
     latents = output["latents"]
+    if args.latent_moment_weight > 0:
+        if latents.ndim == 3:
+            latent_samples = latents.float().reshape(-1, latents.shape[-1])
+        else:
+            latent_samples = latents.float().permute(0, 2, 3, 1).reshape(
+                -1, latents.shape[1]
+            )
+        latent_mean = latent_samples.mean(dim=0)
+        latent_variance = latent_samples.var(dim=0, unbiased=False)
+        latent_moment_loss = latent_mean.square().mean() + (
+            latent_variance - 1.0
+        ).square().mean()
+    else:
+        latent_moment_loss = latents.new_zeros(())
     if model.training and (
         args.latent_noise_std > 0
         or args.latent_ring_dropout > 0
@@ -585,6 +601,7 @@ def compute_batch_loss(
         + args.phase_loss_weight * spectral["phase"]
         + args.radial_log_power_weight * spectral["radial_log_power"]
         + args.kl_weight * effective_kl
+        + args.latent_moment_weight * latent_moment_loss
     )
     logs = {
         "loss": loss.detach(),
@@ -596,6 +613,7 @@ def compute_batch_loss(
         "loss/radial_log_power": spectral["radial_log_power"].detach(),
         "loss/kl_raw": raw_kl.detach(),
         "loss/kl_effective": effective_kl.detach(),
+        "loss/latent_moment": latent_moment_loss.detach(),
         "latent/mean": output["mean"].detach().float().mean(),
         "latent/std": output["latents"].detach().float().std(),
         "latent/rms": output["latents"].detach().float().square().mean().sqrt(),

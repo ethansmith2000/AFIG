@@ -43,7 +43,7 @@ case "${mode}" in
     pooler="${POOLER:-perceiver_sector}"
     pool_suffix=""
     if [[ "${pooler}" == perceiver_* ]]; then
-      pool_suffix="-p${PERCEIVER_WIDTH:-256}h${PERCEIVER_HEADS:-4}"
+      pool_suffix="-p${PERCEIVER_WIDTH:-256}h${PERCEIVER_HEADS:-4}-seq${RING_TRANSFORMER_LAYERS:-2}"
     fi
     run_name="ae-causal-ring-t${target_tokens}-m${max_latents}-${pooler}${pool_suffix}-${conditioning}-z${latent_dim}-r${resolution}-s${seed}-n${steps}"
     mode_args=(
@@ -129,6 +129,7 @@ exec gpu-claim run --owner AFIG --job "${run_name}" --wait -- \
   --latent_noise_std "${latent_noise}" \
   --latent_ring_dropout "${ring_dropout}" \
   --latent_high_frequency_dropout "${high_dropout}" \
+  --latent_moment_weight "${LATENT_MOMENT_WEIGHT:-0.0}" \
   --report_to "${REPORT_TO:-wandb}" \
   --tracker_project_name "${WANDB_PROJECT:-afig-autoencoder}" \
   --run_group "${RUN_GROUP:-afig-autoencoder-reconstruction-gates}" \
