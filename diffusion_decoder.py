@@ -18,6 +18,7 @@ class DiffusionDecoderConfig:
     target_dim: int = 6
     z_channels: int = 512
     target_condition_dim: int = 0
+    condition_fusion: str = "add"  # add | concat_mlp
     width: int = 512
     depth: int = 3
     objective: str = "ddpm"  # ddpm | flow
@@ -37,7 +38,7 @@ class DiffusionDecoderConfig:
     # expected-centered-power weights (normalized mean 1 across orbits).
     radial_power_weighting: bool = False
     radial_power_exponent: float = 0.5
-    loss_metric: str = "normalized"  # normalized | orbit_covariance_power | orbit_scale_power
+    loss_metric: str = "normalized"  # normalized | component_weighted | orbit_*
     orbit_covariance_exponent: float = 0.0
     orbit_scale_exponent: float = 0.0
     learned_output_gain: bool = False
@@ -131,6 +132,7 @@ class SimpleMLPAdaLN(nn.Module):
         out_channels: int,
         z_channels: int,
         target_condition_dim: int,
+        condition_fusion: str,
         num_res_blocks: int,
         input_timestep_conditioning: str,
         input_projection_init: str,
@@ -138,12 +140,27 @@ class SimpleMLPAdaLN(nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.time_embed = TimestepEmbedder(model_channels)
-        self.cond_embed = nn.Linear(z_channels, model_channels)
-        self.target_condition_embed = (
-            nn.Linear(target_condition_dim, model_channels)
-            if target_condition_dim > 0
-            else None
-        )
+        self.condition_fusion = condition_fusion
+        if condition_fusion == "add":
+            self.cond_embed = nn.Linear(z_channels, model_channels)
+            self.target_condition_embed = (
+                nn.Linear(target_condition_dim, model_channels)
+                if target_condition_dim > 0
+                else None
+            )
+            self.condition_mlp = None
+        elif condition_fusion == "concat_mlp":
+            if target_condition_dim <= 0:
+                raise ValueError("concat_mlp requires target_condition_dim > 0")
+            self.cond_embed = None
+            self.target_condition_embed = None
+            self.condition_mlp = nn.Sequential(
+                nn.Linear(z_channels + target_condition_dim, model_channels),
+                nn.SiLU(),
+                nn.Linear(model_channels, model_channels),
+            )
+        else:
+            raise ValueError(f"Unknown condition_fusion={condition_fusion}")
         self.input_proj = nn.Linear(in_channels, model_channels)
         self.input_timestep_conditioning = input_timestep_conditioning
         self.input_projection_init = input_projection_init
@@ -208,14 +225,20 @@ class SimpleMLPAdaLN(nn.Module):
         if self.input_time_modulation is not None:
             scale, shift = self.input_time_modulation(time).chunk(2, dim=-1)
             x = modulate(x, shift, scale)
-        y = time + self.cond_embed(c)
+        if self.condition_mlp is not None:
+            if target_condition is None:
+                raise ValueError("concat_mlp requires target_condition")
+            y = time + self.condition_mlp(torch.cat([c, target_condition], dim=-1))
+        else:
+            assert self.cond_embed is not None
+            y = time + self.cond_embed(c)
         if self.target_condition_embed is not None:
             if target_condition is None:
                 raise ValueError(
                     "target_condition is required when target_condition_dim > 0"
                 )
             y = y + self.target_condition_embed(target_condition)
-        elif target_condition is not None:
+        elif self.condition_mlp is None and target_condition is not None:
             raise ValueError(
                 "target_condition was provided but target_condition_dim is 0"
             )
@@ -283,6 +306,7 @@ class DiffusionDecoder(nn.Module):
             )
         if self.config.loss_metric not in (
             "normalized",
+            "component_weighted",
             "orbit_covariance_power",
             "orbit_scale_power",
         ):
@@ -314,6 +338,7 @@ class DiffusionDecoder(nn.Module):
             out_channels=self.config.target_dim,
             z_channels=self.config.z_channels,
             target_condition_dim=self.config.target_condition_dim,
+            condition_fusion=self.config.condition_fusion,
             num_res_blocks=self.config.depth,
             input_timestep_conditioning=self.config.input_timestep_conditioning,
             input_projection_init=self.config.input_projection_init,
@@ -492,10 +517,10 @@ class DiffusionDecoder(nn.Module):
                 )
         else:
             covariance_metric = None
-        if self.config.loss_metric == "orbit_scale_power":
+        if self.config.loss_metric in ("component_weighted", "orbit_scale_power"):
             if component_metric is None:
                 raise ValueError(
-                    "orbit_scale_power requires per-component metric weights."
+                    f"{self.config.loss_metric} requires per-component metric weights."
                 )
         else:
             component_metric = None
@@ -631,7 +656,7 @@ class DiffusionDecoder(nn.Module):
             scale_per_example = per_example
         if self.config.loss_metric == "orbit_covariance_power":
             metric_per_example = covariance_per_example
-        elif self.config.loss_metric == "orbit_scale_power":
+        elif self.config.loss_metric in ("component_weighted", "orbit_scale_power"):
             metric_per_example = scale_per_example
         else:
             metric_per_example = per_example
@@ -810,6 +835,50 @@ class DiffusionDecoder(nn.Module):
         return mse_loss_weights
 
     @torch.no_grad()
+    def _guided_prediction(
+        self,
+        x: torch.Tensor,
+        time_condition: torch.Tensor,
+        z: torch.Tensor,
+        target_condition: Optional[torch.Tensor],
+        unconditional_z: Optional[torch.Tensor],
+        cfg_scale: float,
+        cfg_norm_match: bool,
+    ) -> torch.Tensor:
+        if unconditional_z is None or cfg_scale == 1.0:
+            return self.net(
+                x, time_condition, z, target_condition=target_condition
+            )
+        if unconditional_z.shape != z.shape:
+            raise ValueError("unconditional_z must match z")
+        doubled_condition = (
+            None
+            if target_condition is None
+            else torch.cat([target_condition, target_condition], dim=0)
+        )
+        prediction = self.net(
+            torch.cat([x, x], dim=0),
+            torch.cat([time_condition, time_condition], dim=0),
+            torch.cat([unconditional_z, z], dim=0),
+            target_condition=doubled_condition,
+        )
+        unconditional, conditional = prediction.chunk(2, dim=0)
+        guided = unconditional + float(cfg_scale) * (conditional - unconditional)
+        if cfg_norm_match:
+            conditional_norm = torch.linalg.vector_norm(
+                conditional.float(), dim=-1, keepdim=True
+            )
+            guided_norm = torch.linalg.vector_norm(
+                guided.float(), dim=-1, keepdim=True
+            )
+            guided = (
+                guided.float()
+                * conditional_norm
+                / guided_norm.clamp_min(1e-8)
+            ).to(guided.dtype)
+        return guided
+
+    @torch.no_grad()
     def sample(
         self,
         z: torch.Tensor,
@@ -820,6 +889,9 @@ class DiffusionDecoder(nn.Module):
         temperature: float = 1.0,
         target_condition: Optional[torch.Tensor] = None,
         output_gain: Optional[torch.Tensor] = None,
+        unconditional_z: Optional[torch.Tensor] = None,
+        cfg_scale: float = 1.0,
+        cfg_norm_match: bool = False,
     ) -> torch.Tensor:
         """DDIM sample tokens conditioned on z.
 
@@ -850,6 +922,9 @@ class DiffusionDecoder(nn.Module):
                 steps=steps,
                 temperature=temperature,
                 output_gain=output_gain,
+                unconditional_z=unconditional_z,
+                cfg_scale=cfg_scale,
+                cfg_norm_match=cfg_norm_match,
             )
 
         # Clone scheduler config so callers can change steps safely.
@@ -868,11 +943,14 @@ class DiffusionDecoder(nn.Module):
         for t in scheduler.timesteps:
             t_batch = torch.full((n,), int(t), device=device, dtype=torch.long)
             model_input = latents.to(dtype=dtype) * mask
-            model_output = self.net(
+            model_output = self._guided_prediction(
                 model_input,
                 t_batch,
                 z,
-                target_condition=target_condition,
+                target_condition,
+                unconditional_z,
+                cfg_scale,
+                cfg_norm_match,
             )
             if output_gain is not None:
                 model_output = model_output * output_gain
@@ -897,6 +975,9 @@ class DiffusionDecoder(nn.Module):
         steps: int,
         temperature: float,
         output_gain: Optional[torch.Tensor],
+        unconditional_z: Optional[torch.Tensor],
+        cfg_scale: float,
+        cfg_norm_match: bool,
     ) -> torch.Tensor:
         """Integrate the JiT convention from noise at t=0 to data at t=1."""
         n = z.shape[0]
@@ -919,11 +1000,14 @@ class DiffusionDecoder(nn.Module):
                 device=device,
                 dtype=torch.float32,
             )
-            raw = self.net(
+            raw = self._guided_prediction(
                 x.to(dtype=dtype) * mask,
                 time_condition,
                 z,
-                target_condition=target_condition,
+                target_condition,
+                unconditional_z,
+                cfg_scale,
+                cfg_norm_match,
             )
             if output_gain is not None:
                 raw = raw * output_gain

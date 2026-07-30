@@ -31,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--probe_steps", type=int, default=500)
     parser.add_argument("--probe_width", type=int, default=128)
     parser.add_argument("--probe_lr", type=float, default=1e-3)
+    parser.add_argument("--sample_posterior", action="store_true")
     parser.add_argument("--output", default=None)
     return parser.parse_args()
 
@@ -73,6 +74,7 @@ def _collect_latents(
     loader: DataLoader,
     num_batches: int,
     device: torch.device,
+    sample_posterior: bool = False,
 ) -> torch.Tensor:
     values = []
     for index, batch in enumerate(loader):
@@ -80,7 +82,11 @@ def _collect_latents(
             break
         images = batch[0].to(device)
         tokens = codec.encode(images)
-        values.append(model.export_latents(tokens)["latents"].float().cpu())
+        values.append(
+            model.export_latents(
+                tokens, sample_posterior=sample_posterior
+            )["latents"].float().cpu()
+        )
     if not values:
         raise RuntimeError("No latent batches were collected")
     return torch.cat(values)
@@ -158,7 +164,15 @@ def main(args: argparse.Namespace | None = None) -> None:
         num_workers=2,
         pin_memory=torch.cuda.is_available(),
     )
-    latents = _collect_latents(model, codec, loader, args.num_batches, device)
+    torch.manual_seed(0)
+    latents = _collect_latents(
+        model,
+        codec,
+        loader,
+        args.num_batches,
+        device,
+        sample_posterior=args.sample_posterior,
+    )
     split = max(int(latents.shape[0] * 0.9), 1)
     train = latents[:split].to(device)
     validation = latents[split:].to(device)
@@ -179,6 +193,7 @@ def main(args: argparse.Namespace | None = None) -> None:
         "config": payload["config"],
         "latent_mean": mean.cpu(),
         "latent_std": std.cpu(),
+        "sample_posterior": bool(args.sample_posterior),
         "probe": probe.state_dict(),
         "probe_width": args.probe_width,
         "probe_validation_mse": probe_mse,

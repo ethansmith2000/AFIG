@@ -289,6 +289,46 @@ handles model-specific scaling and posterior sampling, and reports when an
 frequency checkpoint, `fit_autoencoder_latent_interface.py` fits per-position
 latent statistics and a small next-token causal probe.
 
+### Target-12 latent AFIG
+
+`train_latent_continuous.py` trains the compact AR generator selected for the
+53-token, 64-D target-12 sequential-ring codec. The frozen codec maps CIFAR-10
+images to per-position/per-channel standardized latents. Each shifted Transformer
+input concatenates the preceding latent, deterministic target sector metadata,
+and a BOS flag; no learned absolute-position table or Fourier-history branch is
+used. The diffusion decoder concatenates Transformer context with the same target
+metadata before its AdaLN stack.
+
+About 10% of decoder contexts are replaced by a learned null vector while sector
+metadata stays present. Sampling supports decoder-context CFG and writes preview
+grids at scales 1.0, 1.5, and 2.0. `--cfg_norm_match` rescales each guided
+64-D prediction to the corresponding conditional prediction norm, preserving
+guidance direction without allowing CFG to inflate latent amplitude.
+
+```bash
+AE_RUN=autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000
+
+# Fit [53,64] training-set moments once.
+gpu-claim run --owner AFIG --job fit-t12-latents --wait -- \
+  python fit_autoencoder_latent_interface.py \
+  --checkpoint "$AE_RUN/checkpoint_30000.pt"
+
+# Train only the normalized latent diffusion objective.
+gpu-claim run --owner AFIG --job latent-afig-t12 --wait -- \
+  python train_latent_continuous.py \
+  --ae_checkpoint "$AE_RUN/checkpoint_30000.pt" \
+  --latent_interface "$AE_RUN/latent_interface.pt" \
+  --output_dir latent_continuous_runs/t12-seed1 \
+  --run_name latent-afig-t12-seed1
+
+# Larger 30k rectified-flow coherence run with norm-matched CFG.
+scripts/run_latent_afig_coherence.sh
+```
+
+Latent checkpoints inline the fitted moments, deterministic position features,
+feature schema, layout fingerprint, sequence length, token dimension, and frozen
+AE reference. Loading rejects a mismatched codec or latent interface.
+
 Useful flags:
 
 - `--resume_from_checkpoint PATH|latest`

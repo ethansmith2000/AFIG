@@ -1,6 +1,7 @@
 data/
 wandb*/
 continuous_runs/
+latent_continuous_runs/
 logs/
 *.pt
 *.pth

@@ -22,6 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data_root", default="data")
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--sample_posterior", action="store_true")
     return parser.parse_args()
 
 
@@ -30,6 +31,7 @@ def evaluate_checkpoint(
     checkpoint: str,
     loader: DataLoader,
     device: torch.device,
+    sample_posterior: bool = False,
 ) -> dict[str, float]:
     model, codec, _ = _load_model(checkpoint, device)
     totals: dict[str, float] = {}
@@ -42,7 +44,7 @@ def evaluate_checkpoint(
             enabled=device.type == "cuda",
         ):
             tokens = codec.encode(images)
-            output = model(tokens, sample_posterior=False)
+            output = model(tokens, sample_posterior=sample_posterior)
             reconstruction = codec.decode(output["reconstruction"])
         batch_metrics = reconstruction_metrics(images, reconstruction)
         mask = codec.component_mask[None].to(output["reconstruction"].dtype)
@@ -78,8 +80,15 @@ def main() -> None:
         persistent_workers=args.num_workers > 0,
     )
     for checkpoint in args.checkpoints:
-        metrics = evaluate_checkpoint(checkpoint, loader, device)
-        output = os.path.join(os.path.dirname(checkpoint), "cifar10_test_metrics.json")
+        metrics = evaluate_checkpoint(
+            checkpoint, loader, device, sample_posterior=args.sample_posterior
+        )
+        filename = (
+            "cifar10_test_metrics_sampled.json"
+            if args.sample_posterior
+            else "cifar10_test_metrics.json"
+        )
+        output = os.path.join(os.path.dirname(checkpoint), filename)
         Path(output).write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n")
         print(json.dumps({"checkpoint": checkpoint, **metrics}, indent=2))
 
