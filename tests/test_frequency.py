@@ -72,6 +72,80 @@ class TestFrequencyCodec(unittest.TestCase):
         rec = codec.decode_raw(codec.encode_raw(img))
         self.assertLess((img - rec).abs().max().item(), 1e-5)
 
+    def test_isometric_packing_and_global_ecs_bridge(self):
+        config = FrequencyCodecConfig(
+            normalization="global_ecs",
+            coordinate_packing="isometric",
+            ecs_percentile=98.25,
+        )
+        codec = FrequencyCodec(config)
+        fit_batches = list(self._synth_loader(n_batches=4, batch_size=8, seed=13))
+        codec.fit_from_loader(fit_batches)
+        self.assertEqual(int(codec.component_mask.sum().item()), 3 * 32 * 32)
+        self.assertGreater(float(codec.global_scale), 0.0)
+
+        generator = torch.Generator().manual_seed(17)
+        noise = torch.randn(5, 3, 32, 32, generator=generator)
+        packed_noise = codec.encode_raw(noise)
+        pixel_energy = noise.square().sum(dim=(1, 2, 3))
+        packed_energy = (
+            packed_noise.square() * codec.component_mask[None]
+        ).sum(dim=(1, 2))
+        self.assertTrue(
+            torch.allclose(pixel_energy, packed_energy, atol=2e-4, rtol=2e-6)
+        )
+        self.assertLess(
+            (noise - codec.decode_raw(packed_noise)).abs().max().item(), 1e-5
+        )
+
+        images = torch.rand(5, 3, 32, 32, generator=generator)
+        data_tokens = codec.encode(images)
+        flow_time = torch.tensor([0.0, 0.2, 0.5, 0.8, 1.0])
+        token_time = flow_time[:, None, None]
+        pixel_time = flow_time[:, None, None, None]
+        token_bridge = token_time * data_tokens + (1.0 - token_time) * packed_noise
+        normalized_images = (
+            images - codec.global_pixel_mean
+        ) / codec.global_scale
+        pixel_bridge = pixel_time * normalized_images + (1.0 - pixel_time) * noise
+        decoded_normalized_bridge = codec.decode_raw(token_bridge)
+        self.assertTrue(
+            torch.allclose(
+                decoded_normalized_bridge,
+                pixel_bridge,
+                atol=2e-5,
+                rtol=2e-5,
+            )
+        )
+        token_velocity = data_tokens - packed_noise
+        pixel_velocity = normalized_images - noise
+        self.assertTrue(
+            torch.allclose(
+                codec.decode_raw(token_velocity),
+                pixel_velocity,
+                atol=2e-5,
+                rtol=2e-5,
+            )
+        )
+        expected_physical_bridge = (
+            pixel_bridge * codec.global_scale + codec.global_pixel_mean
+        )
+        self.assertTrue(
+            torch.allclose(
+                codec.decode(token_bridge),
+                expected_physical_bridge,
+                atol=2e-5,
+                rtol=2e-5,
+            )
+        )
+
+        payload = codec.export_state()
+        restored = FrequencyCodec(config)
+        restored.load_exported(payload)
+        self.assertEqual(float(restored.global_pixel_mean), float(codec.global_pixel_mean))
+        self.assertEqual(float(restored.global_scale), float(codec.global_scale))
+        self.assertTrue(torch.equal(restored.encode(images), data_tokens))
+
     def test_hermitian_by_construction(self):
         codec = FrequencyCodec(FrequencyCodecConfig())
         tokens = torch.randn(2, codec.seq_len, 6)

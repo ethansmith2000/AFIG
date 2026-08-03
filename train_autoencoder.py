@@ -45,6 +45,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--resolution", type=int, default=32)
     parser.add_argument("--output_dir", default="autoencoder_runs/default")
     parser.add_argument("--codec_stats_path", default=None)
+    parser.add_argument(
+        "--whiten_exponent",
+        type=float,
+        default=1.0,
+        help="Partial per-frequency whitening: tokens are divided by "
+        "sigma**exponent then by one global scale. 1.0 = full whitening "
+        "(previous behaviour), 0.0 = raw FFT with a global scale, which "
+        "preserves the natural 1/f eigenspectrum.",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--train_batch_size", type=int, default=128)
     parser.add_argument("--dataloader_num_workers", type=int, default=4)
@@ -222,14 +231,21 @@ def _hf_cifar_dataset(transform) -> Optional[Dataset]:
 
 
 def make_dataset(args: argparse.Namespace) -> Dataset:
-    transform = transforms.Compose(
-        [
-            transforms.Resize(args.resolution),
-            transforms.CenterCrop(args.resolution),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-        ]
-    )
+    # Horizontal flip is always on.  Brightness jitter is opt-in via
+    # augment_brightness so autoencoder training is unaffected by default; it is
+    # read with getattr because several callers build a minimal Namespace.
+    # Note brightness acts almost entirely on the DC term (ring 0), so it
+    # perturbs latent position 0 specifically.
+    brightness = float(getattr(args, "augment_brightness", 0.0) or 0.0)
+    stages = [
+        transforms.Resize(args.resolution),
+        transforms.CenterCrop(args.resolution),
+        transforms.RandomHorizontalFlip(),
+    ]
+    if brightness > 0.0:
+        stages.append(transforms.ColorJitter(brightness=brightness))
+    stages.append(transforms.ToTensor())
+    transform = transforms.Compose(stages)
     if args.dataset == "synthetic":
         return _synthetic_dataset(64 if args.smoke else 4096, args.resolution, args.seed)
     if args.dataset == "imagefolder":
@@ -295,6 +311,7 @@ def fit_or_load_codec(
         width=args.resolution,
         normalization="orbit_standardize",
         value_transform="identity",
+        whiten_exponent=args.whiten_exponent,
     )
     codec = FrequencyCodec(config)
     stats_path = args.codec_stats_path or os.path.join(

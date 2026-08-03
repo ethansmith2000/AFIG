@@ -1,0 +1,21 @@
+GPU_CLAIM_RUN index=7 uuid=GPU-5a27fa48-24e2-bf1e-fd25-b0aa6bd47bc2 owner=AFIG job=fit-wx0.0 cmd=bash -c cd /workspace/AFIG && /venv/main/bin/python evaluate_autoencoder_checkpoint.py autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001-wx0.0/checkpoint_30000.pt --data_root /workspace/AFIG/data && /venv/main/bin/python fit_autoencoder_latent_interface.py --checkpoint autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001-wx0.0/checkpoint_30000.pt --output autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001-wx0.0/latent_interface_posterior_mean.pt
+/venv/main/lib/python3.12/site-packages/torch/nn/functional.py:2954: UserWarning: Mismatch dtype between input and weight: input dtype = c10::BFloat16, weight dtype = float, Cannot dispatch to fused implementation. (Triggered internally at /pytorch/aten/src/ATen/native/layer_norm.cpp:344.)
+  return torch.rms_norm(input, normalized_shape, weight, eps)
+{
+  "checkpoint": "autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001-wx0.0/checkpoint_30000.pt",
+  "test/examples": 10000.0,
+  "reconstruction/pixel_mse": 0.0004982693607918918,
+  "reconstruction/psnr": 33.051745544433594,
+  "reconstruction/physical_fourier_nrmse": 0.04138495835065842,
+  "reconstruction/log_amplitude_mae": 0.4090400637626648,
+  "reconstruction/phase_circular_error": 0.17670340397357942,
+  "reconstruction/radial_power_relative_error": 0.2747306700706482,
+  "reconstruction/whitened_token_mse": 0.006429706660658121
+}
+{
+  "output": "autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001-wx0.0/latent_interface_posterior_mean.pt",
+  "probe_validation_mse": 0.9039749503135681,
+  "zero_baseline_mse": 1.0062685012817383,
+  "probe_fractional_improvement": 0.10165631771087646,
+  "ring_probe_fractional_improvement": 0.18408268690109253
+}

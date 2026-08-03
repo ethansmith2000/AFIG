@@ -1,0 +1,39 @@
+{
+  "num_real_samples": 40000,
+  "dims": 3392,
+  "real_per_dim_variance_mean": 1.0014642477035522,
+  "achieved_joint_flow_mse": 0.9083032011985779,
+  "gaussian_flow_mse_floors": {
+    "no_structure_identity": 1.5707969625777742,
+    "within_token_only_block_diagonal": 1.1255356609555136,
+    "all_second_order_full_covariance": 1.0020527876138072
+  },
+  "real_correlation_split": {
+    "within_token_energy": 9620.84765625,
+    "cross_token_energy": 27053.041015625,
+    "within_token_rms_correlation": 0.2121819704771042,
+    "cross_token_rms_correlation": 0.048954032361507416,
+    "cross_fraction_of_offdiag_energy": 0.7376648783683777
+  },
+  "achieved_fraction_of_available_gain": 1.1648361258753444,
+  "within_token_share_of_total_gain": 0.7828850320101658,
+  "generated": {
+    "num_samples": 4096,
+    "latent_rms": 1.001848816871643,
+    "per_dim_variance_mean": 1.0018967390060425,
+    "correlation_split": {
+      "within_token_energy": 9719.7578125,
+      "cross_token_energy": 25371.95703125,
+      "within_token_rms_correlation": 0.2132698893547058,
+      "cross_token_rms_correlation": 0.04740862920880318,
+      "cross_fraction_of_offdiag_energy": 0.7230184674263
+    },
+    "correlation_split_real_same_sample_count": {
+      "within_token_energy": 9632.06640625,
+      "cross_token_energy": 30108.2265625,
+      "within_token_rms_correlation": 0.21230565011501312,
+      "cross_token_rms_correlation": 0.051644373685121536,
+      "cross_fraction_of_offdiag_energy": 0.7576246857643127
+    }
+  }
+}

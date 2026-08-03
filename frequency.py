@@ -26,12 +26,28 @@ class FrequencyCodecConfig:
     width: int = 32
     ordering: str = "radial"  # radial | square_spiral
     value_transform: str = "identity"  # identity | asinh
-    normalization: str = "radial_whiten"  # radial_whiten | radial_standardize | orbit_whiten | orbit_standardize
+    normalization: str = "radial_whiten"  # radial_whiten | radial_standardize | orbit_whiten | orbit_standardize | global_ecs
     centering: str = "all"  # all | self_conjugate_std | self_conjugate_rms
     mean_policy: str = "legacy"  # legacy | per_orbit | pooled_ordinary | self_only
     scale_policy: str = "legacy"  # legacy | centered_std | uncentered_rms
     covariance_eps: float = 1e-5
     fft_norm: str = "ortho"
+    # Partial whitening exponent for orbit_standardize.  Tokens are divided by
+    # sigma**whiten_exponent and then by a single global scale, so values stay
+    # O(1) at any exponent.
+    #   1.0 = full per-frequency whitening (previous behaviour)
+    #   0.0 = raw FFT with one global scale, preserving the natural 1/f
+    #         eigenspectrum the way per-pixel normalization of an image does
+    # Values in between interpolate.  Only meaningful for orbit_standardize.
+    whiten_exponent: float = 1.0
+    # ``isometric`` multiplies both Cartesian coordinates of every ordinary
+    # Hermitian orbit by sqrt(2).  Together with the self-conjugate mask this is
+    # an orthonormal real packing: iid pixel Gaussian noise becomes iid Gaussian
+    # noise over the 3072 active token coordinates, and Euclidean energy is exact.
+    coordinate_packing: str = "legacy"  # legacy | isometric
+    # DCTdiff-style entropy-consistent scaling: use one robust bound derived from
+    # the DC distribution for every frequency.  Only used by global_ecs.
+    ecs_percentile: float = 98.25
 
     def fingerprint(self) -> Dict[str, Any]:
         return asdict(self)
@@ -198,8 +214,23 @@ class FrequencyCodec(nn.Module):
             "radial_standardize",
             "orbit_whiten",
             "orbit_standardize",
+            "global_ecs",
         ):
             raise ValueError(f"Unknown normalization: {self.config.normalization}")
+        if self.config.coordinate_packing not in ("legacy", "isometric"):
+            raise ValueError(
+                f"Unknown coordinate_packing: {self.config.coordinate_packing}"
+            )
+        if not 50.0 < self.config.ecs_percentile < 100.0:
+            raise ValueError("ecs_percentile must be in (50, 100)")
+        if self.config.normalization == "global_ecs" and (
+            self.config.coordinate_packing != "isometric"
+            or self.config.value_transform != "identity"
+        ):
+            raise ValueError(
+                "global_ecs requires coordinate_packing='isometric' and "
+                "value_transform='identity'"
+            )
         if self.config.centering not in (
             "all",
             "self_conjugate_std",
@@ -219,6 +250,18 @@ class FrequencyCodec(nn.Module):
             "uncentered_rms",
         ):
             raise ValueError(f"Unknown scale policy: {self.config.scale_policy}")
+        if not 0.0 <= self.config.whiten_exponent <= 1.0:
+            raise ValueError(
+                f"whiten_exponent must be in [0,1], got {self.config.whiten_exponent}"
+            )
+        if (
+            self.config.whiten_exponent != 1.0
+            and self.config.normalization != "orbit_standardize"
+        ):
+            raise ValueError(
+                "whiten_exponent < 1 is only implemented for orbit_standardize; it "
+                "would be silently ignored by the other normalization paths."
+            )
         explicit_policy = (
             self.config.mean_policy != "legacy"
             or self.config.scale_policy != "legacy"
@@ -252,6 +295,12 @@ class FrequencyCodec(nn.Module):
 
         # Whitening / transform state (filled by fit / load).
         self.register_buffer("is_fitted", torch.tensor(False), persistent=True)
+        # Non-persistent for strict compatibility with model state dicts written
+        # before Phase A.  export_state() carries both values explicitly.
+        self.register_buffer(
+            "global_pixel_mean", torch.tensor(0.0), persistent=False
+        )
+        self.register_buffer("global_scale", torch.tensor(1.0), persistent=False)
         self.register_buffer(
             "bin_counts",
             torch.zeros(self.num_bins, dtype=torch.long),
@@ -364,11 +413,22 @@ class FrequencyCodec(nn.Module):
             # Mean/scale policies are deterministic post-fit transforms of the
             # same orbit moments, so one fitted statistics payload can serve all
             # policy ablations.
-            if key in ("mean_policy", "scale_policy"):
+            # whiten_exponent belongs to the same category: it rescales the same
+            # fitted moments, so one statistics payload serves every exponent.
+            # The live exponent is still recorded in the AE checkpoint's codec
+            # config and hashed into the layout fingerprint when non-default, so
+            # generative checkpoints remain bound to the representation they were
+            # trained on.
+            if key in ("mean_policy", "scale_policy", "whiten_exponent"):
                 continue
             # Version-2 codec payloads predate configurable centering and are
             # exactly equivalent to the new default.
-            observed = cfg.get(key, "all" if key == "centering" else None)
+            defaults = {
+                "centering": "all",
+                "coordinate_packing": "legacy",
+                "ecs_percentile": 98.25,
+            }
+            observed = cfg.get(key, defaults.get(key))
             if observed != value:
                 raise ValueError(
                     f"Incompatible codec config field {key}: {observed} vs {value}"
@@ -397,13 +457,37 @@ class FrequencyCodec(nn.Module):
         # Force imag=0 on self-conjugate points from GT (numerical noise).
         imag = imag * (~self.is_self_conjugate)[None, None, :]
         tokens = torch.cat([real, imag], dim=1).permute(0, 2, 1).contiguous()  # [B, L, 6]
+        if self.config.coordinate_packing == "isometric":
+            tokens = tokens * self.coordinate_scale(
+                device=tokens.device, dtype=tokens.dtype
+            )[None]
         return tokens
+
+    def coordinate_scale(
+        self,
+        *,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> torch.Tensor:
+        """Per-orbit scalar used by the real Cartesian packing, shape [L,1]."""
+        if device is None:
+            device = self.is_self_conjugate.device
+        if dtype is None:
+            dtype = torch.float32
+        if self.config.coordinate_packing == "legacy":
+            return torch.ones(self.seq_len_int, 1, device=device, dtype=dtype)
+        ordinary = (~self.is_self_conjugate).to(device=device, dtype=dtype)
+        return (1.0 + (math.sqrt(2.0) - 1.0) * ordinary)[:, None]
 
     def tokens_to_spectrum(self, tokens: torch.Tensor) -> torch.Tensor:
         """Place tokens into a full Hermitian spectrum [B, 3, H, W] complex."""
         b = tokens.shape[0]
         device = tokens.device
         dtype = tokens.dtype
+        if self.config.coordinate_packing == "isometric":
+            tokens = tokens / self.coordinate_scale(
+                device=device, dtype=dtype
+            )[None]
         real = tokens[..., :3].permute(0, 2, 1)  # [B, 3, L]
         imag = tokens[..., 3:].permute(0, 2, 1)  # [B, 3, L]
         imag = imag * (~self.is_self_conjugate).to(device=device)[None, None, :]
@@ -565,24 +649,67 @@ class FrequencyCodec(nn.Module):
         )
         return offset * scale
 
+    def normalization_mean(self) -> torch.Tensor:
+        """Affine mean subtracted before the configured normalization."""
+        if self.config.normalization == "global_ecs":
+            mean = torch.zeros(
+                self.seq_len_int,
+                TOKEN_DIM,
+                device=self.ky.device,
+                dtype=self.global_pixel_mean.dtype,
+            )
+            dc = (self.ky == 0) & (self.kx == 0)
+            dc_value = self.global_pixel_mean * math.sqrt(
+                self.config.height * self.config.width
+            )
+            mean[dc, :NUM_CHANNELS] = dc_value
+            return mean
+        if self.uses_orbit_statistics:
+            return self._orbit_normalization_mean()
+        return self.bin_mean[self.radius_bin]
+
     def _orbit_normalization_scale(self) -> torch.Tensor:
         return self.orbit_scale_for_policy(self.effective_scale_policy())
+
+    def _orbit_partial_scale(self) -> torch.Tensor:
+        """Divisor for orbit_standardize: sigma**alpha times one global scale.
+
+        Kept separate from ``_orbit_normalization_scale`` because that value also
+        feeds the mean computation, where the un-exponentiated policy scale must
+        be used or the recovered mean is wrong.
+
+        After dividing by sigma**alpha a component's variance is sigma**(2-2a),
+        so the global scale that restores unit average variance is
+        sqrt(mean(sigma**(2-2a))) over active components -- available in closed
+        form from the fitted statistics, with no extra data pass.  Inactive
+        components keep a divisor of exactly 1.
+        """
+        scale = self._orbit_normalization_scale().clamp_min(1e-8)
+        exponent = float(self.config.whiten_exponent)
+        if exponent == 1.0:
+            return scale
+        mask = self.component_mask
+        partial = scale.pow(exponent)
+        residual_variance = scale.pow(2.0 * (1.0 - exponent))
+        active = mask.sum().clamp_min(1.0)
+        global_scale = ((residual_variance * mask).sum() / active).sqrt().clamp_min(1e-8)
+        partial = partial * global_scale
+        # Inactive components must not be rescaled; they are forced to zero later.
+        return partial * mask + (1.0 - mask)
 
     def normalize(self, tokens: torch.Tensor) -> torch.Tensor:
         self.assert_fitted()
         bins = self.radius_bin
-        mean = (
-            self._orbit_normalization_mean()
-            if self.uses_orbit_statistics
-            else self.bin_mean[bins]
-        )
+        mean = self.normalization_mean()
         centered = tokens - mean
         mask = self.component_mask
 
-        if self.config.normalization == "orbit_whiten":
+        if self.config.normalization == "global_ecs":
+            out = centered / self.global_scale.clamp_min(1e-8)
+        elif self.config.normalization == "orbit_whiten":
             out = torch.einsum("lrc,blc->blr", self.orbit_inv_sqrt, centered)
         elif self.config.normalization == "orbit_standardize":
-            out = centered / self._orbit_normalization_scale().clamp_min(1e-8)
+            out = centered / self._orbit_partial_scale().clamp_min(1e-8)
         elif self.config.normalization == "radial_standardize":
             std = self.bin_std[bins].clamp_min(1e-8)
             out = centered / std
@@ -597,17 +724,15 @@ class FrequencyCodec(nn.Module):
     def denormalize(self, tokens: torch.Tensor) -> torch.Tensor:
         self.assert_fitted()
         bins = self.radius_bin
-        mean = (
-            self._orbit_normalization_mean()
-            if self.uses_orbit_statistics
-            else self.bin_mean[bins]
-        )
+        mean = self.normalization_mean()
         mask = self.component_mask
 
-        if self.config.normalization == "orbit_whiten":
+        if self.config.normalization == "global_ecs":
+            out = tokens * self.global_scale + mean
+        elif self.config.normalization == "orbit_whiten":
             out = torch.einsum("lrc,blc->blr", self.orbit_sqrt, tokens) + mean
         elif self.config.normalization == "orbit_standardize":
-            out = tokens * self._orbit_normalization_scale() + mean
+            out = tokens * self._orbit_partial_scale() + mean
         elif self.config.normalization == "radial_standardize":
             std = self.bin_std[bins]
             out = tokens * std + mean
@@ -633,19 +758,17 @@ class FrequencyCodec(nn.Module):
         """
         self.assert_fitted()
         bins = self.radius_bin[positions]
-        mean = (
-            self._orbit_normalization_mean()[positions]
-            if self.uses_orbit_statistics
-            else self.bin_mean[bins]
-        )
+        mean = self.normalization_mean()[positions]
         mask = self.component_mask[positions]
         is_self = self.is_self_conjugate[positions]
 
-        if self.config.normalization == "orbit_whiten":
+        if self.config.normalization == "global_ecs":
+            out = tokens * self.global_scale + mean
+        elif self.config.normalization == "orbit_whiten":
             sqrt = self.orbit_sqrt[positions]
             out = torch.einsum("trc,btc->btr", sqrt, tokens) + mean
         elif self.config.normalization == "orbit_standardize":
-            out = tokens * self._orbit_normalization_scale()[positions] + mean
+            out = tokens * self._orbit_partial_scale()[positions] + mean
         elif self.config.normalization == "radial_standardize":
             std = self.bin_std[bins]
             out = tokens * std + mean
@@ -804,7 +927,12 @@ class FrequencyCodec(nn.Module):
         if cached is not None:
             return cached
 
-        scale = self._orbit_normalization_scale()
+        # Must use the same divisor ``normalize`` applies, otherwise physical
+        # error is mis-stated whenever whiten_exponent < 1.  At exponent 0 the
+        # divisor is a constant, so this metric becomes uniform -- correct,
+        # because the normalized space then already carries the natural magnitude
+        # hierarchy and plain MSE there is physical MSE.
+        scale = self._orbit_partial_scale()
         metric = (
             scale.float().pow(2.0 * exponent)
             * self.conjugate_multiplicity[:, None].float()
@@ -1124,6 +1252,10 @@ class FrequencyCodec(nn.Module):
         else:
             self.to(device)
 
+        if self.config.normalization == "global_ecs":
+            self._fit_global_ecs_from_loader(loader, max_batches, device)
+            return
+
         if self.uses_orbit_statistics:
             self._fit_orbit_from_loader(loader, max_batches, device)
             return
@@ -1175,6 +1307,57 @@ class FrequencyCodec(nn.Module):
             self._accumulate_moments(transformed, count, sum_x, sum_xx, sum_sq)
 
         self._finalize_moments(count, sum_x, sum_xx, sum_sq)
+
+    @torch.no_grad()
+    def _fit_global_ecs_from_loader(
+        self,
+        loader: Sequence[Any],
+        max_batches: Optional[int],
+        device: torch.device,
+    ) -> None:
+        """Fit one dataset mean and one robust DC-derived coefficient scale."""
+        n_bins = self.num_bins
+        count = torch.zeros(n_bins, dtype=torch.double, device=device)
+        sum_x = torch.zeros(n_bins, TOKEN_DIM, dtype=torch.double, device=device)
+        sum_xx = torch.zeros(
+            n_bins, TOKEN_DIM, TOKEN_DIM, dtype=torch.double, device=device
+        )
+        sum_sq = torch.zeros(n_bins, TOKEN_DIM, dtype=torch.double, device=device)
+        pixel_sum = torch.zeros((), dtype=torch.double, device=device)
+        pixel_count = 0
+        dc_chunks = []
+        dc = ((self.ky == 0) & (self.kx == 0)).nonzero(
+            as_tuple=False
+        ).flatten()
+        if dc.numel() != 1:
+            raise RuntimeError(f"Expected one DC orbit, found {dc.numel()}")
+
+        for bi, batch in enumerate(loader):
+            if max_batches is not None and bi >= max_batches:
+                break
+            images = batch[0] if isinstance(batch, (list, tuple)) else batch
+            images = images.to(device=device, dtype=torch.float32)
+            raw = self.encode_raw(images)
+            self._accumulate_moments(raw, count, sum_x, sum_xx, sum_sq)
+            pixel_sum += images.double().sum()
+            pixel_count += images.numel()
+            dc_chunks.append(raw[:, dc.item(), :NUM_CHANNELS].double())
+
+        if pixel_count == 0 or not dc_chunks:
+            raise ValueError("No samples seen while fitting global ECS statistics")
+        self._finalize_moments(count, sum_x, sum_xx, sum_sq)
+        pixel_mean = pixel_sum / float(pixel_count)
+        dc_values = torch.cat(dc_chunks, dim=0)
+        dc_values = dc_values - pixel_mean * math.sqrt(
+            self.config.height * self.config.width
+        )
+        quantile = self.config.ecs_percentile / 100.0
+        upper = torch.quantile(dc_values, quantile, dim=0)
+        lower = torch.quantile(dc_values, 1.0 - quantile, dim=0)
+        scale = torch.maximum(upper.abs(), lower.abs()).max().clamp_min(1e-8)
+        self.global_pixel_mean.copy_(pixel_mean.float())
+        self.global_scale.copy_(scale.float())
+        self.is_fitted.fill_(True)
 
     def _accumulate_moments(
         self,
@@ -1289,11 +1472,25 @@ class FrequencyCodec(nn.Module):
             "codec_version": CODEC_VERSION,
             "config": self.config.fingerprint(),
             "state_dict": {k: v.detach().cpu() for k, v in self.state_dict().items()},
+            "global_pixel_mean": self.global_pixel_mean.detach().cpu(),
+            "global_scale": self.global_scale.detach().cpu(),
         }
 
     def load_exported(self, payload: Dict[str, Any], strict: bool = True) -> None:
         self.validate_compatible(payload)
         self.load_state_dict(payload["state_dict"], strict=strict)
+        self.global_pixel_mean.copy_(
+            torch.as_tensor(payload.get("global_pixel_mean", 0.0)).to(
+                device=self.global_pixel_mean.device,
+                dtype=self.global_pixel_mean.dtype,
+            )
+        )
+        self.global_scale.copy_(
+            torch.as_tensor(payload.get("global_scale", 1.0)).to(
+                device=self.global_scale.device,
+                dtype=self.global_scale.dtype,
+            )
+        )
         self._orbit_metric_cache.clear()
         self._orbit_scale_metric_cache.clear()
         self.is_fitted.fill_(True)

@@ -253,11 +253,7 @@ def compute_spectral_diagnostics(
 
 
 def _codec_physical_mean(codec: FrequencyCodec) -> torch.Tensor:
-    transformed_mean = (
-        codec.orbit_mean
-        if codec.uses_orbit_statistics
-        else codec.bin_mean[codec.radius_bin]
-    )
+    transformed_mean = codec.normalization_mean()
     physical_mean = codec.invert_value_transform(transformed_mean.unsqueeze(0))[0]
     physical_mean = physical_mean.clone()
     physical_mean[..., 3:] *= (~codec.is_self_conjugate).to(

@@ -35,7 +35,6 @@ from model_continuous import (
     ContinuousFFTDecoder,
     ContinuousModelConfig,
     CorruptionConfig,
-    FrequencyConditioningConfig,
     GenerationConfig,
     HistoryFeatureConfig,
     PolarHistoryConfig,
@@ -205,6 +204,32 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--num_layers", type=int, default=8)
     p.add_argument("--num_heads", type=int, default=8)
     p.add_argument("--ff_mult", type=int, default=4)
+    p.add_argument(
+        "--qk_norm",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Apply learned per-head RMSNorm to queries and keys before attention.",
+    )
+    p.add_argument(
+        "--attention_rope",
+        choices=["none", "sequence", "frequency_2d"],
+        default="frequency_2d",
+        help=(
+            "Rotary attention geometry: sequence index or signed 2D Fourier "
+            "coordinates. Absolute frequency identity remains enabled separately."
+        ),
+    )
+    p.add_argument("--rope_base", type=float, default=10000.0)
+    p.add_argument(
+        "--transformer-position-film",
+        dest="transformer_position_film",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Optionally modulate each Transformer block with the same learned "
+            "prediction-slot embedding; disabled by default."
+        ),
+    )
     p.add_argument("--diff_width", type=int, default=512)
     p.add_argument("--diff_depth", type=int, default=6)
     p.add_argument("--objective", type=str, default="ddpm", choices=["ddpm", "flow"])
@@ -228,6 +253,12 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     p.add_argument("--loss_space", type=str, default="native", choices=["native", "v"])
     p.add_argument(
+        "--component_reduction",
+        choices=["active_mean", "fixed_dim"],
+        default="active_mean",
+        help="Normalize masked loss by active coordinates or by the fixed token dimension.",
+    )
+    p.add_argument(
         "--loss_weighting",
         type=str,
         default="none",
@@ -238,6 +269,12 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--logit_normal_std", type=float, default=1.0)
     p.add_argument("--flow_t_eps", type=float, default=0.05)
     p.add_argument("--flow_solver", type=str, default="heun", choices=["euler", "heun"])
+    p.add_argument(
+        "--snr_scale",
+        type=float,
+        default=1.0,
+        help="Multiply bridge SNR by this factor inside the token diffusion decoder.",
+    )
     p.add_argument(
         "--radial_power_weighting",
         action="store_true",
@@ -278,7 +315,21 @@ def parse_args(argv=None) -> argparse.Namespace:
             "radial_standardize",
             "orbit_whiten",
             "orbit_standardize",
+            "global_ecs",
         ],
+    )
+    p.add_argument(
+        "--coordinate_packing",
+        choices=["legacy", "isometric"],
+        default="legacy",
+        help="Real packing of Hermitian FFT coefficients. isometric applies the "
+        "sqrt(2) factors needed for exact Euclidean/noise equivalence.",
+    )
+    p.add_argument(
+        "--ecs_percentile",
+        type=float,
+        default=98.25,
+        help="Two-sided robust DC percentile used by global_ecs.",
     )
     p.add_argument(
         "--learned_output_gain",
@@ -332,33 +383,6 @@ def parse_args(argv=None) -> argparse.Namespace:
         choices=["legacy", "centered_std", "uncentered_rms"],
     )
     p.add_argument(
-        "--frequency_conditioning",
-        action="store_true",
-        help=(
-            "Use functional Fourier-coordinate features, target-frequency "
-            "diffusion conditioning, and zero-initialized Transformer FiLM."
-        ),
-    )
-    p.add_argument(
-        "--position_num_frequencies",
-        type=int,
-        default=4,
-        help="Number of log-spaced sinusoidal bands per kx/ky/radius coordinate.",
-    )
-    p.add_argument(
-        "--backbone_position_mode",
-        type=str,
-        default="legacy_hybrid",
-        choices=["none", "legacy_hybrid", "random_table", "sincos_table"],
-        help="Backbone input position representation, independent of decoder target position.",
-    )
-    p.add_argument(
-        "--input_position_scale_init",
-        type=float,
-        default=0.1,
-        help="Initial learned scalar for random/sin-cos backbone position tables.",
-    )
-    p.add_argument(
         "--input_timestep_conditioning",
         type=str,
         default="none",
@@ -377,46 +401,6 @@ def parse_args(argv=None) -> argparse.Namespace:
         default="xavier",
         choices=["xavier", "kaiming_linear"],
         help="Initializer for the unbalanced 6-to-width diffusion input projection.",
-    )
-    p.add_argument(
-        "--position_max_frequency",
-        type=float,
-        default=8.0,
-        help="Highest sinusoidal frequency for normalized Fourier coordinates.",
-    )
-    p.add_argument(
-        "--position-input-addition",
-        dest="position_input_addition",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Add the shared frequency representation to input token embeddings.",
-    )
-    p.add_argument(
-        "--position-rms-normalize",
-        dest="position_rms_normalize",
-        action="store_true",
-        help="RMS-normalize frequency representations before conditioning.",
-    )
-    p.add_argument(
-        "--transformer-position-film",
-        dest="transformer_position_film",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Use zero-initialized target-position FiLM in Transformer blocks.",
-    )
-    p.add_argument(
-        "--diffusion-target-conditioning",
-        dest="diffusion_target_conditioning",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Condition diffusion AdaLN directly on the known target frequency.",
-    )
-    p.add_argument(
-        "--decoder-target-position-conditioning",
-        dest="decoder_target_position_conditioning",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="Clear alias for direct target-frequency conditioning in decoder AdaLN.",
     )
     p.add_argument("--use_ema", action="store_true", help="Opt in to EMA evaluation.")
     p.add_argument("--ema_decay", type=float, default=0.9999)
@@ -514,9 +498,6 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
         input_timestep_conditioning = (
             "film" if args.input_stem_time_film else "none"
         )
-    decoder_target_conditioning = args.diffusion_target_conditioning
-    if args.decoder_target_position_conditioning is not None:
-        decoder_target_conditioning = args.decoder_target_position_conditioning
     return ContinuousModelConfig(
         codec=FrequencyCodecConfig(
             ordering=args.ordering,
@@ -525,6 +506,8 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
             centering=args.centering,
             mean_policy=args.diffusion_mean_policy,
             scale_policy=args.diffusion_scale_policy,
+            coordinate_packing=args.coordinate_packing,
+            ecs_percentile=args.ecs_percentile,
         ),
         transformer=TransformerConfig(
             width=args.width,
@@ -532,6 +515,10 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
             num_heads=args.num_heads,
             ff_mult=args.ff_mult,
             gradient_checkpointing=args.gradient_checkpointing,
+            qk_norm=bool(getattr(args, "qk_norm", True)),
+            attention_rope=getattr(args, "attention_rope", "frequency_2d"),
+            rope_base=float(getattr(args, "rope_base", 10000.0)),
+            position_film=bool(getattr(args, "transformer_position_film", False)),
         ),
         diffusion=DiffusionDecoderConfig(
             target_dim=6,
@@ -549,9 +536,11 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
             logit_normal_std=args.logit_normal_std,
             flow_t_eps=args.flow_t_eps,
             flow_solver=args.flow_solver,
+            snr_scale=args.snr_scale,
             radial_power_weighting=bool(getattr(args, "radial_power_weighting", False)),
             radial_power_exponent=args.radial_power_exponent,
             loss_metric=args.loss_metric,
+            component_reduction=args.component_reduction,
             orbit_covariance_exponent=args.orbit_covariance_exponent,
             orbit_scale_exponent=args.orbit_scale_exponent,
             learned_output_gain=args.learned_output_gain,
@@ -581,21 +570,6 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
             cartesian_mode=args.history_cartesian_features,
             mean_policy=args.history_mean_policy,
             scale_policy=args.history_scale_policy,
-        ),
-        frequency_conditioning=FrequencyConditioningConfig(
-            enabled=bool(getattr(args, "frequency_conditioning", False)),
-            num_frequencies=args.position_num_frequencies,
-            max_frequency=args.position_max_frequency,
-            input_addition=bool(getattr(args, "position_input_addition", True)),
-            rms_normalize=bool(getattr(args, "position_rms_normalize", False)),
-            transformer_film=bool(
-                getattr(args, "transformer_position_film", True)
-            ),
-            diffusion_target_conditioning=bool(
-                decoder_target_conditioning
-            ),
-            backbone_position_mode=args.backbone_position_mode,
-            input_scale_init=args.input_position_scale_init,
         ),
         generation=GenerationConfig(
             num_inference_steps=args.num_inference_steps,
@@ -1109,11 +1083,8 @@ def evaluate_spectral_panel(
     metrics["projection/diffusion_projected_rms"] = (
         input_projected.float().square().mean().sqrt()
     )
-    position_values = model._backbone_position_embedding(
-        torch.arange(1, length + 1, device=device),
-        model._position_meta(device, model.token_proj.weight.dtype),
-    )
-    metrics["projection/backbone_position_rms"] = (
+    position_values = model.slot_embed.weight
+    metrics["projection/slot_embedding_rms"] = (
         position_values.float().square().mean().sqrt()
     )
 
@@ -1334,9 +1305,11 @@ def main(args: Optional[argparse.Namespace] = None):
         _log_info(
             f"Generative objective: objective={args.objective} "
             f"prediction={args.prediction_type} loss_space={args.loss_space} "
+            f"component_reduction={args.component_reduction} "
             f"weighting={args.loss_weighting} min_snr_gamma={args.min_snr_gamma:g} "
             f"logit_normal=({args.logit_normal_mean:g}, {args.logit_normal_std:g}) "
             f"zero_terminal_snr={args.rescale_betas_zero_snr} "
+            f"snr_scale={args.snr_scale:g} "
             f"timestep_spacing={args.timestep_spacing} "
             f"flow_solver={args.flow_solver}"
         )
@@ -1345,19 +1318,15 @@ def main(args: Optional[argparse.Namespace] = None):
             f"(enabled={args.history_polar_features != 'none'})"
         )
         _log_info(
-            f"Frequency conditioning: enabled={bool(args.frequency_conditioning)} "
-            f"bands={args.position_num_frequencies} "
-            f"max_frequency={args.position_max_frequency:g} "
-            f"input_addition={bool(args.position_input_addition)} "
-            f"rms_normalize={bool(args.position_rms_normalize)} "
-            f"transformer_film={bool(args.transformer_position_film)} "
-            "diffusion_target="
-            f"{config.frequency_conditioning.diffusion_target_conditioning} "
-            f"backbone_mode={args.backbone_position_mode} "
-            f"input_scale={args.input_position_scale_init:g}"
+            f"Attention geometry: qk_norm={bool(args.qk_norm)} "
+            f"rope={args.attention_rope} rope_base={args.rope_base:g} "
+            f"slot_embedding=learned transformer_film="
+            f"{bool(args.transformer_position_film)} decoder_position_condition=False"
         )
         _log_info(
             f"Representation: centering={args.centering} "
+            f"packing={args.coordinate_packing} "
+            f"ecs_percentile={args.ecs_percentile:g} "
             f"diffusion_mean={config.codec.mean_policy} "
             f"diffusion_scale={config.codec.scale_policy} "
             f"history_cartesian={args.history_cartesian_features} "
@@ -1371,7 +1340,7 @@ def main(args: Optional[argparse.Namespace] = None):
     if args.gradient_checkpointing:
         model.enable_gradient_checkpointing()
 
-    no_decay_names = {"input_position_scale"}
+    no_decay_names: set[str] = set()
     if model.output_log_gain is not None:
         no_decay_names.add("output_log_gain")
     optimizer_parameters: Any = [
@@ -1444,7 +1413,7 @@ def main(args: Optional[argparse.Namespace] = None):
         run_name = args.run_name or (
             f"{args.objective}-{args.prediction_type}-{args.normalization}-"
             f"{args.diffusion_mean_policy}-{args.diffusion_scale_policy}-"
-            f"{args.loss_metric}{metric_suffix}-pos-{args.backbone_position_mode}-"
+            f"{args.loss_metric}{metric_suffix}-pos-slot-rope-{args.attention_rope}-"
             f"hist-{args.history_cartesian_features}-{args.history_mean_policy}-"
             f"{args.history_scale_policy}-stem-"
             f"{config.diffusion.input_timestep_conditioning}-d{args.diff_depth}-"

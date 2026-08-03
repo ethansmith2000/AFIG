@@ -16,7 +16,6 @@ from model_continuous import (  # noqa: E402
     ContinuousFFTDecoder,
     ContinuousModelConfig,
     CorruptionConfig,
-    FrequencyConditioningConfig,
     GenerationConfig,
     HistoryFeatureConfig,
     PolarHistoryConfig,
@@ -62,6 +61,67 @@ def _fitted_codec():
 
 
 class TestContinuousModel(unittest.TestCase):
+    def test_frequency_rope_qk_norm_cache_parity_and_fp32_tables(self):
+        codec = _fitted_codec()
+        cfg = _tiny_cfg()
+        cfg.transformer = TransformerConfig(
+            width=64,
+            num_layers=2,
+            num_heads=4,
+            ff_mult=2,
+            max_seq_len=515,
+            qk_norm=True,
+            attention_rope="frequency_2d",
+        )
+        model = ContinuousFFTDecoder(cfg, codec=codec)
+        model.eval()
+
+        cos, sin = model._attention_rope_tables(torch.device("cpu"))
+        self.assertEqual(cos.dtype, torch.float32)
+        self.assertEqual(sin.dtype, torch.float32)
+        self.assertEqual(cos.shape, (codec.seq_len, 8))
+        self.assertIsNotNone(model.layers[0].attn.q_norm)
+        self.assertIsNotNone(model.layers[0].attn.k_norm)
+
+        prefix = torch.randn(1, 12, 6) * codec.component_mask[None, :12, :]
+        with torch.no_grad():
+            full, _ = model.forward_backbone(
+                model.embed_tokens(prefix, include_bos=True)
+            )
+            cached, caches = model.init_cache(
+                1, torch.device("cpu"), model.token_proj.weight.dtype
+            )
+            for index in range(prefix.shape[1]):
+                cached, caches = model.forward_step(
+                    prefix[:, index], index, caches
+                )
+        self.assertTrue(
+            torch.allclose(full[:, -1], cached, atol=1e-4, rtol=1e-4)
+        )
+
+        # A whole-model low-precision cast must not leave rounded trig tables.
+        model.bfloat16()
+        cos, sin = model._attention_rope_tables(torch.device("cpu"))
+        self.assertEqual(cos.dtype, torch.float32)
+        self.assertEqual(sin.dtype, torch.float32)
+
+    def test_sequence_rope_uses_target_slot_not_history_token_index(self):
+        codec = _fitted_codec()
+        cfg = _tiny_cfg()
+        cfg.transformer = TransformerConfig(
+            width=64,
+            num_layers=2,
+            num_heads=4,
+            ff_mult=2,
+            max_seq_len=515,
+            attention_rope="sequence",
+        )
+        model = ContinuousFFTDecoder(cfg, codec=codec)
+        coordinates = model._attention_rope_coordinates
+        # Slot 0 contains BOS and predicts x0; slot 1 contains x0 and predicts x1.
+        self.assertTrue(torch.equal(coordinates[:3], torch.tensor([0, 1, 2])))
+        self.assertEqual(coordinates.shape[0], codec.seq_len)
+
     def test_teacher_forcing_alignment_and_grad(self):
         codec = _fitted_codec()
         model = ContinuousFFTDecoder(_tiny_cfg(), codec=codec)
@@ -246,7 +306,13 @@ class TestContinuousModel(unittest.TestCase):
         self.assertEqual(tuple(model.output_log_gain.shape), (codec.seq_len, 3))
         self.assertEqual(model.output_log_gain.abs().max().item(), 0.0)
 
+        nn.init.normal_(
+            model.diffusion.net.final_layer.adaLN_modulation[-1].weight,
+            std=0.02,
+        )
         nn.init.normal_(model.diffusion.net.final_layer.linear.weight, std=0.02)
+        for block in model.diffusion.net.res_blocks:
+            nn.init.normal_(block.adaLN_modulation[-1].weight, std=0.02)
         tokens = codec.encode(torch.rand(2, 3, 32, 32))
         output = model(tokens, corrupt=False)
         output["loss"].backward()
@@ -309,82 +375,49 @@ class TestContinuousModel(unittest.TestCase):
             h2, _ = model.forward_backbone(x2)
             self.assertTrue(torch.allclose(h_full[:, :11], h2[:, :11], atol=1e-5))
 
-    def test_functional_frequency_conditioning_shapes_and_zero_init(self):
+    def test_single_learned_slot_identity_is_added_once(self):
         codec = _fitted_codec()
-        cfg = _tiny_cfg(
-            frequency_conditioning=FrequencyConditioningConfig(
-                enabled=True,
-                num_frequencies=4,
-                max_frequency=8.0,
-            )
+        model = ContinuousFFTDecoder(_tiny_cfg(), codec=codec)
+        self.assertEqual(model.config.diffusion.target_condition_dim, 0)
+        self.assertFalse(any("meta_mlp" in name for name, _ in model.named_parameters()))
+        self.assertFalse(any("pos_embed" in name for name, _ in model.named_parameters()))
+
+        tokens = torch.randn(2, 3, 6) * codec.component_mask[None, :3]
+        embedded = model.embed_tokens(tokens, include_bos=True)
+        expected_bos = model.bos + model.slot_embed.weight[0][None, None]
+        expected_history = (
+            model.token_proj(tokens)
+            + model.slot_embed.weight[1:4][None]
+        )
+        self.assertTrue(torch.allclose(embedded[:, :1], expected_bos.expand(2, -1, -1)))
+        self.assertTrue(torch.allclose(embedded[:, 1:], expected_history))
+
+        embedded.sum().backward()
+        self.assertGreater(model.slot_embed.weight.grad.abs().sum().item(), 0.0)
+
+    def test_prediction_slot_film_is_retained_but_default_off(self):
+        codec = _fitted_codec()
+        default_model = ContinuousFFTDecoder(_tiny_cfg(), codec=codec)
+        for layer in default_model.layers:
+            self.assertIsNone(layer.attn.position_film)
+            self.assertIsNone(layer.ff.position_film)
+
+        cfg = _tiny_cfg()
+        cfg.transformer = TransformerConfig(
+            width=64,
+            num_layers=2,
+            num_heads=4,
+            ff_mult=2,
+            max_seq_len=515,
+            position_film=True,
         )
         model = ContinuousFFTDecoder(cfg, codec=codec)
-        self.assertTrue(model.pos_embed.functional)
-        self.assertEqual(model.config.diffusion.target_condition_dim, 64)
-
-        positions = torch.tensor([0, 1, 17])
-        condition = model.target_position_condition(
-            positions,
-            batch_size=2,
-            dtype=model.token_proj.weight.dtype,
-        )
-        self.assertEqual(tuple(condition.shape), (2, 3, 64))
-        self.assertFalse(torch.allclose(condition[:, 0], condition[:, 1]))
-
         for layer in model.layers:
             for film in (layer.attn.position_film, layer.ff.position_film):
                 self.assertIsNotNone(film)
                 self.assertEqual(film.net[-1].weight.abs().max().item(), 0.0)
                 self.assertEqual(film.net[-1].bias.abs().max().item(), 0.0)
 
-    def test_frequency_conditioning_routes_are_independently_optional(self):
-        codec = _fitted_codec()
-        cfg = _tiny_cfg(
-            frequency_conditioning=FrequencyConditioningConfig(
-                enabled=True,
-                input_addition=False,
-                rms_normalize=True,
-                transformer_film=False,
-                diffusion_target_conditioning=False,
-            )
-        )
-        model = ContinuousFFTDecoder(cfg, codec=codec)
-        self.assertEqual(model.config.diffusion.target_condition_dim, 0)
-        for layer in model.layers:
-            self.assertIsNone(layer.attn.position_film)
-            self.assertIsNone(layer.ff.position_film)
-
-        tokens = torch.randn(2, 3, 6) * codec.component_mask[None, :3, :]
-        embedded = model.embed_tokens(tokens, include_bos=True)
-        expected_tokens = model.token_proj(tokens)
-        self.assertTrue(torch.allclose(embedded[:, 1:], expected_tokens))
-        self.assertTrue(
-            torch.allclose(embedded[:, :1], model.bos.expand(2, -1, -1))
-        )
-
-        condition = model.target_position_condition(
-            torch.tensor([0, 1, 2]),
-            batch_size=1,
-            dtype=model.token_proj.weight.dtype,
-        )
-        rms = condition.square().mean(dim=-1).sqrt()
-        self.assertTrue(torch.allclose(rms, torch.ones_like(rms), atol=1e-5))
-        full_tokens = torch.randn(1, codec.seq_len, 6)
-        full_tokens = full_tokens * codec.component_mask[None]
-        predicted = model.predict_x0_diagnostics(
-            full_tokens,
-            torch.zeros(1, codec.seq_len, dtype=torch.long),
-            torch.zeros_like(full_tokens),
-        )
-        self.assertEqual(tuple(predicted.shape), tuple(full_tokens.shape))
-
-    def test_frequency_conditioning_reaches_diffusion_target_adaln(self):
-        codec = _fitted_codec()
-        cfg = _tiny_cfg(
-            frequency_conditioning=FrequencyConditioningConfig(enabled=True)
-        )
-        model = ContinuousFFTDecoder(cfg, codec=codec)
-        captured = []
         nn.init.normal_(
             model.diffusion.net.final_layer.adaLN_modulation[-1].weight,
             std=0.02,
@@ -392,155 +425,12 @@ class TestContinuousModel(unittest.TestCase):
         nn.init.normal_(model.diffusion.net.final_layer.linear.weight, std=0.02)
         for block in model.diffusion.net.res_blocks:
             nn.init.normal_(block.adaLN_modulation[-1].weight, std=0.02)
-
-        def capture_condition(_module, inputs):
-            captured.append(inputs[0].detach())
-
-        handle = model.diffusion.net.target_condition_embed.register_forward_pre_hook(
-            capture_condition
-        )
-        tokens = torch.randn(1, codec.seq_len, 6) * codec.component_mask[None, :, :]
-        out = model(tokens, corrupt=False)
-        handle.remove()
-        self.assertTrue(torch.isfinite(out["loss"]))
-        self.assertEqual(tuple(captured[0].shape), (codec.seq_len, 64))
-        self.assertFalse(torch.allclose(captured[0][0], captured[0][1]))
-        out["loss"].backward()
-        target_grad = model.diffusion.net.target_condition_embed.weight.grad
-        self.assertIsNotNone(target_grad)
-        self.assertGreater(target_grad.abs().sum().item(), 0.0)
+        tokens = torch.randn(1, codec.seq_len, 6) * codec.component_mask[None]
+        loss = model(tokens, corrupt=False)["loss"]
+        loss.backward()
         for layer in model.layers:
             for film in (layer.attn.position_film, layer.ff.position_film):
-                self.assertIsNotNone(film.net[-1].weight.grad)
                 self.assertGreater(film.net[-1].weight.grad.abs().sum().item(), 0.0)
-
-    def test_frequency_conditioning_causality_and_cache_parity(self):
-        codec = _fitted_codec()
-        cfg = _tiny_cfg(
-            frequency_conditioning=FrequencyConditioningConfig(enabled=True)
-        )
-        model = ContinuousFFTDecoder(cfg, codec=codec)
-        model.eval()
-        prefix = torch.randn(1, 8, 6) * codec.component_mask[None, :8, :]
-        with torch.no_grad():
-            x = model.embed_tokens(prefix, include_bos=True)
-            h_full, _ = model.forward_backbone(x)
-
-            z, caches = model.init_cache(
-                1,
-                torch.device("cpu"),
-                model.token_proj.weight.dtype,
-            )
-            for i in range(8):
-                z, caches = model.forward_step(
-                    prefix[:, i, :],
-                    position=i,
-                    kv_caches=caches,
-                )
-            self.assertTrue(
-                torch.allclose(h_full[:, -1], z, atol=1e-4, rtol=1e-4)
-            )
-
-            mutated = prefix.clone()
-            mutated[:, 5:, :] = torch.randn_like(mutated[:, 5:, :])
-            x_mutated = model.embed_tokens(mutated, include_bos=True)
-            h_mutated, _ = model.forward_backbone(x_mutated)
-            self.assertTrue(
-                torch.allclose(h_full[:, :6], h_mutated[:, :6], atol=1e-5)
-            )
-
-    def test_sincos_backbone_table_exact_bos_trainable_and_independent(self):
-        codec = _fitted_codec()
-        position = FrequencyConditioningConfig(
-            enabled=True,
-            transformer_film=False,
-            backbone_position_mode="sincos_table",
-            input_scale_init=0.1,
-        )
-        model = ContinuousFFTDecoder(
-            _tiny_cfg(frequency_conditioning=position),
-            codec=codec,
-        )
-        coordinates = torch.stack([codec.ky_signed, codec.kx_signed], dim=-1)
-        expected = model.backbone_pos_embed._sincos_table(
-            coordinates,
-            width=model.width,
-            max_seq_len=model.config.transformer.max_seq_len,
-        )
-        self.assertTrue(
-            torch.equal(model.backbone_pos_embed.seq_embed.weight, expected)
-        )
-        empty = torch.empty(2, 0, 6)
-        embedded = model.embed_tokens(empty, include_bos=True)
-        self.assertTrue(torch.equal(embedded, model.bos.expand(2, -1, -1)))
-
-        tokens = torch.randn(1, 4, 6) * codec.component_mask[None, :4]
-        model.embed_tokens(tokens, include_bos=True).sum().backward()
-        self.assertGreater(
-            model.backbone_pos_embed.seq_embed.weight.grad.abs().sum().item(),
-            0.0,
-        )
-        self.assertGreater(model.input_position_scale.grad.abs().item(), 0.0)
-
-        torch.manual_seed(123)
-        random_model = ContinuousFFTDecoder(
-            _tiny_cfg(
-                frequency_conditioning=FrequencyConditioningConfig(
-                    enabled=True,
-                    transformer_film=False,
-                    backbone_position_mode="random_table",
-                )
-            ),
-            codec=codec,
-        )
-        torch.manual_seed(123)
-        sincos_model = ContinuousFFTDecoder(
-            _tiny_cfg(frequency_conditioning=position),
-            codec=codec,
-        )
-        self.assertTrue(
-            torch.equal(
-                random_model.pos_embed.seq_embed.weight,
-                sincos_model.pos_embed.seq_embed.weight,
-            )
-        )
-        self.assertTrue(
-            torch.equal(
-                random_model.layers[0].attn.qkv.weight,
-                sincos_model.layers[0].attn.qkv.weight,
-            )
-        )
-
-    def test_sincos_backbone_cache_parity_and_causality(self):
-        codec = _fitted_codec()
-        model = ContinuousFFTDecoder(
-            _tiny_cfg(
-                frequency_conditioning=FrequencyConditioningConfig(
-                    enabled=True,
-                    transformer_film=False,
-                    backbone_position_mode="sincos_table",
-                )
-            ),
-            codec=codec,
-        )
-        model.eval()
-        prefix = torch.randn(1, 8, 6) * codec.component_mask[None, :8]
-        with torch.no_grad():
-            full, _ = model.forward_backbone(
-                model.embed_tokens(prefix, include_bos=True)
-            )
-            cached, caches = model.init_cache(
-                1, torch.device("cpu"), model.token_proj.weight.dtype
-            )
-            for position in range(prefix.shape[1]):
-                cached, caches = model.forward_step(
-                    prefix[:, position],
-                    position,
-                    caches,
-                )
-            self.assertTrue(
-                torch.allclose(full[:, -1], cached, atol=1e-4, rtol=1e-4)
-            )
 
     def test_phase_preserving_history_teacher_and_cache_alignment(self):
         config = FrequencyCodecConfig(
@@ -628,11 +518,6 @@ class TestContinuousModel(unittest.TestCase):
                 cartesian_mode="policy",
                 mean_policy="pooled_ordinary",
                 scale_policy="uncentered_rms",
-            ),
-            frequency_conditioning=FrequencyConditioningConfig(
-                enabled=True,
-                transformer_film=False,
-                backbone_position_mode="sincos_table",
             ),
         )
         cfg.codec = codec_config

@@ -1,0 +1,13 @@
+{
+  "ar_step": 30000,
+  "train": {
+    "conditional_mse": 0.5147760659456253,
+    "null_mse": 1.1207875041291118,
+    "conditional_null_gap": 0.6060114381834865
+  },
+  "test": {
+    "conditional_mse": 1.500120430253446,
+    "null_mse": 1.1183789558708668,
+    "conditional_null_gap": -0.3817414743825793
+  }
+}

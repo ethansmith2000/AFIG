@@ -1,0 +1,199 @@
+# AFIG Handoff Brief
+
+Last updated: 2026-07-30. Repo: `/workspace/AFIG`.
+
+## Project goal
+
+**AFIG (Autoregressive Fourier Image Generation)** generates CIFAR-10-scale images by modeling frequency content in a causal sequence, rather than diffusing pixels directly. The research arc is:
+
+1. Build a good frequency autoencoder (AE/VAE) that compresses whitened FFT tokens into a short latent sequence.
+2. Train a generative model on those latents.
+3. Decode sampled latents back to pixels through the frozen AE.
+
+Current blocker: **generative samples remain texture-like and not class-coherent** after substantial training, despite reasonable AE reconstructions and strong conditional-vs-null diagnostics in AR training.
+
+## Core representation
+
+- Images are encoded with `FrequencyCodec` (`frequency.py`): orthonormal 2D FFT, conjugacy-orbit representatives, radial ordering, whitening/standardization.
+- Selected AE codec: **target-12 sequential ring** layout.
+  - 53 latent tokens × 64-D per image.
+  - Each latent corresponds to angular sectors within integer-radius rings.
+  - Metadata per position: 11 deterministic channels (ring index, sector slot, pooled coordinates, etc.).
+- Whitened latents are normalized with fitted per-position mean/std (`latent_interface*.pt`).
+
+## Autoencoder status
+
+Two main checkpoints for the same architecture family:
+
+| Checkpoint | Type | Test PSNR | Notes |
+|---|---|---:|---|
+| `autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000/` | Deterministic AE | 34.77 dB | Original target-12 selection |
+| `autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001/` | Gentle VAE (KL=1e-4) | 34.95 dB | Used for recent latent-AFIG campaign |
+
+Important policy agreed with user:
+- **Use posterior mean when encoding data for AR / generative training and eval.**
+- **Do not use live VAE sampling** except during VAE training itself.
+- Fitted interfaces record `sample_posterior=False` and are validated at load time.
+
+AE artifacts for the VAE run:
+- `checkpoint_30000.pt`
+- `latent_interface_posterior_mean.pt`
+- `latent_loss_weights_posterior_mean.pt` (raw-variance and decoder-sensitivity weights)
+- `cifar10_test_metrics.json`
+
+## Generative models implemented
+
+### 1. Latent AR + per-token diffusion (`model_latent_continuous.py`)
+
+Architecture:
+- Causal Transformer backbone (`causal_transformer.py`) over shifted inputs: `[prev_latent, metadata, BOS flag]`.
+- Per-position AdaLN diffusion decoder (`diffusion_decoder.py`) predicts each latent token.
+- CFG via context dropout + null context; optional **CFG norm matching** rescales guided predictions to conditional norm.
+- KV-cache supported for autoregressive rollout.
+
+Trainer: `train_latent_continuous.py`
+
+### 2. Joint full-sequence latent diffusion (`model_joint_latent_diffusion.py`)
+
+Architecture:
+- Bidirectional Transformer (non-causal attention) over all 53 positions jointly.
+- Global rectified-flow objective: noise all tokens together, predict velocity field.
+- Timestep conditioning via AdaLN; metadata concatenated to token inputs.
+- No AR rollout, no CFG.
+
+Trainer: `train_joint_latent_diffusion.py`
+
+### Shared adapter
+
+`latent_autoencoder_interface.py` (`FrozenLatentAutoencoder`):
+- Loads frozen AE + codec + latent stats.
+- `encode_images()` / `decode_latents()` with contract validation.
+- Checkpoint contract must match across AE, interface, and generative checkpoints.
+
+### Latent loss weighting (AR path only)
+
+Implemented in AR model + trainer:
+- `unweighted` (whitened MSE)
+- `raw_variance` (weights ∝ σ², mean-normalized)
+- `decoder_sensitivity` (Hutchinson probes through decoder Jacobian)
+
+Fitting script: `fit_latent_loss_weights.py`
+
+## Completed runs (latent generative)
+
+All under `latent_continuous_runs/`.
+
+### Deterministic AE, AR coherence run
+- Path: `t12-rf-w768-l12-d6-b256-s1-n30000/`
+- Config: RF, v-prediction, Transformer 768×12, diffusion MLP 768×6, batch 256, 30k steps, CFG norm match.
+- Result: improved vs 10k gate, still mostly unintelligible textures.
+
+### VAE posterior-mean AR weighting campaign
+- Path: `vae-posterior-mean-weighting/{unweighted,raw_variance,decoder_sensitivity}/`
+- Same RF/768/30k config as above; only loss weighting differs.
+- All three arms completed 30k steps.
+- Diagnostics show AR context helps (conditional MSE ~0.12 vs null ~0.26–0.30), but previews remain texture-like.
+- Weighting did not clearly solve coherence.
+
+### Joint latent diffusion (VAE posterior means)
+- Path: `joint-vae-mean-rf-w768-l12-b256-s1-n30000/`
+- Config: bidirectional 768×12, RF Heun sampler, batch 256, 30k steps, no CFG.
+- Completed 30k steps (~9.5 steps/s training; ~76 ms/image sampling).
+- Final train flow MSE ≈ 0.91; previews still texture-like.
+- Interpretation: joint diffusion did not immediately fix coherence either → bottleneck may be latent manifold / decoder geometry, not only AR exposure bias.
+
+## Key code map
+
+| File | Role |
+|---|---|
+| `frequency.py` | FFT codec, orbit layout, whitening |
+| `autoencoder_models.py` | Causal ring AE/VAE |
+| `diffusion_decoder.py` | Per-token AdaLN diffusion/flow head |
+| `causal_transformer.py` | Causal/bidirectional Transformer blocks |
+| `model_continuous.py` | Original full-frequency AR model (pixel-path baseline) |
+| `model_latent_continuous.py` | Latent AR model |
+| `model_joint_latent_diffusion.py` | Joint latent diffusion model |
+| `train_latent_continuous.py` | AR latent trainer |
+| `train_joint_latent_diffusion.py` | Joint latent trainer |
+| `fit_autoencoder_latent_interface.py` | Fit latent mean/std + probe |
+| `fit_latent_loss_weights.py` | Fit loss weight tensors |
+| `evaluate_autoencoder_checkpoint.py` | AE test eval |
+| `tests/test_latent_continuous.py` | Latent AR + joint diffusion tests |
+
+Launch scripts:
+- `scripts/run_latent_afig_gate.sh`
+- `scripts/run_latent_afig_coherence.sh`
+- `scripts/run_vae_latent_weighting_campaign.sh`
+- `scripts/run_joint_latent_diffusion_gate.sh`
+
+Supervisor jobs (under `/opt/supervisor-scripts/`, configs in `/etc/supervisor/conf.d/`):
+- `afig-vae-latent-weighting` (completed)
+- `afig-joint-latent-diffusion` (completed)
+
+## Operational notes
+
+- **GPU jobs must use `gpu-claim`** (`/workspace/bin/gpu-claim`, docs in `/workspace/GPU_QUEUEING.md`). Do not invent separate claim dirs.
+- Python env: `/venv/main/bin/python`
+- W&B project: `afig-latent-continuous` (when enabled)
+- Preview images saved locally and logged to W&B; metrics also in per-run `metrics.jsonl`
+- Do not commit `latent_continuous_runs/` (gitignored)
+
+## Current interpretation / hypotheses
+
+1. **AE is not obviously broken**: reconstructions are intelligible (~34–35 dB PSNR); train/test gap on AE was small in prior gates.
+2. **AR model learns conditional structure** (large conditional/null gap), but rollout quality is poor → likely **exposure bias / error accumulation** during sequential sampling.
+3. **Joint diffusion also weak** → representation or optimization may still be limiting; not purely an AR pathology.
+4. **Whitening may distort perceptual loss weighting**; explored raw-variance and decoder-sensitivity reweighting without clear win.
+5. **VAE posterior-mean latents** were preferred over deterministic AE for generative experiments, but improvement is modest so far.
+
+## Agreed next directions (not yet implemented)
+
+1. **Diffusion forcing / rolling diffusion on the AR path**
+   - Train causal model with noisy previous latents, not always clean history.
+   - Per-position noise schedules; ideally aligned to radial progression.
+   - Addresses teacher-forcing mismatch directly while keeping frequency ordering.
+
+2. **Pure pixel or full-token diffusion baselines** (if needed for clarity)
+   - Joint latent diffusion was meant as a diagnostic; result suggests looking beyond rollout alone.
+
+3. **Possible AE-side work** if generative path remains stuck
+   - Manifold diagnostics, gentler VAE training, alternative loss weighting in AE training itself.
+
+## Quick commands
+
+```bash
+cd /workspace/AFIG
+
+# Check queue
+gpu-claim status
+
+# Evaluate AE
+/venv/main/bin/python evaluate_autoencoder_checkpoint.py \
+  autoencoder_runs/.../checkpoint_30000.pt
+
+# Fit posterior-mean interface
+/venv/main/bin/python fit_autoencoder_latent_interface.py \
+  --checkpoint autoencoder_runs/.../checkpoint_30000.pt \
+  --output autoencoder_runs/.../latent_interface_posterior_mean.pt
+
+# Joint diffusion gate
+gpu-claim run --owner AFIG --job joint-latent-diffusion --wait -- \
+  scripts/run_joint_latent_diffusion_gate.sh
+
+# AR latent training
+gpu-claim run --owner AFIG --job latent-afig --wait -- \
+  scripts/run_latent_afig_coherence.sh
+
+# Tests
+/venv/main/bin/python -m pytest tests/test_latent_continuous.py -q
+```
+
+## Handoff priorities for next agent
+
+1. **Visually compare** final previews across:
+   - `t12-rf-w768-l12-d6-b256-s1-n30000/` (deterministic AE AR)
+   - `vae-posterior-mean-weighting/*/` (three AR weighting arms)
+   - `joint-vae-mean-rf-w768-l12-b256-s1-n30000/` (joint diffusion)
+2. Decide whether to pursue **diffusion forcing** on AR (user-endorsed) vs more AE work.
+3. If implementing diffusion forcing, start with full-sequence causal training on noisy prefixes before rolling/block sampling optimizations.
+4. Keep posterior-mean encoding policy; do not enable live VAE sampling for training data unless explicitly changing experiment design.

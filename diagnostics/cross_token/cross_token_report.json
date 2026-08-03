@@ -1,0 +1,61 @@
+{
+  "num_samples": 4096,
+  "real_energy_coupling": {
+    "mean_offdiag_energy_correlation": 0.39937442541122437,
+    "rms_offdiag_energy_correlation": 0.4268832802772522,
+    "max_offdiag_energy_correlation": 0.7560657262802124
+  },
+  "shuffled_energy_coupling": {
+    "mean_offdiag_energy_correlation": 0.0008312993450090289,
+    "rms_offdiag_energy_correlation": 0.014703653752803802,
+    "max_offdiag_energy_correlation": 0.05748116225004196
+  },
+  "partial_shuffle_energy_coupling": {
+    "keep_prefix_1": {
+      "mean_offdiag_energy_correlation": 3.655543696368113e-05,
+      "rms_offdiag_energy_correlation": 0.015557811595499516,
+      "max_offdiag_energy_correlation": 0.0549907349050045
+    },
+    "keep_prefix_2": {
+      "mean_offdiag_energy_correlation": 0.0003195776080247015,
+      "rms_offdiag_energy_correlation": 0.016002938151359558,
+      "max_offdiag_energy_correlation": 0.05284251645207405
+    },
+    "keep_prefix_4": {
+      "mean_offdiag_energy_correlation": 0.0012034577084705234,
+      "rms_offdiag_energy_correlation": 0.03492129594087601,
+      "max_offdiag_energy_correlation": 0.7128768563270569
+    },
+    "keep_prefix_8": {
+      "mean_offdiag_energy_correlation": 0.008932775817811489,
+      "rms_offdiag_energy_correlation": 0.07607876509428024,
+      "max_offdiag_energy_correlation": 0.7128768563270569
+    },
+    "keep_prefix_16": {
+      "mean_offdiag_energy_correlation": 0.037429727613925934,
+      "rms_offdiag_energy_correlation": 0.14691486954689026,
+      "max_offdiag_energy_correlation": 0.7128768563270569
+    },
+    "keep_prefix_32": {
+      "mean_offdiag_energy_correlation": 0.15000365674495697,
+      "rms_offdiag_energy_correlation": 0.2727694809436798,
+      "max_offdiag_energy_correlation": 0.7128768563270569
+    }
+  },
+  "generated_energy_coupling": {
+    "mean_offdiag_energy_correlation": 0.3754120171070099,
+    "rms_offdiag_energy_correlation": 0.40160876512527466,
+    "max_offdiag_energy_correlation": 0.7294548749923706
+  },
+  "grid_row_order": [
+    "real_reconstruction",
+    "all_positions_shuffled",
+    "shuffled_from_1",
+    "shuffled_from_2",
+    "shuffled_from_4",
+    "shuffled_from_8",
+    "shuffled_from_16",
+    "shuffled_from_32",
+    "joint_diffusion_samples"
+  ]
+}

@@ -1,0 +1,26 @@
+GPU_CLAIM_RUN index=5 uuid=GPU-20c628ac-d9f2-2c9c-1609-d07f57d6e0e8 owner=AFIG job=ev-rope-ra cmd=/venv/main/bin/python /workspace/AFIG/diagnose_overfitting.py --checkpoint /workspace/AFIG/autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001/checkpoint_30000.pt --latent_interface /workspace/AFIG/autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001/latent_interface_posterior_mean.pt --joint_checkpoint /workspace/AFIG/latent_continuous_runs/conditioning/joint-rope-ra/checkpoint_final.pt --output_dir /workspace/AFIG/diagnostics/eval_rope-ra --num_eval 4096
+AE reconstruction PSNR: train 35.03 dB, test 35.05 dB
+joint checkpoint step 30000
+
+=== Autoencoder ===
+  reconstruction PSNR   train   35.03   test   35.05   gap -0.02 dB
+
+=== Joint diffusion velocity MSE (paired noise, 32-point t grid) ===
+  model                 train  0.9039   test  0.9056   gap +0.0017
+  linear Gaussian       train  1.0063   test  1.0183   gap +0.0120
+
+  model advantage over linear:  train +0.1024   test +0.1127
+
+  -> The model still beats the linear fit on held-out data.
+
+=== Largest per-position generalization gaps ===
+  position 21: train 0.9894  test 0.9963  gap +0.0069
+  position 49: train 0.8743  test 0.8809  gap +0.0067
+  position 42: train 0.9467  test 0.9526  gap +0.0059
+  position 48: train 0.8808  test 0.8857  gap +0.0049
+  position 51: train 0.7839  test 0.7886  gap +0.0047
+  position 34: train 0.9813  test 0.9860  gap +0.0046
+  position 20: train 0.8749  test 0.8794  gap +0.0045
+  position 50: train 0.8219  test 0.8260  gap +0.0041
+
+wrote /workspace/AFIG/diagnostics/eval_rope-ra/overfitting_report.json

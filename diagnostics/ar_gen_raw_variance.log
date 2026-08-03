@@ -1,0 +1,9 @@
+GPU_CLAIM_RUN index=5 uuid=GPU-20c628ac-d9f2-2c9c-1609-d07f57d6e0e8 owner=AFIG job=argen-raw_variance cmd=/venv/main/bin/python /workspace/AFIG/diagnose_ar_generalization.py --checkpoint /workspace/AFIG/autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001/checkpoint_30000.pt --latent_interface /workspace/AFIG/autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001/latent_interface_posterior_mean.pt --ar_checkpoint /workspace/AFIG/latent_continuous_runs/vae-posterior-mean-weighting/raw_variance/checkpoint_final.pt --output_dir /workspace/AFIG/diagnostics/ar_gen_raw_variance --num_images 2048
+AR checkpoint step 30000
+
+split     conditional       null        gap
+train          0.5045     1.1134     0.6089
+test           1.6286     1.1117    -0.5170
+
+fraction of the conditional advantage retained on held-out data: -0.849
+-> the AR conditional advantage is largely a training-set effect

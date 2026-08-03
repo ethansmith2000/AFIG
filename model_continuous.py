@@ -16,6 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 
+from causal_transformer import apply_rope, build_rope_tables
 from diffusion_decoder import DiffusionDecoder, DiffusionDecoderConfig
 from frequency import FrequencyCodec, FrequencyCodecConfig, TOKEN_DIM
 
@@ -29,6 +30,10 @@ class TransformerConfig:
     dropout: float = 0.0
     max_seq_len: int = 515  # BOS + 514
     gradient_checkpointing: bool = False
+    qk_norm: bool = True
+    attention_rope: str = "frequency_2d"  # none | sequence | frequency_2d
+    rope_base: float = 10000.0
+    position_film: bool = False
 
     def fingerprint(self) -> Dict[str, Any]:
         return asdict(self)
@@ -76,25 +81,6 @@ class HistoryFeatureConfig:
 
 
 @dataclass(frozen=True)
-class FrequencyConditioningConfig:
-    """Known-frequency conditioning shared by input, backbone, and decoder."""
-
-    enabled: bool = False
-    num_frequencies: int = 4
-    max_frequency: float = 8.0
-    input_addition: bool = True
-    rms_normalize: bool = False
-    transformer_film: bool = True
-    diffusion_target_conditioning: bool = True
-    backbone_position_mode: str = "legacy_hybrid"
-    input_scale_init: float = 0.1
-    # TODO(position): add 2D RoPE as a separate relative-geometry ablation.
-
-    def fingerprint(self) -> Dict[str, Any]:
-        return asdict(self)
-
-
-@dataclass(frozen=True)
 class GenerationConfig:
     num_inference_steps: int = 20
     eta: float = 0.0
@@ -118,9 +104,6 @@ class ContinuousModelConfig:
     corruption: CorruptionConfig = field(default_factory=CorruptionConfig)
     polar_history: PolarHistoryConfig = field(default_factory=PolarHistoryConfig)
     history_features: HistoryFeatureConfig = field(default_factory=HistoryFeatureConfig)
-    frequency_conditioning: FrequencyConditioningConfig = field(
-        default_factory=FrequencyConditioningConfig
-    )
     generation: GenerationConfig = field(default_factory=GenerationConfig)
 
     def fingerprint(self) -> Dict[str, Any]:
@@ -131,7 +114,6 @@ class ContinuousModelConfig:
             "corruption": self.corruption.fingerprint(),
             "polar_history": self.polar_history.fingerprint(),
             "history_features": self.history_features.fingerprint(),
-            "frequency_conditioning": self.frequency_conditioning.fingerprint(),
             "generation": self.generation.fingerprint(),
         }
 
@@ -160,6 +142,7 @@ class CausalSelfAttention(nn.Module):
         num_heads: int,
         dropout: float = 0.0,
         position_film: bool = False,
+        qk_norm: bool = False,
     ):
         super().__init__()
         if width % num_heads != 0:
@@ -170,6 +153,16 @@ class CausalSelfAttention(nn.Module):
         self.norm = nn.LayerNorm(width)
         self.position_film = PositionFiLM(width) if position_film else None
         self.qkv = nn.Linear(width, 3 * width, bias=False)
+        self.q_norm = (
+            nn.RMSNorm(self.head_dim, elementwise_affine=True)
+            if qk_norm
+            else None
+        )
+        self.k_norm = (
+            nn.RMSNorm(self.head_dim, elementwise_affine=True)
+            if qk_norm
+            else None
+        )
         self.out_proj = nn.Linear(width, width)
 
     def forward(
@@ -178,6 +171,7 @@ class CausalSelfAttention(nn.Module):
         position_condition: Optional[torch.Tensor] = None,
         kv_cache: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         use_cache: bool = False,
+        rope: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
         b, n, _ = x.shape
         h = self.norm(x)
@@ -190,6 +184,20 @@ class CausalSelfAttention(nn.Module):
         q = q.view(b, n, self.num_heads, self.head_dim).transpose(1, 2)
         k = k.view(b, n, self.num_heads, self.head_dim).transpose(1, 2)
         v = v.view(b, n, self.num_heads, self.head_dim).transpose(1, 2)
+
+        if self.q_norm is not None:
+            q = self.q_norm(q)
+            k = self.k_norm(k)  # type: ignore[operator]
+
+        if rope is not None:
+            cos, sin = rope
+            # Attention slot j predicts frequency j. During cached decoding the
+            # cache length is therefore also the target-frequency table offset.
+            offset = kv_cache[0].shape[2] if kv_cache is not None else 0
+            if offset + n > cos.shape[0]:
+                raise ValueError("RoPE tables are shorter than the attended sequence")
+            q = apply_rope(q, cos[offset : offset + n], sin[offset : offset + n])
+            k = apply_rope(k, cos[offset : offset + n], sin[offset : offset + n])
 
         if kv_cache is not None:
             past_k, past_v = kv_cache
@@ -253,9 +261,16 @@ class TransformerBlock(nn.Module):
         ff_mult: int,
         dropout: float,
         position_film: bool = False,
+        qk_norm: bool = False,
     ):
         super().__init__()
-        self.attn = CausalSelfAttention(width, num_heads, dropout, position_film)
+        self.attn = CausalSelfAttention(
+            width,
+            num_heads,
+            dropout,
+            position_film,
+            qk_norm=qk_norm,
+        )
         self.ff = FeedForward(width, ff_mult, dropout, position_film)
 
     def forward(
@@ -264,139 +279,17 @@ class TransformerBlock(nn.Module):
         position_condition: Optional[torch.Tensor] = None,
         kv_cache: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         use_cache: bool = False,
+        rope: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
         x, new_cache = self.attn(
             x,
             position_condition=position_condition,
             kv_cache=kv_cache,
             use_cache=use_cache,
+            rope=rope,
         )
         x = self.ff(x, position_condition=position_condition)
         return x, new_cache
-
-
-class FrequencyPositionEmbed(nn.Module):
-    """Functional frequency features plus a learned per-orbit residual."""
-
-    def __init__(
-        self,
-        width: int,
-        max_seq_len: int,
-        functional: bool = False,
-        num_frequencies: int = 4,
-        max_frequency: float = 8.0,
-        mode: str = "legacy_hybrid",
-        signed_coordinates: Optional[torch.Tensor] = None,
-    ):
-        super().__init__()
-        if num_frequencies < 1:
-            raise ValueError("num_frequencies must be >= 1")
-        if max_frequency < 1.0:
-            raise ValueError("max_frequency must be >= 1")
-        if mode not in ("legacy_hybrid", "random_table", "sincos_table"):
-            raise ValueError(f"Unknown position embedding mode: {mode}")
-        self.functional = functional and mode == "legacy_hybrid"
-        self.mode = mode
-        self.seq_embed = nn.Embedding(max_seq_len, width)
-        if mode == "sincos_table":
-            if signed_coordinates is None:
-                raise ValueError("sincos_table requires signed_coordinates")
-            table = self._sincos_table(
-                signed_coordinates,
-                width=width,
-                max_seq_len=max_seq_len,
-            )
-            with torch.no_grad():
-                self.seq_embed.weight.copy_(table)
-            self.register_buffer("frequency_bands", torch.empty(0), persistent=False)
-            self.meta_mlp = None
-        elif mode == "random_table":
-            nn.init.normal_(self.seq_embed.weight, std=0.02)
-            with torch.no_grad():
-                self.seq_embed.weight[0].zero_()
-            self.register_buffer("frequency_bands", torch.empty(0), persistent=False)
-            self.meta_mlp = None
-        elif functional:
-            nn.init.normal_(self.seq_embed.weight, std=0.02)
-            bands = torch.logspace(
-                0.0,
-                math.log2(max_frequency),
-                num_frequencies,
-                base=2.0,
-            )
-            self.register_buffer("frequency_bands", bands, persistent=False)
-            # normalized kx, ky, radius, cos(angle), sin(angle), is_self,
-            # plus sin/cos bands for the first three continuous coordinates.
-            meta_dim = 6 + 2 * 3 * num_frequencies
-            self.meta_mlp = nn.Sequential(
-                nn.Linear(meta_dim, width),
-                nn.SiLU(),
-                nn.Linear(width, width),
-            )
-        else:
-            self.register_buffer("frequency_bands", torch.empty(0), persistent=False)
-            meta_dim = 5
-            self.meta_mlp = nn.Sequential(
-                nn.Linear(meta_dim, width),
-                nn.SiLU(),
-                nn.Linear(width, width),
-            )
-
-    @staticmethod
-    def _sincos_1d(positions: torch.Tensor, dim: int) -> torch.Tensor:
-        if dim % 2 != 0:
-            raise ValueError("1D sin/cos dimension must be even")
-        half = dim // 2
-        omega = torch.arange(half, dtype=torch.float32, device=positions.device)
-        omega = 1.0 / (10000.0 ** (omega / max(float(half), 1.0)))
-        phase = positions.float()[:, None] * omega[None, :]
-        return torch.cat([phase.sin(), phase.cos()], dim=-1)
-
-    @classmethod
-    def _sincos_table(
-        cls,
-        signed_coordinates: torch.Tensor,
-        width: int,
-        max_seq_len: int,
-    ) -> torch.Tensor:
-        if width % 4 != 0:
-            raise ValueError("2D sin/cos width must be divisible by 4")
-        if signed_coordinates.ndim != 2 or signed_coordinates.shape[-1] != 2:
-            raise ValueError("signed_coordinates must have shape [L,2]")
-        if signed_coordinates.shape[0] + 1 > max_seq_len:
-            raise ValueError("Position table is too short for signed coordinates")
-        ky, kx = signed_coordinates.unbind(dim=-1)
-        values = torch.cat(
-            [
-                cls._sincos_1d(ky, width // 2),
-                cls._sincos_1d(kx, width // 2),
-            ],
-            dim=-1,
-        )
-        table = torch.zeros(max_seq_len, width, dtype=torch.float32)
-        table[1 : values.shape[0] + 1] = values.cpu()
-        return table
-
-    def _features(self, meta: torch.Tensor) -> torch.Tensor:
-        if not self.functional:
-            return meta
-        continuous = meta[..., :3]
-        phase = math.pi * continuous[..., None] * self.frequency_bands
-        fourier = torch.cat([phase.sin(), phase.cos()], dim=-1).flatten(-2)
-        return torch.cat([meta, fourier], dim=-1)
-
-    def forward(
-        self,
-        seq_idx: torch.Tensor,
-        meta: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        emb = self.seq_embed(seq_idx)
-        if meta is not None and self.meta_mlp is not None:
-            functional = self.meta_mlp(self._features(meta))
-            # BOS has no frequency coordinate; its learned table entry is enough.
-            functional = functional * (seq_idx != 0).unsqueeze(-1).to(functional.dtype)
-            emb = emb + functional
-        return emb
 
 
 class ContinuousFFTDecoder(nn.Module):
@@ -409,15 +302,9 @@ class ContinuousFFTDecoder(nn.Module):
     ):
         super().__init__()
         self.config = config or ContinuousModelConfig()
-        # Keep diffusion conditions aligned with the Transformer representation.
-        expected_target_condition_dim = (
-            self.config.transformer.width
-            if (
-                self.config.frequency_conditioning.enabled
-                and self.config.frequency_conditioning.diffusion_target_conditioning
-            )
-            else 0
-        )
+        # The Transformer hidden state is the decoder's sole condition. Absolute
+        # frequency identity enters once through the learned prediction slot.
+        expected_target_condition_dim = 0
         if (
             self.config.diffusion.z_channels != self.config.transformer.width
             or self.config.diffusion.target_condition_dim
@@ -494,6 +381,12 @@ class ContinuousFFTDecoder(nn.Module):
         ):
             raise ValueError("Policy history mode requires explicit mean and scale policies")
         tcfg = self.config.transformer
+        if tcfg.attention_rope not in ("none", "sequence", "frequency_2d"):
+            raise ValueError(
+                "transformer.attention_rope must be none, sequence, or frequency_2d"
+            )
+        if tcfg.rope_base <= 0.0:
+            raise ValueError("transformer.rope_base must be positive")
         self.width = tcfg.width
         self.token_proj = nn.Linear(TOKEN_DIM, tcfg.width)
         self.polar_proj: Optional[nn.Linear]
@@ -513,52 +406,38 @@ class ContinuousFFTDecoder(nn.Module):
             self.polar_proj = None
         self.bos = nn.Parameter(torch.zeros(1, 1, tcfg.width))
         nn.init.normal_(self.bos, std=0.02)
-        pcfg = self.config.frequency_conditioning
-        if pcfg.backbone_position_mode not in (
-            "legacy_hybrid",
-            "random_table",
-            "sincos_table",
-            "none",
-        ):
-            raise ValueError(
-                f"Unknown backbone_position_mode={pcfg.backbone_position_mode}"
-            )
+        if self.codec.seq_len > tcfg.max_seq_len:
+            raise ValueError("transformer.max_seq_len is shorter than the codec sequence")
+        self.slot_embed = nn.Embedding(self.codec.seq_len, tcfg.width)
+        nn.init.normal_(self.slot_embed.weight, std=0.02)
         signed_coordinates = torch.stack(
             [self.codec.ky_signed, self.codec.kx_signed],
             dim=-1,
         )
-        self.pos_embed = FrequencyPositionEmbed(
-            tcfg.width,
-            tcfg.max_seq_len,
-            functional=pcfg.enabled,
-            num_frequencies=pcfg.num_frequencies,
-            max_frequency=pcfg.max_frequency,
-            mode="legacy_hybrid",
+        if tcfg.attention_rope == "frequency_2d":
+            rope_coordinates = signed_coordinates.round().to(torch.int64)
+        elif tcfg.attention_rope == "sequence":
+            rope_coordinates = torch.arange(self.codec.seq_len, dtype=torch.int64)
+        else:
+            rope_coordinates = torch.empty(0, dtype=torch.int64)
+        self.register_buffer(
+            "_attention_rope_coordinates",
+            rope_coordinates,
+            persistent=False,
         )
-        backbone_mode = (
-            "legacy_hybrid"
-            if pcfg.backbone_position_mode == "none"
-            else pcfg.backbone_position_mode
-        )
-        with torch.random.fork_rng(devices=[]):
-            self.backbone_pos_embed = FrequencyPositionEmbed(
-                tcfg.width,
-                tcfg.max_seq_len,
-                functional=pcfg.enabled,
-                num_frequencies=pcfg.num_frequencies,
-                max_frequency=pcfg.max_frequency,
-                mode=backbone_mode,
-                signed_coordinates=signed_coordinates,
+        if tcfg.attention_rope == "none":
+            rope_cos = torch.empty(0, dtype=torch.float32)
+            rope_sin = torch.empty(0, dtype=torch.float32)
+        else:
+            rope_cos, rope_sin = build_rope_tables(
+                rope_coordinates,
+                tcfg.width // tcfg.num_heads,
+                base=tcfg.rope_base,
             )
-        self.input_position_scale = nn.Parameter(
-            torch.tensor(float(pcfg.input_scale_init))
-        )
-        self.position_norm = (
-            nn.RMSNorm(tcfg.width, elementwise_affine=False)
-            if pcfg.enabled and pcfg.rms_normalize
-            else nn.Identity()
-        )
-        use_position_film = pcfg.enabled and pcfg.transformer_film
+        # These buffers are deliberately fp32. _attention_rope_tables rebuilds
+        # them from integer coordinates if a whole-module dtype cast changes them.
+        self.register_buffer("_attention_rope_cos", rope_cos, persistent=False)
+        self.register_buffer("_attention_rope_sin", rope_sin, persistent=False)
         self.layers = nn.ModuleList(
             [
                 TransformerBlock(
@@ -566,7 +445,8 @@ class ContinuousFFTDecoder(nn.Module):
                     tcfg.num_heads,
                     tcfg.ff_mult,
                     tcfg.dropout,
-                    position_film=use_position_film,
+                    position_film=tcfg.position_film,
+                    qk_norm=tcfg.qk_norm,
                 )
                 for _ in range(tcfg.num_layers)
             ]
@@ -581,6 +461,30 @@ class ContinuousFFTDecoder(nn.Module):
 
     def enable_gradient_checkpointing(self) -> None:
         self.gradient_checkpointing = True
+
+    def _attention_rope_tables(
+        self, device: torch.device
+    ) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
+        """Return fp32 attention RoPE tables on ``device``.
+
+        The integer coordinate buffer survives ``model.bfloat16()`` exactly. If
+        that operation casts the cached trigonometric tables, rebuild rather
+        than promoting already-rounded bf16 values back to fp32.
+        """
+        tcfg = self.config.transformer
+        if tcfg.attention_rope == "none":
+            return None
+        cos = self._attention_rope_cos
+        sin = self._attention_rope_sin
+        if cos.device != device or cos.dtype != torch.float32:
+            cos, sin = build_rope_tables(
+                self._attention_rope_coordinates.to(device=device),
+                tcfg.width // tcfg.num_heads,
+                base=tcfg.rope_base,
+            )
+            self._attention_rope_cos = cos
+            self._attention_rope_sin = sin
+        return cos, sin
 
     def _fuse_polar_features(
         self,
@@ -610,81 +514,14 @@ class ContinuousFFTDecoder(nn.Module):
             scale_policy=self.config.history_features.scale_policy,
         )
 
-    def _uses_backbone_position(self) -> bool:
-        pcfg = self.config.frequency_conditioning
-        return (
-            (not pcfg.enabled or pcfg.input_addition)
-            and pcfg.backbone_position_mode != "none"
-        )
-
-    def _backbone_position_embedding(
-        self,
-        seq_idx: torch.Tensor,
-        meta: torch.Tensor,
-    ) -> torch.Tensor:
-        position = self.position_norm(self.backbone_pos_embed(seq_idx, meta))
-        if self.config.frequency_conditioning.backbone_position_mode in (
-            "random_table",
-            "sincos_table",
-        ):
-            position = position * self.input_position_scale.to(position.dtype)
-        return position
-
-    # ------------------------------------------------------------------
-    # Metadata helpers
-    # ------------------------------------------------------------------
-    def _token_meta(self, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
-        """Return [L, 5] metadata: kx_s, ky_s, radius, angle, is_self."""
-        meta = torch.stack(
-            [
-                self.codec.kx_signed,
-                self.codec.ky_signed,
-                self.codec.radius,
-                self.codec.angle,
-                self.codec.is_self_conjugate.float(),
-            ],
-            dim=-1,
-        )
-        return meta.to(device=device, dtype=dtype)
-
-    def _position_meta(self, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
-        """Return legacy metadata or normalized functional coordinates."""
-        if not self.config.frequency_conditioning.enabled:
-            return self._token_meta(device, dtype)
-        half_w = self.config.codec.width / 2.0
-        half_h = self.config.codec.height / 2.0
-        max_radius = math.sqrt(half_w * half_w + half_h * half_h)
-        meta = torch.stack(
-            [
-                self.codec.kx_signed / half_w,
-                self.codec.ky_signed / half_h,
-                self.codec.radius / max_radius,
-                self.codec.angle.cos(),
-                self.codec.angle.sin(),
-                self.codec.is_self_conjugate.float(),
-            ],
-            dim=-1,
-        )
-        return meta.to(device=device, dtype=dtype)
-
-    def _bos_meta(self, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
-        meta_dim = 6 if self.config.frequency_conditioning.enabled else 5
-        return torch.zeros(1, meta_dim, device=device, dtype=dtype)
-
-    def target_position_condition(
+    def prediction_slot_condition(
         self,
         positions: torch.Tensor,
         batch_size: int,
         dtype: torch.dtype,
-    ) -> Optional[torch.Tensor]:
-        """Embed known target orbit indices as [B,T,width] conditions."""
-        if not self.config.frequency_conditioning.enabled:
-            return None
-        device = positions.device
-        meta = self._position_meta(device, dtype)[positions]
-        seq_idx = positions + 1  # index 0 is reserved for BOS
-        condition = self.pos_embed(seq_idx, meta)
-        condition = self.position_norm(condition)
+    ) -> torch.Tensor:
+        """Return the one shared identity embedding for prediction slots."""
+        condition = self.slot_embed(positions).to(dtype=dtype)
         return condition[None, :, :].expand(batch_size, -1, -1)
 
     def diffusion_output_gain(self, positions: torch.Tensor) -> Optional[torch.Tensor]:
@@ -828,42 +665,25 @@ class ContinuousFFTDecoder(nn.Module):
         b, t, _ = tokens.shape
         device = tokens.device
         dtype = self.token_proj.weight.dtype
-        meta_all = self._position_meta(device, dtype)
         if positions is None:
             # Assume tokens correspond to the first t frequency positions.
             positions = torch.arange(t, device=device)
-            token_meta = meta_all[:t]
-        else:
-            token_meta = meta_all[positions]
 
         cartesian = self._history_cartesian_features(tokens, positions)
         x = self.token_proj(cartesian.to(dtype=dtype))
         x = self._fuse_polar_features(x, tokens, positions)
+        # A history coefficient x_i occupies prediction slot i+1 and predicts
+        # x_{i+1}. Fixed ordering makes this one slot ID sufficient for both roles.
+        prediction_slots = positions + 1
+        if prediction_slots.numel() and int(prediction_slots.max()) >= self.codec.seq_len:
+            raise ValueError("History extends beyond the final prediction slot")
+        x = x + self.slot_embed(prediction_slots)[None, :, :].to(dtype=dtype)
 
-        # Sequence indices: if include_bos later, token positions start at 1.
-        add_input_position = self._uses_backbone_position()
         if include_bos:
             bos = self.bos.to(dtype=dtype).expand(b, -1, -1)
-            if add_input_position:
-                seq_idx = positions + 1
-                pos = self._backbone_position_embedding(seq_idx, token_meta)
-                x = x + pos[None, :, :]
-                bos_pos = self._backbone_position_embedding(
-                    torch.zeros(1, device=device, dtype=torch.long),
-                    self._bos_meta(device, dtype),
-                )
-                bos = bos + bos_pos[None, :, :]
+            bos_slot = torch.zeros(1, device=device, dtype=torch.long)
+            bos = bos + self.slot_embed(bos_slot)[None, :, :].to(dtype=dtype)
             x = torch.cat([bos, x], dim=1)
-        else:
-            if add_input_position:
-                seq_idx = (
-                    positions
-                    if positions is not None
-                    else torch.arange(t, device=device)
-                )
-                # When used for step decode after BOS, positions are absolute seq indices.
-                pos = self._backbone_position_embedding(seq_idx, token_meta)
-                x = x + pos[None, :, :]
         return x
 
     def forward_backbone(
@@ -873,8 +693,8 @@ class ContinuousFFTDecoder(nn.Module):
         use_cache: bool = False,
         position_condition: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[List[Tuple[torch.Tensor, torch.Tensor]]]]:
-        pcfg = self.config.frequency_conditioning
-        if pcfg.enabled and pcfg.transformer_film:
+        rope = self._attention_rope_tables(x.device)
+        if self.config.transformer.position_film:
             if position_condition is None:
                 past_length = 0
                 if kv_caches is not None and kv_caches[0] is not None:
@@ -884,9 +704,9 @@ class ContinuousFFTDecoder(nn.Module):
                     past_length + x.shape[1],
                     device=x.device,
                 )
-                position_condition = self.target_position_condition(
+                position_condition = self.prediction_slot_condition(
                     positions,
-                    batch_size=1,
+                    batch_size=x.shape[0],
                     dtype=x.dtype,
                 )
         else:
@@ -903,12 +723,18 @@ class ContinuousFFTDecoder(nn.Module):
                         position_condition=pos,
                         kv_cache=None,
                         use_cache=False,
+                        rope=rope,
                     )
                     return out
 
                 if position_condition is None:
                     def _run_without_position(module, inp):
-                        out, _ = module(inp, kv_cache=None, use_cache=False)
+                        out, _ = module(
+                            inp,
+                            kv_cache=None,
+                            use_cache=False,
+                            rope=rope,
+                        )
                         return out
 
                     x = checkpoint(_run_without_position, layer, x, use_reentrant=False)
@@ -927,6 +753,7 @@ class ContinuousFFTDecoder(nn.Module):
                     position_condition=position_condition,
                     kv_cache=cache_i,
                     use_cache=use_cache,
+                    rope=rope,
                 )
                 if use_cache:
                     new_caches.append(new_cache)  # type: ignore
@@ -983,29 +810,9 @@ class ContinuousFFTDecoder(nn.Module):
 
         # Inputs: [BOS, x0, ..., x_{L-2}] length L; targets: all L tokens.
         x = self.embed_tokens(history, include_bos=True)  # [B, L, width]
-        target_condition = None
-        if self.config.frequency_conditioning.enabled:
-            target_positions = torch.arange(l, device=tokens.device)
-            target_condition = self.target_position_condition(
-                target_positions,
-                batch_size=1,
-                dtype=x.dtype,
-            )
-        h, _ = self.forward_backbone(
-            x,
-            use_cache=False,
-            position_condition=target_condition,
-        )  # [B, L, width]
+        h, _ = self.forward_backbone(x, use_cache=False)  # [B, L, width]
         # h[:, i] conditions token i.
         z = h
-        diffusion_target_condition = (
-            target_condition.expand(b, -1, -1)
-            if (
-                target_condition is not None
-                and self.config.diffusion.target_condition_dim > 0
-            )
-            else None
-        )
         radial_weights = None
         if self.config.diffusion.radial_power_weighting:
             radial_weights = self.codec.radial_loss_weights(
@@ -1027,7 +834,7 @@ class ContinuousFFTDecoder(nn.Module):
         loss_out = self.diffusion.compute_loss(
             target=tokens,
             z=z,
-            target_condition=diffusion_target_condition,
+            target_condition=None,
             component_mask=self.codec.component_mask,
             radius_bin=self.codec.radius_bin,
             radial_weights=radial_weights,
@@ -1063,13 +870,6 @@ class ContinuousFFTDecoder(nn.Module):
             self.embed_tokens(history, include_bos=True)
         )
         positions = torch.arange(length, device=tokens.device)
-        target_condition = self.target_position_condition(
-            positions,
-            batch_size=batch,
-            dtype=hidden.dtype,
-        )
-        if self.config.diffusion.target_condition_dim == 0:
-            target_condition = None
         output_gain = self.diffusion_output_gain(positions)
         return self.diffusion.predict_x0_deterministic(
             tokens,
@@ -1078,7 +878,7 @@ class ContinuousFFTDecoder(nn.Module):
             noise,
             component_mask=self.codec.component_mask,
             output_gain=output_gain,
-            target_condition=target_condition,
+            target_condition=None,
         )
 
     # ------------------------------------------------------------------
@@ -1088,12 +888,8 @@ class ContinuousFFTDecoder(nn.Module):
     def init_cache(self, batch_size: int, device: torch.device, dtype: torch.dtype):
         """Run BOS through the backbone and return (z0, caches)."""
         bos = self.bos.to(device=device, dtype=dtype).expand(batch_size, -1, -1)
-        if self._uses_backbone_position():
-            bos_pos = self._backbone_position_embedding(
-                torch.zeros(1, device=device, dtype=torch.long),
-                self._bos_meta(device, dtype),
-            )
-            bos = bos + bos_pos[None, :, :]
+        slot = torch.zeros(1, device=device, dtype=torch.long)
+        bos = bos + self.slot_embed(slot)[None, :, :].to(dtype=dtype)
         x = bos
         h, caches = self.forward_backbone(x, kv_caches=None, use_cache=True)
         return h[:, -1, :], caches
@@ -1110,20 +906,15 @@ class ContinuousFFTDecoder(nn.Module):
         token: [B, 6]
         Returns condition for the *next* token and updated caches.
         """
-        b = token.shape[0]
         device = token.device
         dtype = self.token_proj.weight.dtype
-        # Sequence index for this token embedding is position+1 (0 is BOS).
-        seq_idx = torch.tensor([position + 1], device=device, dtype=torch.long)
-        meta = self._position_meta(device, dtype)[position : position + 1]
         positions = torch.tensor([position], device=device, dtype=torch.long)
         tok = token.to(dtype=dtype)[:, None, :]
         cartesian = self._history_cartesian_features(tok, positions)
         x = self.token_proj(cartesian)
         x = self._fuse_polar_features(x, tok, positions)
-        if self._uses_backbone_position():
-            pos = self._backbone_position_embedding(seq_idx, meta)
-            x = x + pos[None, :, :]
+        prediction_slot = torch.tensor([position + 1], device=device)
+        x = x + self.slot_embed(prediction_slot)[None, :, :].to(dtype=dtype)
         h, new_caches = self.forward_backbone(x, kv_caches=kv_caches, use_cache=True)
         return h[:, -1, :], new_caches  # type: ignore
 
@@ -1172,14 +963,6 @@ class ContinuousFFTDecoder(nn.Module):
 
         for i in iterator:
             t0 = time.perf_counter()
-            target_condition = None
-            if self.config.diffusion.target_condition_dim > 0:
-                target_condition = self.target_position_condition(
-                    torch.tensor([i], device=device),
-                    batch_size=batch_size,
-                    dtype=dtype,
-                )
-                target_condition = target_condition[:, 0, :]
             output_gain = self.diffusion_output_gain(
                 torch.tensor([i], device=device)
             )
@@ -1187,7 +970,7 @@ class ContinuousFFTDecoder(nn.Module):
                 output_gain = output_gain.expand(batch_size, -1)
             sample = self.diffusion.sample(
                 z,
-                target_condition=target_condition,
+                target_condition=None,
                 component_mask=mask[i],
                 generator=generator,
                 num_inference_steps=steps,
@@ -1253,14 +1036,6 @@ class ContinuousFFTDecoder(nn.Module):
                 x = self.embed_tokens(hist, include_bos=True)
                 h, _ = self.forward_backbone(x, use_cache=False)
                 z = h[:, -1, :]
-            target_condition = None
-            if self.config.diffusion.target_condition_dim > 0:
-                target_condition = self.target_position_condition(
-                    torch.tensor([i], device=device),
-                    batch_size=batch_size,
-                    dtype=dtype,
-                )
-                target_condition = target_condition[:, 0, :]
             output_gain = self.diffusion_output_gain(
                 torch.tensor([i], device=device)
             )
@@ -1268,7 +1043,7 @@ class ContinuousFFTDecoder(nn.Module):
                 output_gain = output_gain.expand(batch_size, -1)
             sample = self.diffusion.sample(
                 z,
-                target_condition=target_condition,
+                target_condition=None,
                 component_mask=mask[i],
                 generator=generator,
                 num_inference_steps=steps,

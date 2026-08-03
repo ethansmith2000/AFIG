@@ -134,11 +134,25 @@ def layout_fingerprint(
         codec.kx,
     ):
         digest.update(tensor.detach().cpu().contiguous().numpy().tobytes())
+    # Fields added after existing checkpoints were written are omitted from the
+    # hash when they hold their default, so a default-valued new option does not
+    # invalidate every prior generative checkpoint.  Non-default values *are*
+    # hashed, so partially-whitened codecs can never be confused with the
+    # fully-whitened ones.  validate_compatible() still checks the field in all
+    # cases, so this only relaxes the hash, not the contract.
+    codec_fingerprint = dict(codec.config.fingerprint())
+    for field, default in (
+        ("whiten_exponent", 1.0),
+        ("coordinate_packing", "legacy"),
+        ("ecs_percentile", 98.25),
+    ):
+        if codec_fingerprint.get(field) == default:
+            codec_fingerprint.pop(field, None)
     digest.update(
         json.dumps(
             {
                 "autoencoder": autoencoder.config.fingerprint(),
-                "codec": codec.config.fingerprint(),
+                "codec": codec_fingerprint,
                 "schema": POSITION_FEATURE_SCHEMA,
             },
             sort_keys=True,

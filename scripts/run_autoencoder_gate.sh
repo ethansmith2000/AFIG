@@ -66,6 +66,10 @@ esac
 if [[ "${variational}" == true ]]; then
   run_name="${run_name}-vae-kl${kl_weight}"
 fi
+whiten_exponent="${WHITEN_EXPONENT:-1.0}"
+if [[ "${whiten_exponent}" != 1.0 ]]; then
+  run_name="${run_name}-wx${whiten_exponent}"
+fi
 if [[ "${latent_noise}" != 0 && "${latent_noise}" != 0.0 ]]; then
   run_name="${run_name}-noise${latent_noise}"
 fi
@@ -96,6 +100,7 @@ exec gpu-claim run --owner AFIG --job "${run_name}" --wait -- \
   --resolution "${resolution}" \
   --output_dir "${output_dir}" \
   --codec_stats_path "autoencoder_runs/codec_stats_${resolution}.pt" \
+  --whiten_exponent "${whiten_exponent}" \
   --seed "${seed}" \
   --max_train_steps "${steps}" \
   --train_batch_size "${batch_size}" \

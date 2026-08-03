@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 import unittest
@@ -16,6 +17,97 @@ from diffusers.training_utils import compute_snr  # noqa: E402
 
 
 class TestDiffusionDecoder(unittest.TestCase):
+    def test_flow_snr_scale_preserves_external_token_coordinates(self):
+        class StaticNet(nn.Module):
+            def __init__(self, value):
+                super().__init__()
+                self.register_buffer("value", value)
+
+            def forward(self, x, t, c, target_condition=None):
+                return self.value.to(device=x.device, dtype=x.dtype).expand_as(x)
+
+        snr_scale = 4.0
+        target = torch.randn(3, 6)
+        noise = torch.randn_like(target)
+        timesteps = torch.tensor([5, 25, 75], dtype=torch.long)
+        condition = torch.randn(3, 8)
+        model = DiffusionDecoder(
+            DiffusionDecoderConfig(
+                target_dim=6,
+                z_channels=8,
+                width=16,
+                depth=1,
+                objective="flow",
+                prediction_type="v_prediction",
+                diffusion_batch_mul=1,
+                num_train_timesteps=100,
+                snr_scale=snr_scale,
+            )
+        )
+        exact_scaled_velocity = math.sqrt(snr_scale) * target - noise
+        model.net = StaticNet(exact_scaled_velocity)
+        predicted = model.predict_x0_deterministic(
+            target, condition, timesteps, noise
+        )
+        self.assertTrue(torch.allclose(predicted, target, atol=2e-6, rtol=2e-6))
+
+    def test_flow_snr_scale_sampling_inverts_internal_signal_scale(self):
+        class StaticNet(nn.Module):
+            def __init__(self, value):
+                super().__init__()
+                self.register_buffer("value", value)
+
+            def forward(self, x, t, c, target_condition=None):
+                return self.value.to(device=x.device, dtype=x.dtype).expand_as(x)
+
+        target = torch.randn(2, 6)
+        snr_scale = 4.0
+        model = DiffusionDecoder(
+            DiffusionDecoderConfig(
+                target_dim=6,
+                z_channels=8,
+                width=16,
+                depth=1,
+                objective="flow",
+                prediction_type="x0",
+                flow_solver="euler",
+                diffusion_batch_mul=1,
+                num_inference_steps=4,
+                snr_scale=snr_scale,
+            )
+        )
+        model.net = StaticNet(math.sqrt(snr_scale) * target)
+        sampled = model.sample(torch.randn(2, 8), num_inference_steps=4)
+        self.assertTrue(torch.allclose(sampled, target, atol=2e-6, rtol=2e-6))
+
+    def test_rejects_nonpositive_snr_scale(self):
+        with self.assertRaises(ValueError):
+            DiffusionDecoder(DiffusionDecoderConfig(snr_scale=0.0))
+
+    def test_fixed_dim_component_reduction_preserves_mask_measure(self):
+        model = DiffusionDecoder(
+            DiffusionDecoderConfig(
+                target_dim=6,
+                z_channels=8,
+                width=16,
+                depth=1,
+                prediction_type="x0",
+                diffusion_batch_mul=1,
+                component_reduction="fixed_dim",
+            )
+        )
+        target = torch.ones(2, 6)
+        condition = torch.zeros(2, 8)
+        mask = torch.tensor(
+            [[1, 1, 1, 1, 1, 1], [1, 1, 1, 0, 0, 0]], dtype=torch.float32
+        )
+        output = model.compute_loss(target, condition, component_mask=mask)
+        self.assertTrue(
+            torch.allclose(
+                output["normalized_per_example"], torch.tensor([1.0, 0.5])
+            )
+        )
+
     def _tiny(
         self,
         prediction_type="epsilon",

@@ -27,6 +27,66 @@ class CausalTransformerConfig:
         return asdict(self)
 
 
+def build_rope_tables(
+    coordinates: torch.Tensor, head_dim: int, base: float = 10000.0
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Rotary tables for arbitrary real-valued position coordinates.
+
+    ``coordinates`` is [L] for 1-D or [L, 2] for axial 2-D, in which case the
+    rotation pairs are split evenly between the two axes.  Coordinates are real
+    rather than integer indices so a latent's pooled ``radius_center`` and
+    angular centre can be used directly -- the frequency-space geometry, rather
+    than a sequence index that conflates ring with sector.
+
+    Returns cos and sin of shape [L, head_dim // 2], one entry per rotation pair.
+    """
+    if head_dim % 2:
+        raise ValueError("RoPE requires an even head_dim")
+    # RoPE phase construction must not inherit the activation/autocast dtype.
+    # In bf16, integer positions above 256 are not all exactly representable;
+    # converting q.dtype positions back to fp32 after that point cannot recover
+    # the lost coordinates.  Callers provide fp32 coordinates, and this disabled
+    # autocast block keeps the complete table fp32 until apply_rope casts at use.
+    with torch.autocast(device_type=coordinates.device.type, enabled=False):
+        coordinates = coordinates.to(dtype=torch.float32)
+        pairs = head_dim // 2
+        if coordinates.ndim == 1:
+            coordinates = coordinates[:, None]
+        axes = coordinates.shape[-1]
+        if pairs % axes:
+            raise ValueError(
+                f"head_dim//2={pairs} must divide evenly among {axes} axes"
+            )
+        per_axis = pairs // axes
+        angles = []
+        for axis in range(axes):
+            exponent = torch.arange(
+                per_axis, dtype=torch.float32, device=coordinates.device
+            )
+            inverse_frequency = base ** (-exponent / max(per_axis, 1))
+            angles.append(
+                coordinates[:, axis : axis + 1] * inverse_frequency[None, :]
+            )
+        angle = torch.cat(angles, dim=-1)
+        return angle.cos().float(), angle.sin().float()
+
+
+def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    """Rotate interleaved pairs of x by the given angles.
+
+    x: [B, H, L, D];  cos/sin: [L, D//2].  Rotation acts on q and k only, so the
+    residual stream is untouched -- this shapes attention geometry rather than
+    token identity.
+    """
+    even = x[..., 0::2]
+    odd = x[..., 1::2]
+    cos = cos.to(x.dtype)[None, None]
+    sin = sin.to(x.dtype)[None, None]
+    rotated_even = even * cos - odd * sin
+    rotated_odd = even * sin + odd * cos
+    return torch.stack([rotated_even, rotated_odd], dim=-1).flatten(-2)
+
+
 class ConditionalFiLM(nn.Module):
     """Zero-initialized scale/shift modulation for known token metadata."""
 
@@ -68,6 +128,7 @@ class CausalSelfAttention(nn.Module):
         condition: Optional[torch.Tensor] = None,
         kv_cache: Optional[KVCache] = None,
         use_cache: bool = False,
+        rope: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, Optional[KVCache]]:
         batch, length, _ = x.shape
         hidden = self.norm(x)
@@ -79,6 +140,15 @@ class CausalSelfAttention(nn.Module):
         query = query.view(batch, length, self.num_heads, self.head_dim).transpose(1, 2)
         key = key.view(batch, length, self.num_heads, self.head_dim).transpose(1, 2)
         value = value.view(batch, length, self.num_heads, self.head_dim).transpose(1, 2)
+        if rope is not None:
+            cos, sin = rope
+            # With a KV cache only the newest token(s) are passed in, so the
+            # rotation must be indexed by absolute position, not by 0..length.
+            offset = kv_cache[0].shape[2] if kv_cache is not None else 0
+            if offset + length > cos.shape[0]:
+                raise ValueError("RoPE tables are shorter than the attended sequence")
+            query = apply_rope(query, cos[offset : offset + length], sin[offset : offset + length])
+            key = apply_rope(key, cos[offset : offset + length], sin[offset : offset + length])
         if kv_cache is not None:
             key = torch.cat([kv_cache[0], key], dim=2)
             value = torch.cat([kv_cache[1], value], dim=2)
@@ -145,6 +215,7 @@ class CausalTransformerBlock(nn.Module):
         condition: Optional[torch.Tensor] = None,
         kv_cache: Optional[KVCache] = None,
         use_cache: bool = False,
+        rope: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, Optional[KVCache]]:
-        x, new_cache = self.attn(x, condition, kv_cache, use_cache)
+        x, new_cache = self.attn(x, condition, kv_cache, use_cache, rope)
         return self.ff(x, condition), new_cache

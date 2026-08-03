@@ -34,11 +34,18 @@ class DiffusionDecoderConfig:
     logit_normal_std: float = 1.0
     flow_t_eps: float = 0.05
     flow_solver: str = "heun"  # euler | heun
+    # Multiply the diffusion bridge SNR by this factor.  Internally the clean
+    # endpoint is scaled by sqrt(snr_scale), then sampling divides that scale
+    # back out before returning tokens to the autoregressive model.
+    snr_scale: float = 1.0
     # Independent of loss_weighting: multiplies per-token MSE by radial
     # expected-centered-power weights (normalized mean 1 across orbits).
     radial_power_weighting: bool = False
     radial_power_exponent: float = 0.5
     loss_metric: str = "normalized"  # normalized | component_weighted | orbit_*
+    # active_mean gives each token equal weight. fixed_dim preserves Euclidean
+    # coordinate measure when a mask removes self-conjugate imaginary dimensions.
+    component_reduction: str = "active_mean"  # active_mean | fixed_dim
     orbit_covariance_exponent: float = 0.0
     orbit_scale_exponent: float = 0.0
     learned_output_gain: bool = False
@@ -276,6 +283,8 @@ class DiffusionDecoder(nn.Module):
             raise ValueError("flow_t_eps must be in (0, 0.5).")
         if self.config.flow_solver not in ("euler", "heun"):
             raise ValueError(f"Unsupported flow_solver={self.config.flow_solver}")
+        if not math.isfinite(self.config.snr_scale) or self.config.snr_scale <= 0.0:
+            raise ValueError("snr_scale must be finite and positive")
         if self.config.input_timestep_conditioning not in ("none", "film"):
             raise ValueError(
                 "input_timestep_conditioning must be 'none' or 'film'."
@@ -311,6 +320,10 @@ class DiffusionDecoder(nn.Module):
             "orbit_scale_power",
         ):
             raise ValueError(f"Unsupported loss_metric={self.config.loss_metric}")
+        if self.config.component_reduction not in ("active_mean", "fixed_dim"):
+            raise ValueError(
+                f"Unsupported component_reduction={self.config.component_reduction}"
+            )
         if not 0.0 <= self.config.orbit_covariance_exponent <= 1.0:
             raise ValueError("orbit_covariance_exponent must be in [0, 1].")
         if not 0.0 <= self.config.orbit_scale_exponent <= 1.0:
@@ -554,6 +567,8 @@ class DiffusionDecoder(nn.Module):
         device = target.device
         dtype = target.dtype
         mask = self._expand_mask(component_mask, n, device, dtype)
+        signal_scale = math.sqrt(self.config.snr_scale)
+        diffusion_target = target * signal_scale
 
         noise = torch.randn_like(target) * mask
         if self.config.objective == "ddpm":
@@ -564,7 +579,9 @@ class DiffusionDecoder(nn.Module):
                 device=device,
                 dtype=torch.long,
             )
-            noisy = self.train_scheduler.add_noise(target.float(), noise.float(), timesteps)
+            noisy = self.train_scheduler.add_noise(
+                diffusion_target.float(), noise.float(), timesteps
+            )
             noisy = noisy.to(dtype=dtype) * mask
             time_condition = timesteps
         else:
@@ -580,7 +597,7 @@ class DiffusionDecoder(nn.Module):
             )
             flow_t_col = flow_t[:, None]
             noisy = (
-                flow_t_col * target.float()
+                flow_t_col * diffusion_target.float()
                 + (1.0 - flow_t_col) * noise.float()
             ).to(dtype=dtype) * mask
             time_condition = flow_t * float(self.config.num_train_timesteps - 1)
@@ -602,12 +619,12 @@ class DiffusionDecoder(nn.Module):
             elif self.config.prediction_type == "v_prediction":
                 pred = raw_pred
                 model_target = self.train_scheduler.get_velocity(
-                    target.float(), noise.float(), timesteps
+                    diffusion_target.float(), noise.float(), timesteps
                 ).to(dtype=dtype)
             else:
                 if self.config.loss_space == "native":
                     pred = raw_pred
-                    model_target = target
+                    model_target = diffusion_target
                 else:
                     alpha_bar = self.train_scheduler.alphas_cumprod.to(device)[timesteps]
                     alpha = alpha_bar.sqrt()[:, None]
@@ -616,27 +633,29 @@ class DiffusionDecoder(nn.Module):
                         dtype=dtype
                     )
                     model_target = self.train_scheduler.get_velocity(
-                        target.float(), noise.float(), timesteps
+                        diffusion_target.float(), noise.float(), timesteps
                     ).to(dtype=dtype)
         elif self.config.prediction_type == "x0":
             if self.config.loss_space == "native":
                 pred = raw_pred
-                model_target = target
+                model_target = diffusion_target
             else:
                 denom = (1.0 - flow_t_col).clamp_min(self.config.flow_t_eps)
                 pred = ((raw_pred.float() - noisy.float()) / denom).to(dtype=dtype)
-                model_target = ((target.float() - noisy.float()) / denom).to(
+                model_target = ((diffusion_target.float() - noisy.float()) / denom).to(
                     dtype=dtype
                 )
         else:
             pred = raw_pred
-            model_target = target - noise
+            model_target = diffusion_target - noise
 
         model_target = model_target * mask
         error = (pred.float() - model_target.float()) * mask.float()
         per_dim = error.square()
-        # Mean over active components only.
-        denom = mask.sum(dim=-1).clamp_min(1.0)
+        if self.config.component_reduction == "fixed_dim":
+            denom = torch.full_like(mask.sum(dim=-1), float(self.config.target_dim))
+        else:
+            denom = mask.sum(dim=-1).clamp_min(1.0)
         per_example = (per_dim * mask).sum(dim=-1) / denom
         if covariance_metric is not None:
             covariance_per_example = torch.einsum(
@@ -704,7 +723,7 @@ class DiffusionDecoder(nn.Module):
             "radial_weights": radial_w.detach(),
         }
         if self.config.phase_aux_weight > 0.0:
-            out["predicted_x0_for_phase"] = raw_pred
+            out["predicted_x0_for_phase"] = raw_pred / signal_scale
             out["target_x0_for_phase"] = target
         if radius_bin is not None:
             out["radius_bin"] = radius_bin.detach()
@@ -760,9 +779,11 @@ class DiffusionDecoder(nn.Module):
         )
         noise = noise.to(device=target.device, dtype=target.dtype) * mask
         timesteps = timesteps.to(device=target.device, dtype=torch.long)
+        signal_scale = math.sqrt(self.config.snr_scale)
+        diffusion_target = target.float() * signal_scale
         if self.config.objective == "ddpm":
             noisy = self.train_scheduler.add_noise(
-                target.float(), noise.float(), timesteps
+                diffusion_target, noise.float(), timesteps
             ).to(target.dtype)
             time_condition = timesteps
         else:
@@ -770,7 +791,7 @@ class DiffusionDecoder(nn.Module):
                 self.config.num_train_timesteps
             )
             noisy = (
-                flow_t[:, None] * target.float()
+                flow_t[:, None] * diffusion_target
                 + (1.0 - flow_t[:, None]) * noise.float()
             ).to(target.dtype)
             time_condition = flow_t * float(self.config.num_train_timesteps - 1)
@@ -800,7 +821,7 @@ class DiffusionDecoder(nn.Module):
                 x0 = alpha * noisy.float() - sigma * raw.float()
         else:
             x0 = noisy.float() + (1.0 - flow_t[:, None]) * raw.float()
-        x0 = x0.to(target.dtype) * mask
+        x0 = (x0 / signal_scale).to(target.dtype) * mask
         return x0.reshape(original_shape)
 
     def _min_snr_weights(
@@ -817,6 +838,7 @@ class DiffusionDecoder(nn.Module):
                     self.config.num_train_timesteps
                 )
             snr = (t / (1.0 - t).clamp_min(1e-8)).square()
+        snr = snr * self.config.snr_scale
         gamma = self.config.min_snr_gamma
         mse_loss_weights = torch.stack(
             [snr, gamma * torch.ones_like(timesteps, dtype=snr.dtype)], dim=1
@@ -964,7 +986,8 @@ class DiffusionDecoder(nn.Module):
             )
             latents = out.prev_sample * mask.float()
 
-        return (latents * mask.float()).to(dtype=dtype)
+        signal_scale = math.sqrt(self.config.snr_scale)
+        return (latents * mask.float() / signal_scale).to(dtype=dtype)
 
     def _sample_flow(
         self,
@@ -1028,4 +1051,5 @@ class DiffusionDecoder(nn.Module):
             else:
                 state = proposed
 
-        return state.to(dtype=dtype) * mask
+        signal_scale = math.sqrt(self.config.snr_scale)
+        return state.to(dtype=dtype) * mask / signal_scale

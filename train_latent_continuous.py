@@ -63,7 +63,14 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--lr_scheduler", default="cosine")
     parser.add_argument("--lr_warmup_steps", type=int, default=500)
     parser.add_argument("--lr_end_ratio", type=float, default=0.0)
-    parser.add_argument("--weight_decay", type=float, default=0.02)
+    parser.add_argument("--weight_decay", type=float, default=0.1)
+    parser.add_argument(
+        "--augment_brightness",
+        type=float,
+        default=0.0,
+        help="torchvision ColorJitter brightness factor; 0 disables. "
+        "Acts mostly on the DC term, i.e. latent position 0.",
+    )
     parser.add_argument("--max_grad_norm", type=float, default=1.0)
     parser.add_argument("--mixed_precision", choices=["no", "fp16", "bf16"], default="bf16")
     parser.add_argument("--width", type=int, default=512)
@@ -411,6 +418,7 @@ def main(argv=None) -> None:
             resolution=32,
             smoke=args.smoke,
             seed=args.seed,
+            augment_brightness=args.augment_brightness,
         )
     )
     loader = DataLoader(
@@ -422,11 +430,13 @@ def main(argv=None) -> None:
         drop_last=True,
         persistent_workers=args.dataloader_num_workers > 0,
     )
+    # Fused AdamW requires all params on CUDA, so fall back on CPU/smoke runs.
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
         betas=(0.9, 0.95),
         weight_decay=args.weight_decay,
+        fused=torch.cuda.is_available(),
     )
     scheduler = build_lr_scheduler(args, optimizer)
     model, optimizer, loader, scheduler = accelerator.prepare(

@@ -1,0 +1,50 @@
+{
+  "num_images": 20000,
+  "spaces": [
+    {
+      "label": "raw_fft_prewhitening",
+      "dims": 3072,
+      "eigenvalue_max": 51.72881009289738,
+      "eigenvalue_min_positive": 6.416802686449772e-07,
+      "eigenvalue_dynamic_range": 80614618.5578248,
+      "participation_ratio": 5.250567396865075,
+      "diagonal_dynamic_range": 931262.6656215331,
+      "t_star_variance_weighted_p05": 0.12206622474444763,
+      "t_star_variance_weighted_p25": 0.12206622474444763,
+      "t_star_variance_weighted_p50": 0.22833713244701934,
+      "t_star_variance_weighted_p75": 0.4714471257351603,
+      "t_star_variance_weighted_p95": 0.8422816090136309,
+      "t_star_spread_p05_p95": 0.7202153842691833
+    },
+    {
+      "label": "raw_latents_prenormalization",
+      "dims": 3392,
+      "eigenvalue_max": 24.01399617660244,
+      "eigenvalue_min_positive": 2.8633364808952313e-09,
+      "eigenvalue_dynamic_range": 8386718199.844396,
+      "participation_ratio": 260.1483950217998,
+      "diagonal_dynamic_range": 352.9604226066886,
+      "t_star_variance_weighted_p05": 0.1732348305716013,
+      "t_star_variance_weighted_p25": 0.42983311832250143,
+      "t_star_variance_weighted_p50": 0.50304452042392,
+      "t_star_variance_weighted_p75": 0.5788340577735945,
+      "t_star_variance_weighted_p95": 0.7591467137447706,
+      "t_star_spread_p05_p95": 0.5859118831731693
+    },
+    {
+      "label": "normalized_latents_current",
+      "dims": 3392,
+      "eigenvalue_max": 98.25054780243731,
+      "eigenvalue_min_positive": 1.0246461657295381e-08,
+      "eigenvalue_dynamic_range": 9588729367.125858,
+      "participation_ratio": 284.4841132709265,
+      "diagonal_dynamic_range": 1.1837576543092774,
+      "t_star_variance_weighted_p05": 0.09626654556351627,
+      "t_star_variance_weighted_p25": 0.2780544005766813,
+      "t_star_variance_weighted_p50": 0.3349171366172541,
+      "t_star_variance_weighted_p75": 0.40294753409080014,
+      "t_star_variance_weighted_p95": 0.6041375763952511,
+      "t_star_spread_p05_p95": 0.5078710308317349
+    }
+  ]
+}

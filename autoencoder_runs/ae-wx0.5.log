@@ -1,0 +1,45 @@
+GPU_CLAIM_RUN index=3 uuid=GPU-302638db-5fbb-e08b-17e8-48ef95603139 owner=AFIG job=ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001-wx0.5 cmd=/venv/main/bin/python -u train_autoencoder.py --mode causal_ring --dataset huggingface_cifar --data_root /workspace/AFIG/data --resolution 32 --output_dir autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001-wx0.5 --codec_stats_path autoencoder_runs/codec_stats_32.pt --whiten_exponent 0.5 --seed 1 --max_train_steps 30000 --train_batch_size 128 --learning_rate 1e-4 --lr_warmup_steps 500 --model_width 128 --latent_dim 64 --perceiver_width 256 --perceiver_heads 4 --ring_transformer_layers 2 --group_conditioning film_low_rank --conditioning_rank 16 --depth 0 --kernel_size 3 --mixed_precision bf16 --allow_tf32 --eval_steps 1000 --preview_steps 5000 --logging_steps 25 --checkpointing_steps 0 --save_final_checkpoint --reconstruction_loss mse --token_loss_weight 0.01 --image_loss_weight 1.0 --fourier_loss_weight 0 --log_amplitude_weight 0.0 --phase_loss_weight 0.0 --phase_loss_gate 0.1 --radial_log_power_weight 0.0 --loss_gradient_diagnostic_steps 1000 --latent_noise_std 0.0 --latent_ring_dropout 0.0 --latent_high_frequency_dropout 0.0 --latent_moment_weight 0.0 --report_to wandb --tracker_project_name afig-autoencoder --run_group afig-ae-whiten-exponent --run_name ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001-wx0.5 --pooler perceiver_sector --target_tokens_per_latent 12 --max_ring_latents 8 --variational --kl_weight 0.0001 --kl_free_bits 0.0
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from /root/.netrc.
+wandb: Currently logged in as: ethansmith2000 to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.28.0
+wandb: Run data is saved locally in /workspace/AFIG/wandb/run-20260731_104225-fslpsln2
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001-wx0.5
+wandb: ⭐️ View project at https://wandb.ai/ethansmith2000/afig-autoencoder
+wandb: 🚀 View run at https://wandb.ai/ethansmith2000/afig-autoencoder/runs/fslpsln2
+/venv/main/lib/python3.12/site-packages/torch/nn/functional.py:2954: UserWarning: Mismatch dtype between input and weight: input dtype = c10::BFloat16, weight dtype = float, Cannot dispatch to fused implementation. (Triggered internally at /pytorch/aten/src/ATen/native/layer_norm.cpp:344.)
+  return torch.rms_norm(input, normalized_shape, weight, eps)
+wandb: updating run metadata
+wandb: uploading output.log; uploading wandb-summary.json; uploading config.yaml
+wandb: uploading history steps 1198-1199, summary
+wandb: 
+wandb: Run history:
+wandb:                     artifact/boundary_mse █▅▄▃▂▂▂▂▂▁▁▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:        artifact/checkerboard_residual_std █▅█▄▄▅▃▃▃▂▂▅▂▂▄▃▂▂▂▂▁▂▁▁▁▁▁▁▁▁
+wandb:                         artifact/edge_mse █▆▅▄▃▃▂▂▂▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:                  compression/causal_depth ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:        compression/causal_receptive_field ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:               compression/exported_tokens ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb: compression/source_to_latent_scalar_ratio ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:  compression/source_to_latent_token_ratio ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:                          eval/latent/mean ██▅▁▁▂▄▃▃▃▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂
+wandb:                           eval/latent/rms ▁▃▄▃▄▄▆▆▇▇▇███████▇▇▇▇▇▇▇▇▆▆▆▆
+wandb:                                       +46 ...
+wandb: 
+wandb: Run summary:
+wandb:                     artifact/boundary_mse 0.00027
+wandb:        artifact/checkerboard_residual_std 5e-05
+wandb:                         artifact/edge_mse 0.00024
+wandb:                  compression/causal_depth 2
+wandb:        compression/causal_receptive_field 514
+wandb:               compression/exported_tokens 53
+wandb: compression/source_to_latent_scalar_ratio 0.90566
+wandb:  compression/source_to_latent_token_ratio 9.69811
+wandb:                          eval/latent/mean 0.01532
+wandb:                           eval/latent/rms 0.86187
+wandb:                                       +46 ...
+wandb: 
+wandb: 🚀 View run ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001-wx0.5 at: https://wandb.ai/ethansmith2000/afig-autoencoder/runs/fslpsln2
+wandb: ⭐️ View project at: https://wandb.ai/ethansmith2000/afig-autoencoder
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20260731_104225-fslpsln2/logs

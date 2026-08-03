@@ -52,7 +52,14 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--lr_scheduler", default="linear_floor")
     parser.add_argument("--lr_warmup_steps", type=int, default=2000)
     parser.add_argument("--lr_end_ratio", type=float, default=0.25)
-    parser.add_argument("--weight_decay", type=float, default=0.02)
+    parser.add_argument("--weight_decay", type=float, default=0.1)
+    parser.add_argument(
+        "--augment_brightness",
+        type=float,
+        default=0.0,
+        help="torchvision ColorJitter brightness factor; 0 disables. "
+        "Acts mostly on the DC term, i.e. latent position 0.",
+    )
     parser.add_argument("--max_grad_norm", type=float, default=1.0)
     parser.add_argument(
         "--mixed_precision", choices=["no", "fp16", "bf16"], default="bf16"
@@ -64,6 +71,28 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--num_train_timesteps", type=int, default=1000)
     parser.add_argument("--num_inference_steps", type=int, default=50)
     parser.add_argument("--flow_solver", choices=["euler", "heun"], default="heun")
+    parser.add_argument(
+        "--rope",
+        choices=["none", "sequence", "radius_angle"],
+        default="none",
+        help="Rotary embeddings on q/k. radius_angle uses each latent's pooled "
+        "polar frequency coordinates instead of a sequence index.",
+    )
+    parser.add_argument("--position_embedding_input", action="store_true")
+    parser.add_argument("--position_embedding_film", action="store_true")
+    parser.add_argument(
+        "--timestep_weighting",
+        choices=["uniform", "snr_interpolate"],
+        default="uniform",
+        help="uniform matches prior runs; snr_interpolate blends toward a "
+        "high-noise-weighted objective",
+    )
+    parser.add_argument(
+        "--timestep_weighting_alpha",
+        type=float,
+        default=0.5,
+        help="0 = uniform, 1 = full inverse-available-gain weighting",
+    )
     parser.add_argument("--gradient_checkpointing", action="store_true")
     parser.add_argument("--logging_steps", type=int, default=25)
     parser.add_argument("--preview_steps", type=int, default=2500)
@@ -95,6 +124,17 @@ def build_model_config(
         num_train_timesteps=args.num_train_timesteps,
         num_inference_steps=args.num_inference_steps,
         flow_solver=args.flow_solver,
+        position_embedding_input=args.position_embedding_input,
+        position_embedding_film=args.position_embedding_film,
+        rope=args.rope,
+        timestep_sampling=(
+            "snr_interpolate" if args.timestep_weighting == "snr_interpolate" else "uniform"
+        ),
+        timestep_sampling_alpha=(
+            args.timestep_weighting_alpha
+            if args.timestep_weighting == "snr_interpolate"
+            else 0.0
+        ),
     )
 
 
@@ -221,6 +261,7 @@ def main(argv=None) -> None:
             resolution=32,
             smoke=args.smoke,
             seed=args.seed,
+            augment_brightness=args.augment_brightness,
         )
     )
     loader = DataLoader(
@@ -232,11 +273,13 @@ def main(argv=None) -> None:
         drop_last=True,
         persistent_workers=args.dataloader_num_workers > 0,
     )
+    # Fused AdamW requires all params on CUDA, so fall back on CPU/smoke runs.
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
         betas=(0.9, 0.95),
         weight_decay=args.weight_decay,
+        fused=torch.cuda.is_available(),
     )
     scheduler = build_lr_scheduler(args, optimizer)
     model, optimizer, loader, scheduler = accelerator.prepare(
