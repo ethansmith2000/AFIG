@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 import math
+from types import SimpleNamespace
 
 import torch
 
@@ -14,6 +15,24 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 
 class TestSmoke(unittest.TestCase):
+    def test_condition_panel_is_disjoint_from_training_subset(self):
+        from train_continuous import make_dataloader, make_spectral_panel
+
+        args = SimpleNamespace(
+            smoke=True,
+            dataset="synthetic",
+            synthetic_data=False,
+            spectral_panel_size=100,
+            train_batch_size=4,
+        )
+        dataset, loader = make_dataloader(args)
+        panel = make_spectral_panel(dataset, args.spectral_panel_size)
+        self.assertEqual(len(dataset), 64)
+        self.assertEqual(len(loader.dataset), 48)
+        self.assertEqual(tuple(panel.shape), (16, 3, 32, 32))
+        self.assertTrue(torch.equal(panel[0], dataset[48][0]))
+        self.assertEqual(max(loader.dataset.indices), 47)
+
     def test_raw_weights_preview_and_final_eval_defaults(self):
         from train_continuous import parse_args
 

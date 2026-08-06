@@ -18,6 +18,11 @@ from torch.utils.checkpoint import checkpoint
 
 from causal_transformer import apply_rope, build_rope_tables
 from diffusion_decoder import DiffusionDecoder, DiffusionDecoderConfig
+from factorized_polar_decoder import (
+    FactorizedPolarConfig,
+    FactorizedPolarDecoder,
+    polar_to_cartesian,
+)
 from frequency import FrequencyCodec, FrequencyCodecConfig, TOKEN_DIM
 
 
@@ -62,7 +67,8 @@ class PolarHistoryConfig:
     """
 
     enabled: bool = False
-    mode: str = "log_amp_gated_phase"  # reserved for future modes
+    mode: str = "log_amp_gated_phase"
+    fusion: str = "add"  # add | replace
 
     def fingerprint(self) -> Dict[str, Any]:
         return asdict(self)
@@ -104,6 +110,7 @@ class ContinuousModelConfig:
     corruption: CorruptionConfig = field(default_factory=CorruptionConfig)
     polar_history: PolarHistoryConfig = field(default_factory=PolarHistoryConfig)
     history_features: HistoryFeatureConfig = field(default_factory=HistoryFeatureConfig)
+    factorized_polar: FactorizedPolarConfig = field(default_factory=FactorizedPolarConfig)
     generation: GenerationConfig = field(default_factory=GenerationConfig)
 
     def fingerprint(self) -> Dict[str, Any]:
@@ -114,6 +121,7 @@ class ContinuousModelConfig:
             "corruption": self.corruption.fingerprint(),
             "polar_history": self.polar_history.fingerprint(),
             "history_features": self.history_features.fingerprint(),
+            "factorized_polar": self.factorized_polar.fingerprint(),
             "generation": self.generation.fingerprint(),
         }
 
@@ -143,6 +151,7 @@ class CausalSelfAttention(nn.Module):
         dropout: float = 0.0,
         position_film: bool = False,
         qk_norm: bool = False,
+        causal: bool = True,
     ):
         super().__init__()
         if width % num_heads != 0:
@@ -150,6 +159,7 @@ class CausalSelfAttention(nn.Module):
         self.num_heads = num_heads
         self.head_dim = width // num_heads
         self.dropout = dropout
+        self.causal = causal
         self.norm = nn.LayerNorm(width)
         self.position_film = PositionFiLM(width) if position_film else None
         self.qkv = nn.Linear(width, 3 * width, bias=False)
@@ -207,7 +217,7 @@ class CausalSelfAttention(nn.Module):
         # Full-sequence training uses is_causal; cached decoding attends to all
         # keys already present (past + current), so is_causal is False when
         # the query length is 1 (or when past exists).
-        is_causal = kv_cache is None and n > 1
+        is_causal = self.causal and kv_cache is None and n > 1
         attn = F.scaled_dot_product_attention(
             q,
             k,
@@ -262,6 +272,7 @@ class TransformerBlock(nn.Module):
         dropout: float,
         position_film: bool = False,
         qk_norm: bool = False,
+        causal: bool = True,
     ):
         super().__init__()
         self.attn = CausalSelfAttention(
@@ -270,6 +281,7 @@ class TransformerBlock(nn.Module):
             dropout,
             position_film,
             qk_norm=qk_norm,
+            causal=causal,
         )
         self.ff = FeedForward(width, ff_mult, dropout, position_film)
 
@@ -299,6 +311,8 @@ class ContinuousFFTDecoder(nn.Module):
         self,
         config: Optional[ContinuousModelConfig] = None,
         codec: Optional[FrequencyCodec] = None,
+        factorized_amplitude_mean: Optional[torch.Tensor] = None,
+        factorized_amplitude_std: Optional[torch.Tensor] = None,
     ):
         super().__init__()
         self.config = config or ContinuousModelConfig()
@@ -387,15 +401,29 @@ class ContinuousFFTDecoder(nn.Module):
             )
         if tcfg.rope_base <= 0.0:
             raise ValueError("transformer.rope_base must be positive")
+        if self.config.polar_history.fusion not in ("add", "replace"):
+            raise ValueError("polar_history.fusion must be add or replace")
+        if not self.config.polar_history.enabled and self.config.polar_history.fusion != "add":
+            raise ValueError("polar_history.fusion=replace requires polar history features")
+        supported_polar_modes = (
+            "log_amp_gated_phase",
+            "standardized_log_amp_gated_phase",
+        )
+        if self.config.polar_history.enabled and self.config.polar_history.mode not in supported_polar_modes:
+            raise ValueError(
+                f"Unsupported polar_history.mode={self.config.polar_history.mode}. "
+                f"Supported: {supported_polar_modes}."
+            )
         self.width = tcfg.width
-        self.token_proj = nn.Linear(TOKEN_DIM, tcfg.width)
+        token_input_dim = (
+            9
+            if self.config.polar_history.enabled
+            and self.config.polar_history.fusion == "replace"
+            else TOKEN_DIM
+        )
+        self.token_proj = nn.Linear(token_input_dim, tcfg.width)
         self.polar_proj: Optional[nn.Linear]
-        if self.config.polar_history.enabled:
-            if self.config.polar_history.mode != "log_amp_gated_phase":
-                raise ValueError(
-                    f"Unsupported polar_history.mode={self.config.polar_history.mode}. "
-                    "Supported: log_amp_gated_phase."
-                )
+        if self.config.polar_history.enabled and self.config.polar_history.fusion == "add":
             # Optional zero-initialized modules must not perturb shared-weight RNG.
             with torch.random.fork_rng(devices=[]):
                 self.polar_proj = nn.Linear(9, tcfg.width)
@@ -452,7 +480,26 @@ class ContinuousFFTDecoder(nn.Module):
             ]
         )
         self.final_norm = nn.LayerNorm(tcfg.width)
-        self.diffusion = DiffusionDecoder(self.config.diffusion)
+        self.diffusion: Optional[DiffusionDecoder]
+        self.factorized_decoder: Optional[FactorizedPolarDecoder]
+        if self.config.factorized_polar.enabled:
+            if self.config.codec.value_transform != "identity":
+                raise ValueError("factorized_polar initially requires identity values")
+            if self.config.codec.normalization != "global_ecs":
+                raise ValueError("factorized_polar initially requires global_ecs")
+            if self.config.codec.coordinate_packing != "isometric":
+                raise ValueError("factorized_polar initially requires isometric packing")
+            self.diffusion = None
+            self.factorized_decoder = FactorizedPolarDecoder(
+                self.config.diffusion,
+                self.config.factorized_polar,
+                condition_width=tcfg.width,
+                amplitude_coordinate_mean=factorized_amplitude_mean,
+                amplitude_coordinate_std=factorized_amplitude_std,
+            )
+        else:
+            self.diffusion = DiffusionDecoder(self.config.diffusion)
+            self.factorized_decoder = None
         self.gradient_checkpointing = tcfg.gradient_checkpointing
 
         # Register codec buffers as part of this module tree for checkpointing.
@@ -495,8 +542,35 @@ class ContinuousFFTDecoder(nn.Module):
         """Add optional polar history projection onto Cartesian token embeddings."""
         if self.polar_proj is None:
             return x
-        polar = self.codec.polar_history_features(tokens, positions=positions)
+        polar = self._polar_history_features(tokens, positions)
         return x + self.polar_proj(polar.to(dtype=x.dtype))
+
+    def _polar_history_features(
+        self,
+        tokens: torch.Tensor,
+        positions: torch.Tensor,
+    ) -> torch.Tensor:
+        if self.config.polar_history.mode == "log_amp_gated_phase":
+            return self.codec.polar_history_features(tokens, positions=positions)
+        if self.factorized_decoder is None:
+            raise ValueError(
+                "standardized polar history requires the factorized-polar decoder"
+            )
+        return self.codec.polar_history_features(
+            tokens,
+            positions=positions,
+            log_epsilon=self.config.factorized_polar.log_epsilon,
+            amplitude_coordinate_mean=(
+                self.factorized_decoder.amplitude_coordinate_mean
+                if self.config.factorized_polar.amplitude_standardization != "none"
+                else None
+            ),
+            amplitude_coordinate_std=(
+                self.factorized_decoder.amplitude_coordinate_std
+                if self.config.factorized_polar.amplitude_standardization != "none"
+                else None
+            ),
+        )
 
     def _history_cartesian_features(
         self,
@@ -529,6 +603,16 @@ class ContinuousFFTDecoder(nn.Module):
             return None
         rgb_gain = self.output_log_gain[positions].exp()
         return torch.cat([rgb_gain, rgb_gain], dim=-1)
+
+    def factorized_amplitude_scale(self, positions: torch.Tensor) -> torch.Tensor:
+        """Per-position RGB RMS amplitude in packed physical coordinates."""
+        if self.codec.uses_orbit_statistics:
+            rms_per_active_component = self.codec.orbit_uncentered_rms()[positions, :3]
+            imag_active = self.codec.component_mask[positions, 3:]
+            return rms_per_active_component * torch.sqrt(1.0 + imag_active)
+        # global_ecs deliberately fits no per-orbit normalization. Its radial
+        # moment table still gives a coarse, shared scale for log coordinates.
+        return self.codec.channel_amplitude_scale()[self.codec.radius_bin[positions]]
 
     def _apply_phase_auxiliary(
         self,
@@ -669,9 +753,13 @@ class ContinuousFFTDecoder(nn.Module):
             # Assume tokens correspond to the first t frequency positions.
             positions = torch.arange(t, device=device)
 
-        cartesian = self._history_cartesian_features(tokens, positions)
-        x = self.token_proj(cartesian.to(dtype=dtype))
-        x = self._fuse_polar_features(x, tokens, positions)
+        if self.config.polar_history.enabled and self.config.polar_history.fusion == "replace":
+            history_features = self._polar_history_features(tokens, positions)
+            x = self.token_proj(history_features.to(dtype=dtype))
+        else:
+            cartesian = self._history_cartesian_features(tokens, positions)
+            x = self.token_proj(cartesian.to(dtype=dtype))
+            x = self._fuse_polar_features(x, tokens, positions)
         # A history coefficient x_i occupies prediction slot i+1 and predicts
         # x_{i+1}. Fixed ordering makes this one slot ID sufficient for both roles.
         prediction_slots = positions + 1
@@ -813,6 +901,24 @@ class ContinuousFFTDecoder(nn.Module):
         h, _ = self.forward_backbone(x, use_cache=False)  # [B, L, width]
         # h[:, i] conditions token i.
         z = h
+        positions = torch.arange(l, device=tokens.device)
+        if self.factorized_decoder is not None:
+            raw_target = self.codec.normalized_to_raw_at(tokens, positions)
+            slot_condition = self.prediction_slot_condition(
+                positions, batch_size=b, dtype=z.dtype
+            )
+            loss_out = self.factorized_decoder.compute_loss(
+                raw_target=raw_target,
+                z=z,
+                slot_condition=slot_condition,
+                amplitude_scale=self.factorized_amplitude_scale(positions),
+                is_self_conjugate=self.codec.is_self_conjugate[positions],
+                radius_bin=self.codec.radius_bin,
+            )
+            loss_out["corruption_strength"] = corr_strength.detach()
+            return loss_out
+
+        assert self.diffusion is not None
         radial_weights = None
         if self.config.diffusion.radial_power_weighting:
             radial_weights = self.codec.radial_loss_weights(
@@ -828,9 +934,7 @@ class ContinuousFFTDecoder(nn.Module):
             component_metric = self.codec.orbit_scale_power_metric(
                 self.config.diffusion.orbit_scale_exponent
             )
-        output_gain = self.diffusion_output_gain(
-            torch.arange(l, device=tokens.device)
-        )
+        output_gain = self.diffusion_output_gain(positions)
         loss_out = self.diffusion.compute_loss(
             target=tokens,
             z=z,
@@ -870,6 +974,43 @@ class ContinuousFFTDecoder(nn.Module):
             self.embed_tokens(history, include_bos=True)
         )
         positions = torch.arange(length, device=tokens.device)
+        if self.factorized_decoder is not None:
+            raw_target = self.codec.normalized_to_raw_at(tokens, positions)
+            slot_condition = self.prediction_slot_condition(
+                positions, batch_size=batch, dtype=hidden.dtype
+            )
+            log_amp, phase = self.factorized_decoder.predict_coordinates_deterministic(
+                raw_target=raw_target,
+                z=hidden,
+                slot_condition=slot_condition,
+                amplitude_scale=self.factorized_amplitude_scale(positions),
+                timesteps=timesteps,
+                noise=noise,
+            )
+            raw_prediction = polar_to_cartesian(
+                log_amp.reshape(-1, 3),
+                phase.reshape(-1, 3),
+                self.factorized_amplitude_scale(positions)[None]
+                .expand(batch, -1, -1)
+                .reshape(-1, 3),
+                self.codec.is_self_conjugate[positions][None]
+                .expand(batch, -1)
+                .reshape(-1),
+                self.config.factorized_polar.log_epsilon,
+                (
+                    self.factorized_decoder.amplitude_coordinate_mean
+                    if self.config.factorized_polar.amplitude_standardization != "none"
+                    else None
+                ),
+                (
+                    self.factorized_decoder.amplitude_coordinate_std
+                    if self.config.factorized_polar.amplitude_standardization != "none"
+                    else None
+                ),
+            ).reshape(batch, length, 6)
+            return self.codec.raw_to_normalized_at(raw_prediction, positions)
+
+        assert self.diffusion is not None
         output_gain = self.diffusion_output_gain(positions)
         return self.diffusion.predict_x0_deterministic(
             tokens,
@@ -910,13 +1051,79 @@ class ContinuousFFTDecoder(nn.Module):
         dtype = self.token_proj.weight.dtype
         positions = torch.tensor([position], device=device, dtype=torch.long)
         tok = token.to(dtype=dtype)[:, None, :]
-        cartesian = self._history_cartesian_features(tok, positions)
-        x = self.token_proj(cartesian)
-        x = self._fuse_polar_features(x, tok, positions)
+        if self.config.polar_history.enabled and self.config.polar_history.fusion == "replace":
+            history_features = self._polar_history_features(tok, positions)
+            x = self.token_proj(history_features.to(dtype=dtype))
+        else:
+            cartesian = self._history_cartesian_features(tok, positions)
+            x = self.token_proj(cartesian)
+            x = self._fuse_polar_features(x, tok, positions)
         prediction_slot = torch.tensor([position + 1], device=device)
         x = x + self.slot_embed(prediction_slot)[None, :, :].to(dtype=dtype)
         h, new_caches = self.forward_backbone(x, kv_caches=kv_caches, use_cache=True)
         return h[:, -1, :], new_caches  # type: ignore
+
+    @torch.no_grad()
+    def sample_token(
+        self,
+        z: torch.Tensor,
+        position: int,
+        generator: Optional[torch.Generator],
+        steps: int,
+        temperature: float,
+        eta: float,
+    ) -> torch.Tensor:
+        """Sample one normalized Cartesian history token from either decoder."""
+        device = z.device
+        if self.factorized_decoder is not None:
+            positions = torch.tensor([position], device=device, dtype=torch.long)
+            slot = self.prediction_slot_condition(
+                positions, batch_size=z.shape[0], dtype=z.dtype
+            )[:, 0]
+            log_amp, phase = self.factorized_decoder.sample_coordinates(
+                z=z,
+                slot_condition=slot,
+                generator=generator,
+                steps=steps,
+                temperature=temperature,
+            )
+            scale = self.factorized_amplitude_scale(positions).expand(z.shape[0], -1)
+            is_self = self.codec.is_self_conjugate[positions].expand(z.shape[0])
+            raw = polar_to_cartesian(
+                log_amp,
+                phase,
+                scale,
+                is_self,
+                self.config.factorized_polar.log_epsilon,
+                (
+                    self.factorized_decoder.amplitude_coordinate_mean
+                    if self.config.factorized_polar.amplitude_standardization != "none"
+                    else None
+                ),
+                (
+                    self.factorized_decoder.amplitude_coordinate_std
+                    if self.config.factorized_polar.amplitude_standardization != "none"
+                    else None
+                ),
+            )
+            return self.codec.raw_to_normalized_at(raw[:, None], positions)[:, 0]
+
+        assert self.diffusion is not None
+        output_gain = self.diffusion_output_gain(
+            torch.tensor([position], device=device)
+        )
+        if output_gain is not None:
+            output_gain = output_gain.expand(z.shape[0], -1)
+        return self.diffusion.sample(
+            z,
+            target_condition=None,
+            component_mask=self.codec.component_mask[position],
+            generator=generator,
+            num_inference_steps=steps,
+            eta=eta,
+            temperature=temperature,
+            output_gain=output_gain,
+        )
 
     @torch.no_grad()
     def generate(
@@ -963,20 +1170,13 @@ class ContinuousFFTDecoder(nn.Module):
 
         for i in iterator:
             t0 = time.perf_counter()
-            output_gain = self.diffusion_output_gain(
-                torch.tensor([i], device=device)
-            )
-            if output_gain is not None:
-                output_gain = output_gain.expand(batch_size, -1)
-            sample = self.diffusion.sample(
-                z,
-                target_condition=None,
-                component_mask=mask[i],
+            sample = self.sample_token(
+                z=z,
+                position=i,
                 generator=generator,
-                num_inference_steps=steps,
-                eta=eta_v,
+                steps=steps,
                 temperature=temp,
-                output_gain=output_gain,
+                eta=eta_v,
             )
             t_denoise += time.perf_counter() - t0
             tokens.append(sample)
@@ -1036,20 +1236,13 @@ class ContinuousFFTDecoder(nn.Module):
                 x = self.embed_tokens(hist, include_bos=True)
                 h, _ = self.forward_backbone(x, use_cache=False)
                 z = h[:, -1, :]
-            output_gain = self.diffusion_output_gain(
-                torch.tensor([i], device=device)
-            )
-            if output_gain is not None:
-                output_gain = output_gain.expand(batch_size, -1)
-            sample = self.diffusion.sample(
-                z,
-                target_condition=None,
-                component_mask=mask[i],
+            sample = self.sample_token(
+                z=z,
+                position=i,
                 generator=generator,
-                num_inference_steps=steps,
-                eta=eta,
+                steps=steps,
                 temperature=temperature,
-                output_gain=output_gain,
+                eta=eta,
             )
             tokens_so_far.append(sample)
         return torch.stack(tokens_so_far, dim=1)

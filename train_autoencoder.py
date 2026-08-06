@@ -46,6 +46,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--output_dir", default="autoencoder_runs/default")
     parser.add_argument("--codec_stats_path", default=None)
     parser.add_argument(
+        "--codec_normalization",
+        choices=["orbit_standardize", "global_standardize"],
+        default="orbit_standardize",
+        help=(
+            "Frequency codec affine. global_standardize applies one train-population "
+            "pixel mean/std before an isometric FFT and preserves the natural spectrum."
+        ),
+    )
+    parser.add_argument(
         "--whiten_exponent",
         type=float,
         default=1.0,
@@ -72,6 +81,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--perceiver_width", type=int, default=256)
     parser.add_argument("--perceiver_heads", type=int, default=4)
     parser.add_argument("--ring_transformer_layers", type=int, default=2)
+    parser.add_argument(
+        "--ring_block_causal",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Allow bidirectional mixing across all sectors in the same radius "
+            "ring while remaining causal between rings."
+        ),
+    )
     parser.add_argument(
         "--depth",
         type=int,
@@ -101,6 +119,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--kl_free_bits", type=float, default=0.0)
     parser.add_argument("--token_loss_weight", type=float, default=0.01)
     parser.add_argument("--image_loss_weight", type=float, default=1.0)
+    parser.add_argument(
+        "--perceptual_loss_weight",
+        type=float,
+        default=0.0,
+        help="Weight for frozen LPIPS-Alex feature reconstruction loss.",
+    )
     parser.add_argument(
         "--fourier_loss_weight",
         type=float,
@@ -162,6 +186,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     for name in (
         "token_loss_weight",
         "image_loss_weight",
+        "perceptual_loss_weight",
         "fourier_loss_weight",
         "log_amplitude_weight",
         "phase_loss_weight",
@@ -194,6 +219,7 @@ def build_model_config(args: argparse.Namespace) -> AutoencoderConfig:
         perceiver_width=args.perceiver_width,
         perceiver_heads=args.perceiver_heads,
         ring_transformer_layers=args.ring_transformer_layers,
+        ring_block_causal=args.ring_block_causal,
         depth=depth,
         kernel_size=args.kernel_size,
         group_size=args.group_size,
@@ -309,9 +335,12 @@ def fit_or_load_codec(
     config = FrequencyCodecConfig(
         height=args.resolution,
         width=args.resolution,
-        normalization="orbit_standardize",
+        normalization=args.codec_normalization,
         value_transform="identity",
         whiten_exponent=args.whiten_exponent,
+        coordinate_packing=(
+            "isometric" if args.codec_normalization == "global_standardize" else "legacy"
+        ),
     )
     codec = FrequencyCodec(config)
     stats_path = args.codec_stats_path or os.path.join(
@@ -545,6 +574,7 @@ def compute_batch_loss(
     args: argparse.Namespace,
     *,
     sample_posterior: bool,
+    perceptual_model: Optional[torch.nn.Module] = None,
 ) -> tuple[torch.Tensor, Dict[str, torch.Tensor], torch.Tensor]:
     if args.mode == "spatial_downsample":
         output = model(images, sample_posterior=sample_posterior)
@@ -588,6 +618,21 @@ def compute_batch_loss(
         reconstruction = codec.decode(model.decode(latents))
 
     image_loss = _image_reconstruction_loss(images, reconstruction, args)
+    perceptual_weight = float(getattr(args, "perceptual_loss_weight", 0.0))
+    if perceptual_weight > 0:
+        if perceptual_model is None:
+            raise ValueError(
+                "perceptual_loss_weight > 0 requires an LPIPS perceptual model"
+            )
+        # LPIPS's normalize=True contract accepts images in [0, 1].  Keep this
+        # branch in fp32: the frozen feature network need not inherit the AE's
+        # bf16 autocast precision, while gradients still flow to reconstruction.
+        with torch.autocast(device_type=images.device.type, enabled=False):
+            perceptual_loss = perceptual_model(
+                reconstruction.float(), images.float(), normalize=True
+            ).mean()
+    else:
+        perceptual_loss = image_loss.new_zeros(())
     spectral_enabled = (
         args.fourier_loss_weight > 0
         or args.log_amplitude_weight > 0
@@ -613,6 +658,7 @@ def compute_batch_loss(
     loss = (
         args.token_loss_weight * token_loss
         + args.image_loss_weight * image_loss
+        + perceptual_weight * perceptual_loss
         + args.fourier_loss_weight * fourier_loss
         + args.log_amplitude_weight * spectral["log_amplitude"]
         + args.phase_loss_weight * spectral["phase"]
@@ -624,6 +670,7 @@ def compute_batch_loss(
         "loss": loss.detach(),
         "loss/token": token_loss.detach(),
         "loss/image": image_loss.detach(),
+        "loss/perceptual": perceptual_loss.detach(),
         "loss/fourier": fourier_loss.detach(),
         "loss/log_amplitude": spectral["log_amplitude"].detach(),
         "loss/phase": spectral["phase"].detach(),
@@ -642,16 +689,19 @@ def loss_gradient_ratios(
     images: torch.Tensor,
     reconstruction: torch.Tensor,
     args: argparse.Namespace,
+    perceptual_model: Optional[torch.nn.Module] = None,
 ) -> Dict[str, float]:
     if (
         args.log_amplitude_weight == 0
         and args.phase_loss_weight == 0
         and args.radial_log_power_weight == 0
+        and float(getattr(args, "perceptual_loss_weight", 0.0)) == 0
     ):
         return {
             "gradient_ratio/log_amplitude": 0.0,
             "gradient_ratio/phase": 0.0,
             "gradient_ratio/radial_log_power": 0.0,
+            "gradient_ratio/perceptual": 0.0,
         }
     base = _image_reconstruction_loss(images, reconstruction, args)
     spectral = _spectral_loss_terms(images, reconstruction, args.phase_loss_gate)
@@ -666,6 +716,18 @@ def loss_gradient_ratios(
         "radial_log_power": args.radial_log_power_weight
         * spectral["radial_log_power"],
     }
+    perceptual_weight = float(getattr(args, "perceptual_loss_weight", 0.0))
+    if perceptual_weight > 0:
+        if perceptual_model is None:
+            raise ValueError(
+                "perceptual_loss_weight > 0 requires an LPIPS perceptual model"
+            )
+        with torch.autocast(device_type=images.device.type, enabled=False):
+            weighted_terms["perceptual"] = perceptual_weight * perceptual_model(
+                reconstruction.float(), images.float(), normalize=True
+            ).mean()
+    else:
+        weighted_terms["perceptual"] = reconstruction.new_zeros(())
     for name, term in weighted_terms.items():
         if float(term.detach().abs().item()) == 0.0:
             ratios[f"gradient_ratio/{name}"] = 0.0
@@ -867,6 +929,17 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
     )
     config = build_model_config(args)
     model = build_model(config, codec)
+    perceptual_model: Optional[torch.nn.Module] = None
+    if args.perceptual_loss_weight > 0:
+        try:
+            import lpips
+        except ImportError as exc:
+            raise RuntimeError(
+                "LPIPS is required for --perceptual_loss_weight > 0; "
+                "install lpips==0.1.4"
+            ) from exc
+        perceptual_model = lpips.LPIPS(net="alex", verbose=accelerator.is_main_process)
+        perceptual_model.requires_grad_(False).eval().to(accelerator.device)
     if codec is not None:
         codec.to(accelerator.device)
     optimizer = torch.optim.AdamW(
@@ -926,14 +999,21 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
         optimizer.zero_grad(set_to_none=True)
         with accelerator.autocast():
             loss, batch_logs, reconstruction = compute_batch_loss(
-                model, codec, images, args, sample_posterior=args.variational
+                model,
+                codec,
+                images,
+                args,
+                sample_posterior=args.variational,
+                perceptual_model=perceptual_model,
             )
         gradient_logs: Dict[str, float] = {}
         if (
             args.loss_gradient_diagnostic_steps > 0
             and (global_step + 1) % args.loss_gradient_diagnostic_steps == 0
         ):
-            gradient_logs = loss_gradient_ratios(images, reconstruction, args)
+            gradient_logs = loss_gradient_ratios(
+                images, reconstruction, args, perceptual_model
+            )
         accelerator.backward(loss)
         grad_norm = accelerator.clip_grad_norm_(model.parameters(), args.max_grad_norm)
         optimizer.step()
@@ -974,6 +1054,7 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
                     panel,
                     args,
                     sample_posterior=False,
+                    perceptual_model=perceptual_model,
                 )
             if should_eval:
                 logs.update(
@@ -1005,6 +1086,11 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
 
         if logs and args.report_to != "none":
             accelerator.log(logs, step=global_step)
+        if logs and accelerator.is_main_process:
+            Path(args.output_dir, "metrics.json").write_text(
+                json.dumps({"step": global_step, **logs}, indent=2, sort_keys=True)
+                + "\n"
+            )
         if (
             args.checkpointing_steps > 0
             and global_step % args.checkpointing_steps == 0

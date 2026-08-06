@@ -32,6 +32,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--probe_width", type=int, default=128)
     parser.add_argument("--probe_lr", type=float, default=1e-3)
     parser.add_argument("--sample_posterior", action="store_true")
+    parser.add_argument(
+        "--normalization_scope",
+        choices=["position_channel", "channel", "tensor"],
+        default="position_channel",
+        help=(
+            "Population affine fitted to each token/channel coordinate, to each "
+            "latent channel shared across token positions, or to the full tensor."
+        ),
+    )
     parser.add_argument("--output", default=None)
     return parser.parse_args()
 
@@ -92,14 +101,38 @@ def _collect_latents(
     return torch.cat(values)
 
 
+def _normalization_stats(
+    train: torch.Tensor,
+    scope: str,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Fit a population affine and broadcast it to the [tokens, channels] contract."""
+    if train.ndim != 3:
+        raise ValueError(f"Expected [B,T,D] latents, got {tuple(train.shape)}")
+    target_shape = train.shape[1:]
+    if scope == "position_channel":
+        mean = train.mean(dim=0)
+        std = train.std(dim=0)
+    elif scope == "channel":
+        mean = train.mean(dim=(0, 1), keepdim=False)[None].expand(target_shape)
+        std = train.std(dim=(0, 1), keepdim=False)[None].expand(target_shape)
+    elif scope == "tensor":
+        mean = train.mean().expand(target_shape)
+        std = train.std().expand(target_shape)
+    else:
+        raise ValueError(f"Unknown normalization scope: {scope}")
+    return mean.clone(), std.clamp_min(1e-6).clone()
+
+
 def _fit_probe(
     train: torch.Tensor,
     validation: torch.Tensor,
     args: argparse.Namespace,
     device: torch.device,
 ) -> tuple[torch.Tensor, torch.Tensor, LatentCausalProbe, float, float, float]:
-    mean = train.mean(dim=0)
-    std = train.std(dim=0).clamp_min(1e-6)
+    mean, std = _normalization_stats(
+        train,
+        getattr(args, "normalization_scope", "position_channel"),
+    )
     normalized_train = (train - mean) / std
     normalized_validation = (validation - mean) / std
     probe = LatentCausalProbe(
@@ -193,6 +226,7 @@ def main(args: argparse.Namespace | None = None) -> None:
         "config": payload["config"],
         "latent_mean": mean.cpu(),
         "latent_std": std.cpu(),
+        "normalization_scope": args.normalization_scope,
         "sample_posterior": bool(args.sample_posterior),
         "probe": probe.state_dict(),
         "probe_width": args.probe_width,

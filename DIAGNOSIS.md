@@ -1,6 +1,6 @@
 # Why latent AFIG samples are texture-like
 
-Date: 2026-07-30; control results updated 2026-08-03. Diagnostics in
+Date: 2026-07-30; control results updated 2026-08-05. Diagnostics in
 `diagnostics/`, scripts named `diagnose_*.py`.
 
 AE under test: `ae-causal-ring-t12-...-vae-kl0.0001/checkpoint_30000.pt` with
@@ -8,43 +8,123 @@ AE under test: `ae-causal-ring-t12-...-vae-kl0.0001/checkpoint_30000.pt` with
 reproduced here). Generative model under test:
 `joint-vae-mean-rf-w768-l12-b256-s1-n30000/checkpoint_final.pt`.
 
+## Independent-audit correction (2026-08-05)
+
+Two reviewers independently re-derived the main claims from code and artifacts.
+Their overlap exposed several load-bearing confounds. These corrections supersede
+the corresponding wording in the historical sections below:
+
+1. In `train_continuous.py`, every previously reported `clean/shuffled/gap`
+   diagnostic used the minibatch that had just received an optimizer update. It
+   was **not held out**. This affects the raw Cartesian ECS/SNR/slim runs, the
+   factorized-polar and wrapped-normal runs, and both polar-v2 runs. Their decoded
+   fixed/fresh samples and separately evaluated held-out spectral panels remain
+   valid; their old context-gap tables must be read as **training-batch** values.
+   The trainer now evaluates the deterministic tail panel excluded from training
+   and logs `HELDOUT_CONDITION_DIAGNOSTIC` plus its panel size.
+2. The grouped/ring generator's conditional and null x0 losses are also
+   training-batch measurements. Its visual failure remains, but those numbers do
+   not establish held-out context use.
+3. The 64-step Hartley AR and 30k joint Hartley comparison is not budget matched:
+   `10k x 32 = 0.32M` versus `30k x 256 = 7.68M` image exposures, a 24x gap,
+   with different schedules and 20 versus 50 solver steps. It is an early-budget
+   negative, not evidence that causality and global support are jointly fatal.
+4. The compact isometric FFT control has a token-composition defect. It prepends
+   two six-value units made from the four self-conjugate frequencies; token zero
+   therefore mixes DC and Nyquist-scale values. The measured within-token
+   standard-deviation ratio is about `634:1`. Its transform remains exactly
+   invertible and isometric, but this control does **not** close compact packing.
+   The legacy 65-token FFT layouts additionally pad 514 orbits to 520, leaving
+   48 dead target coordinates after normalization.
+5. The old claim that direct-control losses are generally incomparable was too
+   broad. For the orthonormally matched global-affine controls they are comparable:
+   mean of the final 20 logged losses is pixel `0.3511`, patch DCT `0.3517`, full
+   DCT `0.3909`, full Hartley `0.4056`, and compact FFT `0.4151` (SEM about
+   `0.004`). This graded loss ladder agrees with the visual ordering. Losses
+   remain incomparable across the legacy representations with different fitted
+   target scales.
+6. The polar phase term does not preserve the natural cross-frequency energy
+   hierarchy. The phase gate is normalized across RGB within each token, after
+   which tokens are averaged equally; only the `0.1 x` reconstructed-Cartesian
+   auxiliary carries physical cross-frequency weighting. A serious polar retry
+   must make full reconstructed Cartesian error the primary loss (or implement
+   the pullback metric explicitly) and treat self-conjugate signs discretely.
+7. Visual labels were assigned from single fixed/fresh grids without a blinded,
+   multi-seed protocol, and no FID has yet been computed. Fine distinctions such
+   as “rough” versus “pass” are hypotheses until blind interleaved rating and a
+   >=5k-sample FID/KID evaluation are run.
+
+The strongest conclusions that survive are narrower: local C4 DCT remains the
+best engineering baseline; the old AE aggregate-modelability claim is retracted;
+and direct raw compact/native FFT remains harder under the implementations tried.
+The current mechanism is best described as graded interface/rate friction and
+co-tokenization heterogeneity, not “global Fourier tokens are impossible.”
+
+The later zero-training conjugacy control makes this sharper. A final pixel model
+was wrapped so the Gaussian base, all Heun states, and all solver updates live in
+the exact corrected compact-FFT coordinates, while only velocity evaluation is
+mapped to local 4 x 4 pixel tokens and back. Sixty-four fresh samples are clean
+pixel-tier CIFAR objects; base round-trip max error is `2.15e-6`. Thus compact FFT
+is not intrinsically a bad Euclidean noising or solver space. It is a poor native
+token/computation interface for the tested shared transformer.
+
 ## Conclusion
 
-The generative models are not failing at rollout, at overfitting, at decoder
-fragility, or at matching the latent distribution's low-order statistics. They
-are failing because **they have only learned a slightly-better-than-Gaussian
-model of the latent distribution, and a Gaussian fit of this latent space decodes
-to exactly the texture mush we see in samples.**
+The most controlled current result is now a representation-interface result, not
+a locality theorem. For the same perceptual C4 latent map, model, population
+channel normalization, Gaussian linear flow, MSE, seed, 16 x 16 interface, and
+10k schedule, every real spectral layout in the new matrix passes visually:
 
-Ruled out by measurement, each with a named script: decoder hypersensitivity (1),
-low-order distribution mismatch (3), and AR exposure bias (5, since the
-bidirectional model fails identically).
+- block DCT with 2x2, 4x4, or full 8x8 spatial support;
+- full DCT grouped as radial quartets or contiguous frequency tiles;
+- full Hartley grouped as radial quartets or contiguous frequency tiles.
 
-**Important scope correction.** The paragraph above and sections 1-15 describe the
-**joint** model, which genuinely does not memorize (section 6, 0.5% train/test
-gap). The **AR** model is a different story: section 16 shows it memorizes badly,
-and its conditional advantage *reverses* on held-out data. The two paths have
-different failure modes and were conflated in earlier drafts. Any claim here that
-cites AR training diagnostics -- including the "conditional MSE 0.128" figure used
-in section 1 -- is measuring a memorized signal and should not be relied on.
+Fixed and fresh seeds are recognizably semantic in every arm. Local support is
+somewhat crisper and its held-out shuffle gap is larger, so support remains a
+graded optimization/quality factor, but full support is not the binary cause of
+failure. Likewise, neither real basis nor the tested grouping law separates pass
+from fail.
 
-The objective is misallocated relative to perception. 53 x 64 = 3392 latent
-dimensions for a 3 x 32 x 32 = 3072-dimensional image is 0.91x -- an *expansion* --
-and per-dimension whitening rescales all 3392 dimensions to unit variance. So the
-loss is a flat mean over 3392 dimensions while perceptual importance is
-concentrated roughly 1000:1 in the first few tokens: the four tokens that dominate
-image structure receive ~7.5% of the gradient.
+This strengthens the earlier retraction: the AE aggregate distribution is
+modelable, and real global frequency coordinates are modelable under the short
+standardized C4 interface. The unresolved contrast is native compact Cartesian
+FFT over raw pixels (64 x 48, failed at 30k) versus the C4 interface. An exact
+compact FFT over C4, with all 256 active values packed isometrically as 16 x 16,
+passes at every saved gate and under fresh seed. Its final held-out
+clean/shuffled/gap is `1.458 / 1.679 / 0.221`.
 
-(Section 7 corrects an earlier, stronger version of this claim. The latent is
-*not* incompressible -- ~54% of each token's variance is linearly predictable from
-the other tokens. But that linear redundancy is already fully exploited by the
-Gaussian baseline the model beats, so it is not the missing ingredient.)
+The latest native-complex controls sharpen this without reversing it. Replacing
+the old near-singular amplitude coordinate with population-standardized
+`log(a + 0.1)` improves held-out spectral and prefix metrics, but free samples
+remain texture through 10k. Replacing Cartesian history with true standardized
+gated-polar features and doubling decoder depth changes the **training-batch**
+clean/shuffled/gap to `2.255 / 4.797 / 2.541` and held-out phase coherence to
+`0.853`; it also remains nonsemantic. Because the context metric was not held
+out and the polar loss underweights physical cross-frequency geometry, these
+arms establish only that the coordinate and history variants did not visibly
+repair generation. Section 20 records the exact result and audit correction.
 
-**Diffusion forcing will not fix this.** It targets AR exposure bias, but the
-bidirectional joint-diffusion model has no rollout and no exposure bias, and it
-fails identically and in precisely the same place (see graft test below).
+The first trunk/decoder representation split has now been tested. It kept global
+low-to-high Hartley targets but fed local patches of the inverse-transformed known
+prefix to the trunk. It did not improve the earlier raw-global C4 arm: fixed and
+fresh grids are nearly identical and held-out context use is weaker. However,
+the arm used batch `32` versus `64` and `82.9M` versus `106.5M` parameters, while
+its graft PSNR is near the different-image baseline. It therefore does not close
+mixing spatial sites in the *trunk input*. The older output
+grouping bracket also remains valid as evidence that four very wide targets, 64
+very narrow targets, and one 256-D target are poor interfaces. It does not imply
+that every full-support factorization is poor: the new fixed-width matrix passes.
+Token width, sequence length, endpoint statistics, and basis geometry must be
+kept matched before assigning causality.
 
-## The decisive controls: the current representation is the problem
+**Historical scope corrections remain important.** The original joint model
+does not memorize, while the old AR weighting arms do and their conditional
+advantage reverses on held-out data (section 16). Perceptual loss weighting
+worsened that overfit. Diffusion forcing alone does not address the joint failure.
+The older sections below are retained as an evidence/reasoning log; read their
+inline retractions rather than treating every intermediate implication as current.
+
+## Direct-representation controls: native-complex FFT is harder, but not the final localization
 
 `control_pixel_diffusion.py`. Identical bidirectional transformer blocks, identical
 rectified-flow objective, identical width/depth/steps/batch/schedule and the same
@@ -63,26 +143,35 @@ images) -- and the same transformer and budget reach coherent structure on pixel
 in a sixth of the training. Neither data, architecture, nor compute is the
 bottleneck.
 
-Five matched direct-representation controls have now completed at 30,000 steps:
+Eight matched direct-representation controls have now completed at 30,000 steps:
 
 | representation | shape | params | 30k decoded result |
 |---|---:|---:|---|
 | 4x4 pixel patches | 64 x 48 | 115.5M | recognizable CIFAR classes |
 | per-patch 4x4 DCT | 64 x 48 | 115.5M | recognizable CIFAR classes |
 | full-image DCT, 4x4 frequency tiles | 64 x 48 | 115.5M | recognizable, but delayed/weaker |
+| full-image Hartley, 4x4 frequency tiles | 64 x 48 | 115.5M | recognizable, but weaker |
 | per-orbit-whitened FFT | 65 x 48 | 115.5M | texture mush |
 | FFT without per-orbit variance scaling | 65 x 48 | 115.5M | texture mush |
+| locality-regrouped legacy FFT | 65 x 48 | 115.5M | texture mush |
+| compact active-only isometric FFT | 64 x 48 | 115.5M | rough/mushy |
 
 Artifacts:
 `latent_continuous_runs/pixel_control/preview_0030000.png`,
 `latent_continuous_runs/patch_dct_control/preview_0030000.png`,
 `latent_continuous_runs/full_dct_control/preview_0030000.png`,
+`latent_continuous_runs/full_hartley_control/preview_0030000.png`,
 `latent_continuous_runs/control_fft_whitened/preview_0030000.png`, and
-`latent_continuous_runs/control_fft_global/preview_0030000.png`.
+`latent_continuous_runs/control_fft_global/preview_0030000.png`,
+`latent_continuous_runs/fft_global_spiral/preview_0030000.png`, and
+`latent_continuous_runs/fft_compact_isometric_spiral_control/preview_0030000.png`.
 
 The two FFT outputs are not merely both broken; under the paired fixed seed they
 are visually very similar (same-channel RGB correlations 0.930--0.940). Their
-loss values differ because their target scales differ and must not be compared.
+loss values differ because their legacy target scales differ and must not be
+compared. By contrast, loss is comparable across the globally affined
+orthonormal pixel/patch-DCT/full-DCT/full-Hartley/compact-FFT controls; the
+audit's trailing-20 means form the graded ladder reported above.
 
 This closes two important branches. The autoencoder is **not necessary for the
 failure**: direct FFT coefficients fail without it. Per-orbit variance whitening
@@ -107,17 +196,36 @@ token have mean pair distance `7.43`, mean diameter `13.66`, and only `9.4%`
 neighboring pairs. A contiguous 4x4 frequency tile has corresponding values
 `2.14`, `4.24`, and `35%`. Radial grouping does preserve magnitude hierarchy
 more tightly (mean radial spread `0.34` versus `3.91`), so this is a trade rather
-than an unconditionally better ordering. The active `fft_global_spiral` control
-keeps every FFT coefficient fixed while reducing mean pair distance to `2.84`.
+than an unconditionally better ordering. The completed `fft_global_spiral`
+control kept every FFT coefficient fixed while reducing mean pair distance to
+`2.84`, but its 30k samples remained mushy. Local regrouping alone is therefore
+insufficient.
 See `diagnose_token_composition.py` and
 `diagnostics/token_composition.json`.
 
-Normalization caveat: `fft_global` is a historical shorthand. The implementation
+Historical normalization caveat: `fft_global` is a shorthand. The implementation
 sets the variance-whitening exponent to zero and uses a global residual scale, but
 the codec still subtracts per-orbit complex means. It therefore isolates
 per-orbit **variance scaling**, not every form of frequency-dependent
-normalization. Section 15 suggests the retained centering is small for ordinary
-complex orbits, but an exact unitary-noise control remains worthwhile.
+normalization. The compact control resolves the affine-normalization caveat: it uses one
+pixel mean/std, `fft2(norm="ortho")`, exact sqrt(2) Hermitian packing, no fitted
+per-orbit statistics, no inactive coordinates, and no padding. Round trip, L2
+energy, and the Gaussian bridge are exact, yet its 30k output remains mushy.
+It does **not** resolve token composition: the encoder prepends the paired
+self-conjugate units, mixing DC and Nyquist values in token zero (about `634:1`
+within-token scale ratio). A corrected compact layout is therefore required
+before treating this negative as exact (`0.4151` trailing-20 loss mean; the old
+single final-batch value was `0.3830`).
+
+The compact distribution also quantifies why native complex coefficients remain
+statistically awkward despite exact Euclidean geometry. On 4,096 CIFAR-10 images,
+complex-amplitude p50/p90/p99/p99.9/max is
+`0.145/0.752/3.651/14.989/58.047`; median amplitude falls from `11.28` at DC to
+`0.0456` at radii 16--23, and DC-orbit RMS is about 594x maximum-radius RMS.
+Within-coordinate standardization produces far milder tails. Thus much of the
+global heavy tail is a mixture across known frequency-specific scales. Exact
+Cartesian noising is legal -- the packing is an orthonormal chart of pixel space
+-- but it is evidently not an easy statistical substrate for the shared decoder.
 
 ### The exact raw-FFT AR control does not emerge by 10k
 
@@ -129,7 +237,7 @@ loss weights.
 Tests verify pixel/Fourier L2 equality, round trip, Gaussian-bridge equality,
 velocity equality, and physical decode.
 
-| arm | final held-out clean | shuffled | gap | decoded result |
+| arm | final training-batch clean | shuffled | gap | decoded result |
 |---|---:|---:|---:|---|
 | Cartesian + ECS | 0.012045 | 0.013190 | 0.001144 | texture mush |
 | Cartesian + ECS + 4x SNR | 0.023469 | 0.026515 | 0.003047 | texture mush |
@@ -140,9 +248,10 @@ The 4x-SNR arm scales the internal clean endpoint by two, so its bridge SNR is
 exactly four times larger while external token coordinates and physical decode
 remain unchanged.
 
-The SNR change measurably improved use of causal context: its final held-out
-shuffle gap is 2.7x the baseline, and its step-2k gap is `0.003821` versus
-`0.001602`. But both 16-image decoded grids contain only low-frequency colored
+On the just-updated training batch, the SNR change increased the shuffle gap:
+its final gap is 2.7x the baseline, and its step-2k gap is `0.003821` versus
+`0.001602`. The audit found that this was not a held-out context test. Both
+16-image decoded grids contain only low-frequency colored
 texture and no recognizable objects. The grids are numerically different (pixel
 MAE `7.26/255`) but qualitatively fail in the same way.
 
@@ -158,16 +267,16 @@ remaining failure as global support or joint magnitude/phase modeling.
 
 That corrected 10k run has now completed:
 
-| step | held-out clean | shuffled | gap | decoded result |
+| step | training-batch clean | shuffled | gap | decoded result |
 |---:|---:|---:|---:|---|
 | 2,500 | 0.023732 | 0.027525 | 0.003793 | texture, no clear objects |
 | 5,000 | 0.021503 | 0.027910 | 0.006406 | texture, no clear objects |
 | 7,500 | 0.021457 | 0.028950 | 0.007492 | texture, no clear objects |
 | 10,000 | 0.019638 | 0.026835 | 0.007197 | texture, no clear objects |
 
-This separates two facts that the short run could not. First, the AR trunk does
-learn and increasingly use held-out causal context; the shuffle gap roughly
-doubles from 2.5k to 7.5k and does not reverse at 10k. Second, none of that gain
+This separates two facts that the short run could not, with an audit correction.
+First, the AR trunk increasingly uses causal context on its current training
+batch; this does not establish held-out context use. Second, none of that gain
 becomes recognizable unconditional structure. The fixed-seed grids change little
 after 5k, and a new 16-sample seed at 10k fails in the same way. The pixel
 control, by contrast, is recognizably object-like in its stored 5k and 10k grids.
@@ -183,6 +292,256 @@ This closes the present Cartesian/ECS/c=4 arm under the planned early-training
 budget, not the broader Fourier premise. Correct Hermitian noise geometry, one
 global scale, a 4x SNR shift, explicit frequency metadata, and genuine context
 use are not sufficient in this implementation.
+
+### Product-space amplitude/phase AR improves conditional modeling, not samples
+
+The next 10k arm changed the decoder coordinates rather than applying another
+Cartesian normalization. For each of 514 native complex frequency groups it
+samples normalized log amplitude with a Euclidean flow, then samples phase with a
+uniform-base intrinsic circular flow conditioned on that amplitude. The sampled
+coefficient is converted back to Cartesian ECS coordinates for trunk history.
+The trunk uses QKNorm, fp32 2-D RoPE, learned target slots, and per-block position
+FiLM; both decoder heads also receive the target slot directly.
+
+| step | training-batch clean | shuffled | gap | held-out phase coherence | held-out physical NRMSE | samples |
+|---:|---:|---:|---:|---:|---:|---|
+| 2,500 | 2.8205 | 3.4556 | 0.6351 | 0.715 | 0.405 | speckle |
+| 5,000 | 2.4981 | 3.8387 | 1.3406 | 0.792 | 0.385 | no objects |
+| 7,500 | 2.4223 | 4.0842 | 1.6619 | 0.818 | 0.381 | no objects |
+| 10,000 | 2.3639 | 4.1293 | 1.7654 | 0.824 | 0.378 | no objects |
+
+Final log-amplitude MAE is `0.278` with bias `+0.021`, versus the Cartesian
+arm's `1.174` and `-0.961`; phase coherence rises from `0.250` to `0.824`.
+The factorization repairs much of the held-out teacher-forced coordinate problem,
+while its large shuffle gap is only a training-batch result. It does **not**
+repair free generation: all four fixed-seed grids remain high-frequency
+texture/speckle.
+
+The matched rollout audit (`diagnose_factorized_rollout.py`) rules out a simple
+amplitude explosion. With true prefixes of 32/128/256/384 coefficients, sampled
+suffix mean-amplitude ratios are `0.971/1.023/1.000/1.028`. Nevertheless, a true
+32-coefficient prefix plus zero suffix is already a blurred recognizable image,
+while rolling out the model suffix destroys it. Longer true prefixes survive but
+gain harmful texture. Fully generated cutoffs show only coarse blobs at 32, weak
+structure at 128, then increasing speckle through 384. This localizes the live
+failure more narrowly than the aggregate loss: sampled suffixes break
+cross-frequency phase/history consistency over the 514-step causal horizon
+without a simple amplitude explosion. It rules out phase learnability or total
+power *alone*. It does not fully close amplitude-coordinate normalization,
+because the completed head used coarse radial/RGB scaling followed by an
+unfitted log coordinate; section 18 records that remaining confound.
+
+### A real 64-step Hartley AR also fails
+
+`train_hartley_ar.py` tests whether the remaining failure is specifically native
+complex geometry or the 514-step scalar-frequency rollout. It uses the same real,
+full-image orthonormal Hartley transform that succeeds in the bidirectional
+control, but generates 64 contiguous 4x4 frequency tiles causally. The 106.7M
+model includes QKNorm, fp32 2-D RoPE, learned target slots, per-block position
+FiLM, and direct target-slot conditioning of its flow decoder.
+
+| step | held-out clean | shuffled | gap | samples |
+|---:|---:|---:|---:|---|
+| 2,500 | 0.4707 | 0.5398 | 0.0691 | mottled speckle |
+| 5,000 | 0.4605 | 0.5478 | 0.0873 | no objects |
+| 7,500 | 0.4977 | 0.5984 | 0.1007 | no objects |
+| 10,000 | 0.4266 | 0.5440 | 0.1173 | no objects |
+
+The run is stable, the held-out shuffle gap grows, and every scheduled checkpoint
+is saved. Yet the fixed-seed grids remain qualitatively stationary from 2.5k to
+10k. This shows that an entirely real Fourier-family basis and a 64-step grouped
+horizon did not yield coherent rollout at this budget. The comparison with the
+joint Hartley run is **not compute matched**: AR saw about `0.32M` image exposures
+(`10k x 32`) versus `7.68M` (`30k x 256`) for joint, alongside different learning
+rate and solver schedules. It therefore does not localize the cause to the
+interaction of causality and global support; it is an early-budget negative that
+needs a matched exposure/schedule extension before supporting that claim.
+
+### Compression and local decoder robustness are not enough
+
+The first Phase-D bridge uses the existing spatial AE architecture with a true
+512-scalar bottleneck (8 channels at 8x8, 6x compression), 10% latent-noise
+training, and channel moment regularization. At 10k its held-out reconstruction
+MSE/PSNR is `0.000812 / 30.91 dB`; perturbing latents by 10% RMS raises MSE only
+to `0.000950`. The stored reconstructions are visually faithful.
+
+Generation still fails in two matched forms. A 106.6M, 16-step AR over low-to-high
+2x2 Hartley tiles of the latent map reaches held-out clean/shuffled/gap
+`1.340 / 1.646 / 0.306`, yet every grid is smooth texture. A 115.4M bidirectional
+joint flow over the same 16x32 tokens ends at loss `1.286` and is also object-free.
+At the time this separated decoder smoothness from the tested joint generator and
+ruled out AR rollout as the sole failure. It did **not**, as later claimed,
+establish that the aggregate was intrinsically unmodelable: the local-token
+controls below use the same endpoint and succeed.
+
+The latent audit (`diagnose_spatial_ae_latents.py`, 4,096 images) finds normalized
+scalar p50/p90/p99/p99.9/max `0.655/1.637/2.691/3.596/6.330`, skew `0.021`, and
+excess kurtosis `0.315`. Coordinate standard deviations cluster near one and
+Hartley tile RMS spans only `2.22x`. Thus the new failure is not heavy tails or a
+large frequency scale mixture. As with the original near-lossless AE, image
+validity occupies subtle joint structure inside an innocuous Gaussian-like
+marginal; Gaussian-like off-manifold points decode to texture.
+
+MSE-only VAE regularization provides a useful negative bracket. Beta=`1e-3`
+keeps 30.27 dB reconstruction and improves off-diagonal correlation RMS from
+`0.321` to `0.045` (condition `9.12` to `2.23`), but direct prior samples remain
+texture and a joint flow on sampled posteriors remains unrecognizable through
+10k (final loss `1.461`). Beta=`1e-2` lowers reconstruction to 25.07 dB and causes
+partial posterior collapse (mean covariance condition about `2335`). Adding 0.5
+free bits repairs the condition to `2.76` and yields 25.29 dB, but prior samples
+still fail. More KL is therefore not the missing ingredient.
+
+### Posterior sampling and the linear flow path are not sufficient explanations
+
+The first beta=`1e-3` generator used sampled posterior latents. That distinction
+is material, so its failure did not initially close generation from the cleaner
+posterior mean. `diagnose_spatial_vae_posterior.py` measures both policies on the
+same 4,096 images. The posterior mean has RMS `0.898` and excess kurtosis `0.971`;
+sampling adds RMS `0.422` noise, contributes `18.1%` of aggregate variance, and
+reduces excess kurtosis to `0.409`. It also lowers reconstruction from `29.89` to
+`28.67` dB. Posterior sampling therefore made the training target measurably more
+Gaussian and less reconstructive; it was not a harmless implementation detail.
+
+Three matched joint 10k controls now separate that policy from flow-path geometry:
+
+| latent endpoint | path | final loss | decoded result |
+|---|---|---:|---|
+| beta=`1e-3` posterior sample | linear | `1.461` | blurred texture/scenes, no objects |
+| beta=`1e-3` posterior mean | linear | `1.458` | same visual basin |
+| beta=`1e-3` posterior mean | trigonometric VP | `2.219` | same visual basin |
+| deterministic noise-trained AE | trigonometric VP | `1.978` | different, sharper texture; no objects |
+
+The loss values across linear and trigonometric paths are not comparable because
+the velocity target changes. The decoded grids are the gate: posterior-mean
+training does not repair the VAE, and the variance-preserving trigonometric path
+does not repair either learned representation. The trigonometric interpolant is
+still a useful control: for independent unit-Gaussian endpoints it keeps every
+intermediate marginal at unit variance, whereas the independent linear bridge
+pinches variance to one half at its midpoint. Its failure here says that this
+bridge pathology is not the sole source of the texture basin.
+
+Artifacts: `diagnostics/spatial_vae_kl1e3_posterior.json`,
+`continuous_runs/joint_spatial_vae_kl1e3_mean_linear_10k/`,
+`continuous_runs/joint_spatial_vae_kl1e3_mean_trig_vp_10k/`, and
+`continuous_runs/joint_spatial_ae_hartley_trig_vp_10k/`.
+
+### Local tokenization overturns the aggregate-modelability inference
+
+The failed Phase-D joint arms all applied a full 2-D Hartley transform to the
+latent map before forming tokens. That made every token globally supported. The
+following controls hold the endpoint latent map fixed and change only the basis
+and token support:
+
+| endpoint | tokenization | final loss | 10k visual result |
+|---|---|---:|---|
+| old MSE C8 | full-map Hartley | `1.286` | rough texture/pseudo-scenes |
+| old MSE C8 | local raster | `1.187` | recognizable objects |
+| perceptual C8 | full-map Hartley | `1.304` | rough, much weaker than local |
+| perceptual C8 | local raster | `1.223` | recognizable objects |
+| perceptual C4 | full-map Hartley | `1.306` | rough, much weaker than local |
+| perceptual C4 | local raster | `1.220` | recognizable objects |
+| perceptual C4 | local 2x2 DCT | `1.208` | recognizable objects |
+
+All joint arms use 16 tokens and the same 115.4M `PatchDiffusion`; the relevant
+C4 comparison also fixes seed, schedule, linear flow, channel statistics, and
+latent endpoint exactly. Local raster and local DCT are related by an orthonormal
+rotation inside each token, so white Gaussian noise, the flow bridge, and squared
+error are preserved. This directly separates "frequency values" from "global
+support across tokens." Both local representations pass from fixed and fresh
+seeds.
+
+Decoder priors do not explain the result. Standardized-Gaussian maps decoded by
+the old MSE C8 and perceptual C4 codecs yield texture/pseudo-scenes, substantially
+worse than the learned local samples. The flows learned image structure.
+
+The codec objective is also not the repair: the old deterministic MSE C8 endpoint
+succeeds locally. LPIPS/Charbonnier enabled the C4 codec to retain class and pose
+at 256 scalars (12x compression, `26.71` dB), which makes it an attractive
+baseline, but perceptual training is not necessary for modelability.
+
+The 16-step causal C4 local-DCT arm provides the matching AR test. It produces
+recognizable objects from the first stored checkpoint and retains them through
+training, unlike the global-Hartley latent AR. At 10k it has train loss `1.146`
+and held-out clean/shuffled/gap `1.338 / 1.819 / 0.481`. A fresh seed is also
+clearly object-like. This rules out the joint model's bidirectional attention as
+the explanation for the local result.
+
+The exact C4 global AR comparison adds an important scope correction. Raw global
+Hartley is not completely object-free with this codec: fixed and fresh grids have
+rough recognizable structure, but remain far below local DCT. Raw global ends at
+train/clean/shuffled/gap `1.237 / 1.441 / 1.752 / 0.310`. A spatialized-prefix
+variant zero-fills the unknown global suffix, inverts the known prefix, and gives
+16 local patches to an 82.9M noncausal spatial trunk at every causal step. It ends
+at `1.237 / 1.493 / 1.659 / 0.166` and does not improve samples. Fixed and fresh
+pixel correlations between the two global arms are `0.979` and `0.976`.
+
+This falsifies the simplest version of the trunk-interface hypothesis. Local
+tokenization changes not only the state the trunk reads but the support of the
+quantity independently emitted by the diffusion head. The latter now looks
+load-bearing: local errors remain local, whereas global errors perturb the whole
+map and must compose consistently across steps.
+
+The output-composition bracket makes that statement more precise:
+
+| target factorization | sequence | train / clean / shuffled / gap | visual result |
+|---|---:|---:|---|
+| local 2x2 DCT, patch-major | 16 x 16 | `1.146 / 1.338 / 1.819 / 0.481` | recognizable, strongest AR arm |
+| local 2x2 DCT, frequency-major | 16 x 16 | `1.195 / 1.407 / 1.738 / 0.332` | recognizable, somewhat softer |
+| global Hartley, one coefficient | 64 x 4 | `1.180 / 1.364 / 1.684 / 0.320` | rough; no repair |
+| global Hartley, one 2x2 tile | 16 x 16 | `1.237 / 1.441 / 1.752 / 0.310` | rough but partly recognizable |
+| global Hartley, four tiles jointly | 4 x 64 | `1.308 / 1.553 / 1.710 / 0.157` | worse than one tile |
+| global Hartley, all tiles jointly | 1 x 256 | `1.464 / 1.428 / 1.428 / 0` | rough |
+| local spatial map, all values jointly | 1 x 256 | `1.459 / 1.500 / 1.500 / 0` | rough |
+
+The zero shuffle gaps in the final two rows are by construction: a one-token
+model has no history to shuffle. The two one-token targets are related by a fixed
+orthonormal Hartley rotation and both fail in the same broad way. They show that
+the three-layer diffusion MLP is not a sufficient unconditional 256-D generator;
+they do not show that a fully joint Fourier model is impossible.
+
+Frequency-major local DCT is the more consequential positive. It emits all local
+DC groups before the three higher 2x2 subbands while preserving local spatial
+support. Fixed and fresh grids remain semantic, although they are softer than the
+patch-major arm. Thus coarse-to-fine frequency order itself is viable. Removing
+within-token frequency mixing is not sufficient in the global arm: the 64-step
+scalar Hartley model has a lower clean loss than the passing frequency-major arm
+but still looks worse. Loss and shuffle gap again do not select sample quality.
+
+Artifacts:
+`continuous_runs/joint_spatial_ae_mse_c8_raster_linear_s7_10k/`,
+`continuous_runs/joint_spatial_ae_perceptual_c8_raster_linear_s7_10k/`,
+`continuous_runs/joint_spatial_ae_perceptual_c4_raster_linear_s7_10k/`,
+`continuous_runs/joint_spatial_ae_perceptual_c4_patchdct_linear_s7_10k/`, and
+`continuous_runs/ar_spatial_ae_perceptual_c4_patchdct_raster_s7_10k/`; fresh AR
+artifact `diagnostics/ar_spatial_ae_perceptual_c4_patchdct_fresh_54321.png`.
+Global comparison artifacts:
+`continuous_runs/ar_spatial_ae_perceptual_c4_hartley_radial_s7_10k/`,
+`continuous_runs/ar_spatialized_prefix_hartley_perceptual_c4_s7_10k/`,
+`continuous_runs/ar_spatial_ae_perceptual_c4_hartley_band4_s7_10k/`,
+`continuous_runs/ar_spatial_ae_perceptual_c4_hartley_scalar_s7_10k/`,
+`continuous_runs/ar_spatial_ae_perceptual_c4_hartley_all16_s7_10k/`,
+`continuous_runs/ar_spatial_ae_perceptual_c4_spatial_all1_s7_10k/`,
+`diagnostics/ar_spatial_ae_perceptual_c4_hartley_fresh_54321.png`, and
+`diagnostics/ar_spatialized_prefix_hartley_perceptual_c4_fresh_54321.png`.
+The frequency-major local run and fresh sample are
+`continuous_runs/ar_spatial_ae_perceptual_c4_patchdct_freqmajor_s7_10k/` and
+`diagnostics/ar_spatial_ae_perceptual_c4_patchdct_freqmajor_fresh_54321.png`.
+Fresh grouping endpoints are
+`diagnostics/ar_spatial_ae_perceptual_c4_hartley_band4_fresh_54321.png`,
+`diagnostics/ar_spatial_ae_perceptual_c4_hartley_scalar_fresh_54321.png`,
+`diagnostics/ar_spatial_ae_perceptual_c4_hartley_all16_fresh_54321.png`, and
+`diagnostics/ar_spatial_ae_perceptual_c4_spatial_all1_fresh_54321.png`.
+
+### Established intrinsic phase diffusion does not repair the global FFT arm
+
+`ar_fft_factorized_wrapped_normal_score_10k` replaces shortest-geodesic phase
+flow with the wrapped-normal Brownian score construction used by Torsional
+Diffusion: exact finite-image wrapped-normal scores, denoising score matching,
+and probability-flow ODE sampling on the circle. It ends at **training-batch**
+clean/shuffled/gap `1.354 / 2.193 / 0.839`; its fixed grids remain speckle through
+10k. Thus phase geometry was treated intrinsically, but the old metric does not
+establish held-out context use. The visual failure persists, while the audit's
+loss-geometry correction prevents this arm from closing phase modeling broadly.
 
 ## Evidence
 
@@ -840,6 +1199,165 @@ lower dimensionality; that estimate was rank-limited and should be ignored.)
 The latent distribution genuinely occupies a high-dimensional space -- consistent
 with an autoencoder that compresses nothing.
 
+### 18. Factorized amplitude-coordinate audit
+
+The completed factorized decoder did not population-standardize its log-amplitude
+target. With physical amplitude `a_phys` and the fitted per-radius/RGB RMS
+`s[r,c]`, it used
+
+`u = log(a_phys / s[r,c] + 1e-4)`.
+
+The corresponding optional trunk feature was different again:
+`log1p(a_phys / s[r,c])`, followed by a bounded phase-reliability gate. That
+polar feature was disabled in the completed run, which used Cartesian history.
+
+On 10,000 CIFAR-10 training images, RMS-relative amplitude has
+p10/median/p90/p99 `0.207/0.615/1.480/3.268`. The existing decoder coordinate has
+mean/std `-0.550/0.806`; no tensor-wide or per-RGB affine was fitted after the
+log. RGB means and standard deviations differ by less than `0.016/0.004`, so a
+single population affine or RGB statistics shared across all frequencies are
+both plausible first controls.
+
+The epsilon is a meaningful loss/geometry parameter. For
+`y = log(a + epsilon)`, values below epsilon enter the approximately linear
+region while values above it retain logarithmic relative-error geometry. After
+population standardization:
+
+| epsilon in RMS-relative units | fraction `a < epsilon` | skew | excess kurtosis |
+|---:|---:|---:|---:|
+| `1e-4` | ~0% | `-0.554` | `1.378` |
+| `0.05` | `0.69%` | `-0.147` | `0.198` |
+| `0.10` | `2.61%` | `0.044` | `0.075` |
+| `0.20` | `9.43%` | `0.289` | `0.151` |
+| `1.0` (`log1p(a)`) | `75.65%` | `1.071` | `1.957` |
+
+Thus `epsilon=0.1` is the measured starting point for the next coordinate
+control. This audit does not claim that a nearly symmetric marginal will repair
+generation. It identifies a concrete mismatch between the Gaussian amplitude
+base, the decoder target, and the proposed trunk coordinate that the first
+factorized arm did not test.
+
+### 19. Fixed-shape support and real-basis/grouping controls
+
+The matched C4 block-DCT support sweep changes the earlier causal reading. All
+arms use the deterministic perceptual 4 x 8 x 8 latent, 256 active scalars,
+16 tokens x 16 values, sequence RoPE, seed 7, and the same AR model/schedule.
+
+| support | clean | shuffled | gap | fixed/fresh visual gate |
+|---:|---:|---:|---:|---|
+| 2x2 | `1.337` | `1.829` | `0.492` | pass |
+| 4x4 | `1.405` | `1.744` | `0.340` | pass |
+| 8x8 (full map) | `1.479` | `1.758` | `0.279` | pass |
+
+Increasing support weakens context use and visual sharpness monotonically, but
+the full-map endpoint remains recognizably semantic. Global support is therefore
+a graded difficulty, not the binary obstruction previously implied.
+
+A matched full-support matrix then varied real basis and grouping. Full DCT and
+full Hartley both pass when grouped either as contiguous 2x2 frequency-plane
+tiles or radial quartets. Their final clean/shuffled/gap values are respectively
+`1.445/1.753/0.309`, `1.436/1.761/0.325`, and `1.462/1.684/0.222` for DCT tiles,
+Hartley tiles, and Hartley quartets; the DCT-quartet cell is the support8 arm
+above. Fresh seed 54321 passes in every cell. Neither real basis family nor these
+grouping laws is a binary separator.
+
+The native-complex bridge passes. An exact isometric compact FFT over the same C4
+map preserves all 256 values and the 16 x 16 AR shape, and generates recognizable
+fixed and fresh samples. Final clean/shuffled/gap is
+`1.458 / 1.679 / 0.221`. Cartesian complex coordinates, Hermitian packing,
+implicit phase, Gaussian linear flow, and Euclidean loss are therefore modelable
+on the short standardized aggregate.
+
+The corresponding scale audit reveals a 594.10x DC-to-highest-radius RMS ratio
+for raw standardized CIFAR FFT, versus only 3.66x for standardized C4 FFT. Active
+coordinate p50/p90/p99/p99.9 is `0.112/0.686/3.363/12.705` raw versus
+`0.547/1.541/3.216/5.722` for C4. This promotes a phase-preserving raw scaling
+control: shared positive real/imag radial-RGB RMS divisors at exponent 0.8, no
+centering, leaving approximately the C4 residual hierarchy. Its 5k and 10k grids
+remain texture and correlate `0.943/0.940` with the unscaled grids. It remains
+rough/mushy at 30k (final loss `0.7905`, not cross-coordinate comparable). Scale
+hierarchy alone therefore fails the repair gate.
+
+The 16 x 16 resolution separator passes in every arm. Pixel, unscaled compact
+FFT, and scaled compact FFT at 16 tokens x 48 dimensions all generate semantic
+low-resolution scenes by 5k and pass clearly by 7.5k/10k. Scaled/unscaled grids
+correlate `0.968--0.970`. Removing 16--32-pixel detail repairs raw compact FFT;
+normalization does not.
+
+The final cheap separator kept 16-pixel data fixed and compared 64 x 12 unscaled
+compact FFT with matched 2x2 pixel patches. Both pass through 10k. Compact-FFT
+samples correlate `0.976/0.986/0.990/0.994` with the 16 x 48 layout across the
+four gates. The added high-frequency dependency burden—not 64 attention tokens
+or token width—is now the leading obstruction and directly motivates ring-block
+generation.
+
+The first ring-block codec arm completed. It preserves the
+existing target-12 layout and 53 x 64 exported latents, changing only attention
+masks from bidirectional-within-sector to bidirectional-within-ring while staying
+causal between radius bins. The default remains sector-causal for checkpoint
+compatibility. Unit, legacy-interface, and end-to-end smoke tests pass. Held-out
+test PSNR improves from `28.05 dB` at 10k to `31.82 dB` at 20k and `32.85 dB` at
+30k, missing the legacy codec's `34.77 dB` by `1.92 dB`. Equal-noise decoder
+robustness and PCA rank are nearly unchanged, while its ring-summary causal
+probe is worse.
+
+The corresponding generator is implemented but gated on that final codec. It
+packs the same 53 x 64 normalized latents into 23 padded ring vectors (at most
+four latents or 256 values per ring), consumes completed rings causally, and
+jointly denoises all active values in the target ring. Learned absolute ring
+slots provide identity; fp32 sequence RoPE and QK normalization shape and
+stabilize attention. There is deliberately no redundant physical-metadata
+conditioning path in the first arm. Packing, masks, causal/cache parity,
+gradients, deterministic sampling, checkpoint contracts, reduced GPU
+integration, and full-configuration one-step GPU smokes pass. Matched 10k runs
+on both the legacy and ring-block codecs remain texture/pseudo-scenes under
+fixed and fresh seeds. Final conditional x0 MSE is `0.217/0.205`; the lower
+teacher-forced number is measured on training batches and does not repair free
+rollout. The visual negative survives; held-out context use was not tested.
+
+There is a direct raw follow-up with unusually tight shape matching. The exact
+32 x 32 compact FFT has 23 integer-radius rings containing `3--288` active real
+coordinates per ring, versus the AE ring generator's 23 rings and `64--256`
+active values. If the AE generator passes, running the same joint-within-ring
+architecture on raw coefficients will separate the benefit of the causal ring
+law from the benefit of learned AE transport. This separator takes priority over
+another phase/noise sweep, but its prerequisite ring visual gate failed, so it
+is not launched.
+
+The next separator increased AR depth. An existing target-4 codec
+exports 134 x 64 latents and reconstructs at `49.57 dB`. The frozen interface
+and grouped generator were generalized to dynamic token counts/dimensions, and
+a 134-step single-latent arm used learned target slots, fp32 sequence RoPE, QK
+normalization, and a depth-6 flow head. It remains texture/pseudo-scenes through
+10k and fresh seed despite training-batch conditional x0 MSE `0.140`. More
+decisions alone do not repair the visual result.
+
+The combined test trains the same target-4 layout at 16 latent dimensions.
+This yields 134 x 16 = 2,144 scalars (1.43x compression) and four-times-smaller
+diffusion targets. It reaches `32.76/34.07 dB` held-out at 10k/20k; the 20k
+metrics also include pixel MSE `3.926e-4`, physical FFT NRMSE `0.03677`, phase
+circular error `0.01379`, and radial-power relative error `0.01182`. The fitted
+deterministic interface gives `2.36%` single-token and `11.78%` ring-summary
+linear-probe improvement over zero. This clears the reconstruction gate. The
+matched 134-step, 16-D generator uses the exact 20k checkpoint and interface.
+The codec's final 30k endpoint reaches `34.34 dB`, only `0.27 dB`
+above 20k. The generator remains texture/pseudo-scenes at every fixed gate from
+2.5k through 10k under CFG 1.0--2.0, and fresh seed 54321 fails at 5k and 10k.
+Final training-batch conditional/null x0 MSE is `0.254/0.365` (reported relative
+gap `0.336`). It does not establish held-out context use; the fixed/fresh visual
+failure is the valid negative.
+
+Matched latent perturbation audits further refine the compression hypothesis.
+The z16 20k code needs `172/2144` PCA dimensions for 90% sample energy and `239`
+for 99%; z64 at target-4 needs `178/8576` and `241`. Compression removes large
+amounts of redundant coordinate expansion but scarcely changes this sampled
+intrinsic rank. At normalized noise sigma `0.1/0.2/0.35`, z16 decoding reaches
+`34.47/28.55/23.74 dB` versus z64's `38.47/32.46/27.59 dB` relative to clean
+reconstruction. The smaller code is therefore more noise-sensitive, not an
+obviously easier diffusion endpoint. Reports are in
+`diagnostics/latent_robustness_t4_z16_c20k/` and
+`diagnostics/latent_robustness_t4_z64_c30k/`.
+
 ## Implication
 
 **Superseded in part.** This section originally proposed a cascade/prefix model
@@ -850,25 +1368,460 @@ document supersedes both: it shows directly that the representation stack, not t
 data, the architecture, the budget, the objective, or any of the modeling
 machinery, is what prevents generation.
 
-What survives from the original reasoning: the AE is nearly lossless (34.9 dB) and
-non-compressive -- 3392 latent dims for 3072 real values -- so latent generative
-modeling here is about as hard as modeling 32x32 pixels at 35 dB fidelity, with no
-compression benefit to show for it. Standard latent diffusion works because the AE
-is *lossy*: it discards perceptually irrelevant high-frequency detail, leaving a
-smooth, low-dimensional, modelable latent. That is about perceptual relevance, not
-predictability -- per section 7 the discarded detail is roughly half predictable.
+What survives from the original reasoning is narrower. The tested AE is nearly
+lossless (34.9 dB) and exports 3392 scalars for 3072 image values, so it did not
+earn an obvious rate advantage or discard much expensive detail. That makes the
+specific code a weak escape hatch. It does **not** follow that overcomplete
+latents are intrinsically harder: expansion can untangle a manifold, add useful
+redundancy, or create smoother coordinates. Future AE comparisons therefore gate
+on reconstruction, perturbation robustness, latent geometry, and generated
+images rather than requiring scalar compression. Lossiness remains one useful
+way to discard perceptually irrelevant detail, not a universal prerequisite.
 
 The completed no-AE controls show that neither the current autoencoder nor
 per-orbit variance whitening is required to produce the failure. The short raw-AR
 controls additionally verify the exact Hermitian Gaussian measure and show that a
-4x SNR shift improves held-out conditioning substantially. The corrected 10k
-trajectory shows that this improvement still does not become coherent generation
-within the planned early generalization window.
+4x SNR shift increases the **training-batch** shuffle gap. The old diagnostic did
+not measure held-out conditioning. The corrected 10k visual trajectory still
+shows that this training-side change does not become coherent generation within
+the planned early window.
 
-The forward experimental sequence is maintained in `ROADMAP.md`. The active
-bridge is a full-image separable Hartley transform: real, orthonormal, global,
-periodic, and packed in the same contiguous frequency-grid tokens as full DCT.
-If it succeeds, radial/Hermitian token composition becomes the first repair; if
-it fails beside full DCT, proceed to explicit amplitude-before-phase modeling
-with circular phase geometry. Then build a structured, genuinely compressive AE
-whose generation gate is tested early. Wavelets are not in the immediate plan.
+The forward sequence is maintained in `ROADMAP.md`. Full-image Hartley succeeded
+at roughly the full-DCT tier, while both square-spiral legacy FFT and compact exact
+raw FFT remained mushy. The later compact C4 FFT pass reopens one narrowly
+specified normalization question: its radial RMS hierarchy is 3.66x rather than
+raw CIFAR's 594x. The active control changes only uncentered positive real/imag
+scales to match that hierarchy. This is not a return to per-orbit complex
+centering or covariance whitening. The earlier amplitude-before-phase arm and
+64-step Hartley AR remain useful negative results, but complex phase is no longer
+an intrinsic explanation.
+
+**Superseded implication.** The first structured compressive bridge did not fail
+the generator gate in the abstract; its *global-Hartley tokenization* failed.
+The unchanged old MSE endpoint succeeds in local raster tokens. Perceptual C8 and
+C4 codecs reproduce the same global-weak/local-strong split, and within-token DCT
+also passes. The wrapped-normal phase-score control fails, so changing phase
+process again is not the next move.
+
+The spatialized-prefix and output-grouping controls are complete. Spatializing the
+known prefix does not improve the matched raw-global C4 arm. Changing the global
+Hartley horizon from 16 steps to 4, 64, or 1 also does not produce a visual repair;
+the four-band arm is worse, the scalar arm remains rough, and the one-token
+Hartley endpoint fails alongside its one-token spatial control. Small fixed bands,
+exact frequency-pure tokens, and removal of AR exposure are therefore closed as
+stand-alone fixes.
+
+The forward path is no longer justified as a locality-only hierarchy. Keep the
+passing C4 local-DCT AR as the strongest practical baseline, and record that full
+support DCT/Hartley and compact FFT also pass at the matched short interface.
+Phase-preserving raw scaling fails, while 16-pixel compact FFT passes at both
+16 x 48 and 64 x 12. The added high-frequency dependency structure is therefore
+the leading raw obstruction. Matched 23-step ring generators then fail on both
+the legacy and ring-block codecs, so joint-within-ring staging is insufficient.
+Both 134-step sequential separators fail. The second combines those decisions
+with 16-D compressed latents from the 34.07 dB 20k codec and still remains
+texture/pseudo-scenes through 10k and fresh seed. The
+deterministic spatial codec remains a
+valid practical escape hatch: generate its spectral latents, decode, then apply
+a deterministic FFT when global coefficients are required. Wavelets remain
+outside the immediate plan.
+
+### 20. Factorized-polar v2 result and spectrum-level factorization gate
+
+The two cumulative factorized-polar v2 arms are complete. The coordinate-only
+arm is at
+`continuous_runs/ar_fft_factorized_polar_v2_eps01_global_10k/`. Relative
+amplitude uses `log(a + 0.1)` followed by one fitted population mean/std across
+all frequencies and RGB channels (`-0.34504/0.64290` on 49,984 examples). It
+otherwise retains the old Cartesian trunk history, depth-3 amplitude/phase
+heads, geodesic phase flow, and physical Cartesian auxiliary, so it isolates the
+measured amplitude-coordinate defect.
+
+Its **training-batch** clean/shuffled/gap trajectory is
+`2.914/3.915/1.001`, `2.733/4.335/1.602`, `2.563/4.569/2.006`, and
+`2.388/4.686/2.297` at 2.5k/5k/7.5k/10k. Every fixed grid and fresh seed 54321
+remains non-semantic. The coordinate correction nevertheless improves the old
+arm's fresh oracle-history physical NRMSE from `0.609` to `0.563` and its
+true-prefix-384 phase coherence from `0.384` to `0.429`. This closes the old
+log-amplitude tail as the primary cause, not as an irrelevant measurement.
+
+The cumulative arm at
+`continuous_runs/ar_fft_factorized_polar_v2_full_eps01_global_d6_10k/` uses
+depth-6 heads and replaces Cartesian history with standardized gated-polar
+features. Its **training-batch** clean/shuffled/gap trajectory is
+`2.478/4.230/1.752`, `2.423/4.716/2.292`, `2.249/4.556/2.307`, and
+`2.255/4.797/2.541`. Final phase coherence improves from the coordinate arm's
+`0.829` to `0.853`, log-amplitude MAE improves from `0.258` to `0.246`, and trunk
+history-input RMS rises from `0.025` to `0.650`. All four fixed grids remain in
+the same texture/pseudo-scene basin. The final fresh/prefix audit is
+`diagnostics/factorized_polar_v2_full_10k/`.
+
+These visual negatives show that standardized amplitude coordinates, true polar
+history, and depth-6 per-token heads did not repair these arms. They do not
+constitute clean individual ablations: the context gaps were not held out, the
+Cartesian head lacked the polar head's direct slot condition, training conditions
+phase on true or intermediate predicted amplitude while sampling always uses the
+integrated endpoint, and the `0.1 x` Cartesian auxiliary is the only term that
+couples phase error to physical cross-frequency energy. A future polar test must
+make reconstructed Cartesian error primary before it can support a broader
+geometry conclusion.
+
+It also does not test the user's
+stronger spectrum-level factorization
+`p(a_1:L, phi_1:L) = p(a_1:L) p(phi_1:L | a_1:L)`, because each current phase is
+sampled before future amplitudes exist. The completed oracle therefore exposes the
+complete **true** amplitude field to a bidirectional intrinsic joint-phase model
+and asks whether sampled phases decode into recognizable held-out images. It is
+implemented in `train_joint_phase_oracle.py`, launched by
+`scripts/run_joint_phase_oracle_10k.sh`, and writes to
+`continuous_runs/joint_phase_oracle_true_amplitude_10k/`. It passed exact
+true-phase reconstruction, focused CPU tests, a real-interface smoke, a full
+115M-parameter batch-256 GPU smoke, and the repository suite (`173` tests plus
+`3` subtests) before launch. Its primary phase term is still relative-amplitude
+gated and the physical Cartesian term is weighted only `0.1`, so a negative is
+exploratory rather than a decisive rejection of spectrum-level factorization.
+
+The oracle completed 10k steps. Exact true phases reproduce the reference row,
+uniform phases destroy structure as expected, and sampled phases remain
+nonsemantic colored texture at 2.5k/5k/7.5k/10k and fresh seed 54321. The final
+20 logged points have total loss `1.9652 +/- 0.0097` SEM, phase loss
+`1.9586 +/- 0.0096`, and Cartesian loss `0.06564 +/- 0.00135`; the scalar decline
+does not become recognizable conditional samples. Artifacts are
+`continuous_runs/joint_phase_oracle_true_amplitude_10k/samples_*.png` and
+`checkpoint_final.pt`. This is a negative for the current relative-phase-dominant
+objective, not for all-amplitudes-first generation under a physical metric.
+
+The conditional phase samples failed visually. Archive the result but do not use
+it to close the 1,028-step amplitude/phase chain until the physical-loss confound
+is repaired. Retain the local C4 DCT transport as the practical baseline.
+
+### 21. Population-normalization scope and low-frequency clamp
+
+The original 53 x 64 posterior-mean interface fitted a separate affine for every
+token position and latent channel. Two missing frozen-AE controls now fit either
+one affine per latent channel shared over all 53 positions or one affine over the
+entire 53 x 64 tensor. They preserve position-RMS ratios of `1.92x` and `1.98x`,
+respectively, rather than setting the ratio to one. Their fitted causal-probe
+improvements are `0.7565/0.7607`, versus `0.0887` for the position-by-channel
+interface; much of the position-dependent mean/scale is therefore trivially
+predictable.
+
+Both matched 115M joint models completed 30k. Fresh seed 54321 remains
+nonsemantic for both scopes at 7.5k, 15k, and 30k. Final channel-versus-tensor
+image correlation is `0.9943`; correlations against the old failed interface are
+`0.9271/0.9197`. Last-20 training losses are `0.45823 +/- 0.00206` and
+`0.45493 +/- 0.00208` SEM, versus `0.90010 +/- 0.00263` for the old interface,
+but these losses are not physically comparable across affine measures. The
+visual result is the gate: broader population normalization makes the numerical
+flow task easier without repairing generation. Artifacts are
+`diagnostics/joint_vae_mean_{channel,tensor}_30000_fresh_54321.png`.
+
+This was a frozen-codec boundary test. The original AE itself was trained on
+`orbit_standardize`; even its exponent-zero variant retains per-orbit centering.
+The stronger user-proposed control is now implemented as codec normalization
+`global_standardize`: one train-population pixel mean/std, followed by exact
+isometric FFT packing, with no per-orbit centering or whitening. It has unit
+active-tensor RMS while preserving the natural spectrum. Literal subtraction of
+the arithmetic mean of every packed real/imag coefficient is deliberately not
+used because it moves every complex origin. The matched 53 x 64 VAE retrain is at
+`autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000-vae-kl0.0001-global_standardize/`.
+It completed at held-out pixel MSE `0.0005572` / PSNR `32.54 dB`, about `2.2 dB`
+below the old orbit-standardized AE. The tensor-wide posterior-mean interface
+has global mean/std `0.00089/0.80984`, ordinary causal-probe gain `0.5906`, and
+ring-summary gain `0.6769`. Its matched joint generator is complete at
+`latent_continuous_runs/joint-vae-globalstandardized-mean-tensor-rf-w768-l12-b256-s1-n30000/`.
+It completed negative at 30k: fixed previews remain nonsemantic and a 64-image
+fresh seed `54321` grid is likewise texture-like (`latent_rms=1.0047`) at
+`diagnostics/joint_vae_globalstandardized_tensor_30000_fresh_54321.png`. This
+closes the stronger AE-training normalization objection as a primary repair.
+
+The zero-training compact-FFT low-frequency clamp is also complete. It enforces
+the exact linear bridge for held-out known coordinates after every Heun update;
+the mask follows individual active scalars, so the legacy DC/Nyquist mixed units
+cannot contaminate the cutoff. Radius cutoffs `0/2/4/8` expose
+`0.10%/2.44%/6.74%/24.32%` of scalars and
+`23.61%/72.17%/85.07%/95.06%` of target energy. Unknown-coordinate MSE improves
+only `5.7%/12.1%/10.8%/15.9%` over unconditional sampling and remains
+`91.6%/52.5%/51.6%/38.2%` worse than zero-filling the unknown spectrum. Small
+prefixes remain texture; large cutoffs become recognizable only after the oracle
+low-pass image already contains the layout. This supports weak use of supplied
+global structure but not a high-frequency-only failure. The exact full clamp has
+zero token error. See `diagnostics/compact_fft_low_frequency_clamp/`.
+
+### 22. BOS alignment and quantitative direct-control calibration
+
+The coefficient AR first prediction is aligned. During training the backbone sees
+`[BOS, x0, ..., xL-2]` and its slots target `[x0, ..., xL-1]`. During sampling,
+`init_cache()` runs the same learned BOS plus `slot_embed[0]`, samples `x0`, and
+then `forward_step(x0, position=0)` adds `slot_embed[1]` before predicting `x1`.
+The Hartley/C4 AR path uses the same shift. Ring AR uses a zero previous-ring
+vector plus an explicit BOS bit and target-ring slot. Joint diffusion has no BOS.
+Five focused BOS/slot/causal/cache-parity tests pass. In the default Cartesian
+arm the separate learned BOS and slot-zero vectors are partly gauge-redundant
+because their sum is what the first slot observes; this does not create a
+train/inference mismatch or image-dependent leakage.
+
+The first common 5,000-sample evaluation of the globally affined orthonormal
+direct controls is complete. Every arm uses seed `71001`, 50-step Heun sampling,
+the same `torch-fidelity` Inception extractor, and the cached 50,000-image CIFAR
+reference at `continuous_runs/cifar10_inception_reference_radial.pt`:
+
+| representation | FID (5k) | KID (5k) | radial power relative error |
+|---|---:|---:|---:|
+| pixels | 31.668 | 0.01991 | 0.0313 |
+| patch-local DCT | 31.378 | 0.02038 | 0.0545 |
+| patch-grid DCT, token-axis global mix | 130.569 | 0.11172 | 0.1527 |
+| full-image DCT | 112.822 | 0.09547 | 0.1296 |
+| full-image Hartley | 156.363 | 0.14135 | 0.0569 |
+| compact isometric FFT, legacy self-first | 164.603 | 0.14690 | 0.2956 |
+
+This resolves the audit's visual-rating objection in the important direction.
+Pixel and patch-DCT are one strong tier. Full DCT occasionally contains objects
+but is far worse as a distribution; Hartley and compact FFT occupy the same poor
+tier. The old language that all full-support endpoints “pass” was too generous,
+and the small Hartley-versus-compact difference cannot support a phase- or
+complex-specific mechanism. The large local-versus-global gap is real at this
+budget. Artifacts and 64-sample grids are under `diagnostics/control_fid/`; the
+reusable evaluator is `evaluate_control_diffusion.py`.
+
+The blind visual protocol independently agrees. Four new seeds per arm produced
+20 shuffled 4 x 4 panels. `blind_key.json` was SHA256-frozen before viewing; the
+pre-reveal rating marked eight panels semantic and twelve weak. After reveal,
+all eight semantic panels were pixel/patch-DCT and all twelve weak panels were
+full-DCT/Hartley/compact FFT (`8 TP, 12 TN, 0 FP, 0 FN`). Artifacts, key hash,
+and pre-reveal ratings are in `diagnostics/control_blind_4seed/`.
+
+The resulting highest-information separator is `patch_grid_dct`: start from the
+successful 64 x 48 pixel patches and apply an orthonormal 8 x 8 DCT only across
+the 64 patch positions, independently for every within-patch feature. It changes
+local tokens into globally supported tokens without changing shape, scalar
+measure, or the 48-D feature interpretation. Exact round-trip, Parseval, global
+impulse support, unit tests, and a GPU smoke pass. The matched 30k run is at
+`latent_continuous_runs/patch_grid_dct_control/`.
+
+The bridge is complete and discriminative. At 5k its samples are colored texture,
+while the matched pixel and patch-DCT arms already contain recognizable objects;
+at 30k it still contains mainly texture and coarse fragments. Its 5,000-sample
+FID/KID is `130.57/0.11172`, versus `31.67/0.01991` for pixels. Trailing loss is
+`0.3994 +/- 0.0040` SEM. This elevates global token-axis mixing from a broad
+correlation to the leading architectural mechanism. The conjugacy result below
+localizes that mechanism to native computation rather than state/noise geometry.
+
+The next independent separator is implemented and complete. The legacy compact
+packer remains unchanged; two corrected layouts emit every active orthonormal FFT
+scalar inline, including self-conjugate values at their ordered physical/scale
+location. Both are exact permutations of the same 3,072 values with no padding,
+whitening, centering, or rescaling. Grid-local ordering yields median/worst
+within-token RMS ratios `2.69/11.38` and toroidal distances `3.33/8.17`.
+Scale-homogeneous ordering yields `1.12/7.36` and `8.86/10.57`. Exact inverse,
+Parseval, Gaussian-bridge, and layout tests pass (`180` repository tests plus
+three subtests overall). The matched runs are
+`latent_continuous_runs/fft_compact_isometric_gridlocal_control/` and
+`latent_continuous_runs/fft_compact_isometric_scale_control/`.
+Their 30k FID/KID is `171.38/0.15681` and `214.04/0.20414`, versus legacy
+self-first `164.60/0.14690`. Trailing losses are `0.4150 +/- 0.0037` and
+`0.4320 +/- 0.0037`. The grid-local correction does not repair generation, and
+scale-homogeneous grouping is substantially worse despite lower radial-power
+error (`0.0719` versus `0.1164`). Self placement and token scale spread were real
+confounds but not causes; frequency locality is preferable when forced to choose,
+and further packing permutations are not justified.
+
+The matched C4 optimization-rate bracket is complete.
+It uses the same deterministic perceptual C4 checkpoint and identical 16 x 16
+joint-flow architecture, batch 256, seed, LR path, 50-step Heun solver, and 30k
+image exposure for local DCT, full-map DCT tiles, and full-map Hartley tiles. A
+CPU end-to-end full-DCT smoke passed. Runs are under
+`continuous_runs/joint_c4_rate_{local_dct,full_dct,full_hartley}_s1_30000/`.
+Shared 5,000-sample FID at 10k/20k/30k is
+`72.38/65.49/62.39` for local DCT, `91.61/86.29/81.80` for full DCT, and
+`94.47/89.27/86.09` for Hartley. Corresponding KID trajectories are
+`0.0781/0.0683/0.0639`, `0.0966/0.0905/0.0844`, and
+`0.0996/0.0942/0.0899`. Trailing 30k loss is
+`1.2206/1.2700/1.2832`. More exposure improves all arms similarly, while the
+global penalty remains `19.4--23.7` FID. The old 10k global comparison was
+undertrained, but insufficient exposure is not the primary cause of its gap.
+
+A zero-retraining conjugacy control also loads the successful pixel
+model while keeping the sampled state and Heun updates in either patch-grid-DCT
+or corrected compact-FFT coordinates. Each velocity evaluation applies the exact
+inverse global transform, calls the local pixel-token network, and transforms the
+velocity back. A positive result would distinguish a bad native transformer
+interface from a bad stochastic state/noising geometry and motivate explicit
+dual-domain computation. Both arms are complete and strongly positive: each
+produces the same clean pixel-tier sample set, with base round-trip max error
+`2.15e-6` for compact FFT and `5.25e-6` for patch-grid DCT. This closes global
+coordinates as a pathological Gaussian/flow state space and isolates the direct
+token/computation interface.
+
+### 23. Trainable dual-domain scaffold gate
+
+The Stage-C conditional control confirms the zero-training conjugacy result with
+a newly trained model. A deterministic C4 reconstruction supplies the complete
+coarse scaffold. The target is the standardized pixel residual, but Gaussian
+state, flow interpolation and target, FFT-space MSE, and 50-step Heun integration
+all stay in the exact corrected compact isometric FFT. Every learned velocity
+evaluation is conjugated into 64 aligned local 4 x 4 pixel patches and receives
+the aligned scaffold patch through a separate input projection. The predicted
+local velocity is conjugated back before the solver update. Both scaffold and
+residual use one train-population scalar affine; nothing is centered or whitened
+per frequency. Fitted scaffold mean/std is `0.47198/0.24758`; residual mean/std
+is `0.000469/0.048233`. The model is 115.51M parameters.
+
+The common 5,000-sample result through 30k is:
+
+| condition/source | untouched scaffold | refiner 5k | refiner 10k | refiner 20k | refiner 30k |
+|---|---:|---:|---:|---:|---:|
+| deterministic scaffold from each held-out real image | 37.32 / 0.03646 | 28.00 / 0.01656 | 19.44 / 0.01003 | 14.33 / 0.00609 | 12.63 / 0.00512 |
+| unconditional 30k local-DCT C4 sample | 62.39 / 0.06393 | 47.83 / 0.03295 | 40.34 / 0.02715 | 35.76 / 0.02290 | 34.69 / 0.02254 |
+
+The first row is a conditional reconstruction/refinement gate and must not be
+reported as an unconditional CIFAR generator. The second row is the honest
+unconditional two-stage pipeline and uses the oracle-trained refiner zero-shot.
+Both improve decisively. For held-out oracle scaffolds, radial-power error falls
+from `0.401` to `0.109/0.0417/0.0461/0.0511` across 5k/10k/20k/30k. For
+generated scaffolds it falls from `0.426` to `0.127/0.0628/0.0965/0.0458`.
+Paired images preserve object and layout;
+the early residual is over-textured rather than semantically collapsed. This
+distinguishes the failure from every native global-token arm: global FFT is a
+valid state and output space, while a shared transformer operating directly on
+dense globally supported token mixtures is the dominant obstruction.
+
+A same-noise 10k condition-permutation control closes the most important cheap
+alternative explanation. The sampled residual is still added to its original
+scaffold, but the denoiser sees scaffold patches rolled by one example within
+each batch. Held-out oracle FID changes from aligned `19.44` to shuffled `45.44`
+(untouched scaffold `37.32`); generated-scaffold FID changes from `40.34` to
+`65.95` (untouched scaffold `62.39`). Oracle paired completion PSNR falls from
+`24.27` to `23.51 dB`. Thus the gain is not an independent texture prior pasted
+onto a structure-preserving skip connection. The refiner materially uses aligned
+scaffold content, and incorrect content is actively harmful.
+
+The 20k and 30k refiners were then attached unchanged to the passing 10k frequency-major
+local-DCT AR model. Its unconditional scaffold FID/KID is `91.19/0.09966`; the
+refined outputs are `73.66/0.05844` and `71.70/0.05707`. Final radial error
+improves `0.443 -> 0.0431`.
+Therefore the refiner transfers to the actual AR front end, but that front end is
+substantially weaker than the 30k joint local-DCT C4 generator. The AR pipeline's
+dominant remaining error is coarse scaffold generation rather than Fourier
+residual geometry.
+
+The old AR checkpoint was not exposure-matched: 10k steps at batch 64 saw only
+`0.64M` images, versus `2.56M` for a 10k joint arm. An unchanged batch-256
+frequency-major AR retrain completed in 12.9 minutes and improved scaffold
+FID/KID from `91.19/0.09966` to `84.18/0.09207`. With the selected frozen 30k
+FFT refiner, the end-to-end result improved from `71.70/0.05707` to
+`63.25/0.04869`.
+
+**Retraction of the first interpretation.** Calling the remaining `11.80` FID
+difference from the 10k joint local-DCT arm an “AR cost” conflated causal
+factorization with token composition. Joint local DCT stores every channel and
+all four 2 x 2 DCT modes for one patch together; frequency-major AR distributes
+those modes across different tokens. The missing controls are complete:
+
+| step | joint patch-major | joint frequency-major | AR patch-major | AR frequency-major |
+|---:|---:|---:|---:|---:|
+| 5k | 82.47 | 95.52 | **77.44** | 89.48 |
+| 10k | 72.38 | 86.65 | **75.48** | 84.54 |
+| 20k | 65.49 | 78.22 | **75.83** | 84.06 |
+| 30k | **62.39** | 74.70 | 75.11 | 82.53 |
+
+These are common 5,000-sample scaffold FIDs. Within-family comparisons isolate
+packing: frequency-major costs joint `13.05/14.27/12.73/12.30` FID and AR
+`12.04/9.06/8.23/7.41` FID through 5k/10k/20k/30k. The effect replicates under
+bidirectional and causal trunks and survives exposure. Joint-versus-AR remains
+architecture/schedule-confounded, so the 30k same-packing gaps (`12.72`
+patch-major, `7.83` frequency-major) are suggestive rather than a pure causal
+measurement.
+
+The patch-major AR plus frozen refiner scores scaffold/completion FID/KID
+`77.44/0.08461 -> 52.69/0.03959` at 5k,
+`75.48/0.08259 -> 53.34/0.04042` at 10k,
+`75.83/0.08402 -> 54.34/0.04093` at 20k, and
+`75.11/0.08242 -> 54.06/0.04054` at 30k. Thus 30k narrowly selects the standalone
+scaffold, while 5k selects the two-stage pipeline. Later scaffolds lose gradient
+and radial power even as train MSE falls. Final patch/frequency-major last-20
+train loss is `0.3532 +/- 0.0013` and `0.3815 +/- 0.0015` SEM, whereas held-out
+clean loss is `4.984/5.251`. Exposure and context use matter, but loss cannot
+rank these samples.
+
+This identifies what the positive local solution preserves: the input/output
+adapters see a coherent local bundle with its coupled low/high DCT modes, while
+the trunk models dependencies between complete patches. Component splitting is
+therefore not a safe default. A future amplitude-then-phase decoder should keep
+both substeps inside one atomic token and publish only the completed bundle to
+history. Strict low-to-high Fourier causality should operate after the local
+scaffold, over causal rings/blocks with bidirectional within-block denoising.
+
+Artifacts are
+`latent_continuous_runs/scaffold_fft_residual_oracle_c4_s1_30000/`,
+`diagnostics/scaffold_fft_residual_oracle_c4_{5000,10000,20000,30000}/`, and
+`diagnostics/generated_c4_scaffold_fft_refinement_refiner{5000,10000,20000,30000}/`; the
+condition controls add the corresponding `_shuffled` directories.
+The AR transfer is
+`diagnostics/ar_c4_patchdct_freqmajor_fft_refinement_refiner{20000,30000}/`.
+The first exposure control and its midpoint/final evaluations are
+`continuous_runs/ar_c4_patchdct_freqmajor_b256_s7_10k/` and
+`diagnostics/ar_c4_patchdct_freqmajor_b256_{5000,10000}_fft_refinement_refiner30000/`.
+The composition controls are
+`continuous_runs/joint_c4_rate_local_dct_freqmajor_s1_30000/`,
+`continuous_runs/ar_c4_patchdct_freqmajor_b256_s7_30k/`, and
+`continuous_runs/ar_c4_patchdct_patchmajor_b256_s7_30k/`; common evaluations are
+under the corresponding `diagnostics/*30ksched*` and final `*30000*` directories.
+Training completed at the predeclared 30k endpoint in 51.5 minutes. Final loss is
+`0.6608`; the last 20 logged losses are `0.6620 +/- 0.0041` SEM. The 30k
+checkpoint is best on oracle, joint-generated, and AR-generated FID/KID and is
+the selected refiner. Do not return to another normalization, phase, or packing
+sweep as the next move.
+
+### Strict-ring separator (2026-08-06, complete negative)
+
+The next experiment implements the consequence of the composition control
+without reopening representation geometry. It predicts the same globally
+standardized exact compact-FFT residual as Stage C1, conditioned on the same
+deterministic C4 oracle scaffold. The difference is learned computation: the
+scaffold is first encoded bidirectionally as 64 local 4 x 4 patches, then used as
+prefix memory for a causal 23-ring FFT trunk. Ring zero receives an explicit BOS
+at both train and inference. Ring `r>0` receives completed ring `r-1`; a learned
+absolute target slot says which ring is being predicted. QKNorm and fp32 RoPE
+are active.
+
+Within a ring, one depth-6 diffusion MLP denoises the entire padded vector
+jointly. Active widths range from 3 to 288 exact scalar coordinates. The mask
+partitions all 3,072 coordinates exactly, every RGB real/imaginary orbit bundle
+belongs to one ring, and fixed-dimension reduction preserves equal physical
+coordinate measure rather than equalizing rings. This is therefore causal only
+between completed radial blocks and fully connected within the current block.
+
+The model has 106.09M parameters. Only the C1 scaffold linear projection and
+learned local patch positions are copied; all 12 new transformer layers and the
+diffusion head are fresh. The causal-invariance test perturbs a future target
+ring and confirms earlier target conditions are bitwise unchanged. A separate
+test walks the inference KV cache and matches the full teacher-forced target
+conditions. Packing, backward, generation, full-width batch-128, and evaluator
+smokes pass. The bounded 10k job and 2.5k checkpoints live at
+`latent_continuous_runs/scaffold_fft_ring_residual_oracle_c4_s1_10000/`.
+It completed in 10.0 minutes. Final loss is `0.45995`; the last 20 logged losses
+are `0.47217 +/- 0.00320` SEM.
+
+Decoded inspection is negative at every gate. On the common 5,000-sample oracle
+panel, untouched scaffold FID/KID is `37.32/0.03646`; sampled-history completion
+is `75.82/0.06124`, `78.80/0.06318`, and `74.53/0.05963` at 2.5k/5k/10k.
+Paired PSNR is `23.49/23.29/23.42 dB` versus scaffold `26.29 dB`. Radial error is
+nevertheless `0.0439/0.1371/0.0515`, showing that a nearly right marginal power
+spectrum does not imply coherent images.
+
+Three diagnostics localize the failure. First, true-ring teacher history only
+improves 5k/10k FID to `75.90/70.31`, so exposure bias is not the dominant
+obstruction. Second, 50 rather than 20 Heun steps changes final FID
+`74.53 -> 75.40`; solver under-integration is closed. Third, shuffling the
+scaffold prefix improves final FID to `70.91` and barely changes paired PSNR
+(`23.42 -> 23.41 dB`). This reverses the passing C1 condition audit and means the
+static target-ring summary does not use aligned scaffold content productively.
+
+Do not interpret C2 as a pure causal-factorization control. It also removed
+C1's evolving spatially aligned noisy-residual/scaffold interaction and replaced
+it with a 768-D summary plus a shared global MLP. The next strict-causality
+separator should retain C1's local dual-domain transformer under an asynchronous
+ring schedule: lower rings complete, current ring diffusing, future rings at
+base noise, and only the current returned FFT velocity active. This directly
+tests causality without discarding the computation known to work.

@@ -26,7 +26,7 @@ class FrequencyCodecConfig:
     width: int = 32
     ordering: str = "radial"  # radial | square_spiral
     value_transform: str = "identity"  # identity | asinh
-    normalization: str = "radial_whiten"  # radial_whiten | radial_standardize | orbit_whiten | orbit_standardize | global_ecs
+    normalization: str = "radial_whiten"  # radial_whiten | radial_standardize | orbit_whiten | orbit_standardize | global_ecs | global_standardize
     centering: str = "all"  # all | self_conjugate_std | self_conjugate_rms
     mean_policy: str = "legacy"  # legacy | per_orbit | pooled_ordinary | self_only
     scale_policy: str = "legacy"  # legacy | centered_std | uncentered_rms
@@ -215,6 +215,7 @@ class FrequencyCodec(nn.Module):
             "orbit_whiten",
             "orbit_standardize",
             "global_ecs",
+            "global_standardize",
         ):
             raise ValueError(f"Unknown normalization: {self.config.normalization}")
         if self.config.coordinate_packing not in ("legacy", "isometric"):
@@ -223,12 +224,12 @@ class FrequencyCodec(nn.Module):
             )
         if not 50.0 < self.config.ecs_percentile < 100.0:
             raise ValueError("ecs_percentile must be in (50, 100)")
-        if self.config.normalization == "global_ecs" and (
+        if self.config.normalization in ("global_ecs", "global_standardize") and (
             self.config.coordinate_packing != "isometric"
             or self.config.value_transform != "identity"
         ):
             raise ValueError(
-                "global_ecs requires coordinate_packing='isometric' and "
+                "global scalar normalization requires coordinate_packing='isometric' and "
                 "value_transform='identity'"
             )
         if self.config.centering not in (
@@ -399,6 +400,10 @@ class FrequencyCodec(nn.Module):
     def uses_orbit_statistics(self) -> bool:
         return self.config.normalization in ("orbit_whiten", "orbit_standardize")
 
+    @property
+    def uses_global_scalar_affine(self) -> bool:
+        return self.config.normalization in ("global_ecs", "global_standardize")
+
     def assert_fitted(self) -> None:
         if not bool(self.is_fitted.item()):
             raise RuntimeError("FrequencyCodec statistics are not fitted/loaded.")
@@ -566,6 +571,19 @@ class FrequencyCodec(nn.Module):
         )
         return torch.sinh(tokens) * scales
 
+    def _apply_value_transform_at(
+        self, tokens: torch.Tensor, positions: torch.Tensor
+    ) -> torch.Tensor:
+        """Apply the configured value transform at selected orbit positions."""
+        if self.config.value_transform == "identity":
+            return tokens
+        scales = (
+            self.orbit_asinh_scale[positions]
+            if self.uses_orbit_statistics
+            else self.asinh_scale[self.radius_bin[positions]]
+        )
+        return torch.asinh(tokens / scales.clamp_min(1e-8))
+
     # ------------------------------------------------------------------
     # Whitening
     # ------------------------------------------------------------------
@@ -651,7 +669,7 @@ class FrequencyCodec(nn.Module):
 
     def normalization_mean(self) -> torch.Tensor:
         """Affine mean subtracted before the configured normalization."""
-        if self.config.normalization == "global_ecs":
+        if self.uses_global_scalar_affine:
             mean = torch.zeros(
                 self.seq_len_int,
                 TOKEN_DIM,
@@ -704,7 +722,7 @@ class FrequencyCodec(nn.Module):
         centered = tokens - mean
         mask = self.component_mask
 
-        if self.config.normalization == "global_ecs":
+        if self.uses_global_scalar_affine:
             out = centered / self.global_scale.clamp_min(1e-8)
         elif self.config.normalization == "orbit_whiten":
             out = torch.einsum("lrc,blc->blr", self.orbit_inv_sqrt, centered)
@@ -727,7 +745,7 @@ class FrequencyCodec(nn.Module):
         mean = self.normalization_mean()
         mask = self.component_mask
 
-        if self.config.normalization == "global_ecs":
+        if self.uses_global_scalar_affine:
             out = tokens * self.global_scale + mean
         elif self.config.normalization == "orbit_whiten":
             out = torch.einsum("lrc,blc->blr", self.orbit_sqrt, tokens) + mean
@@ -762,7 +780,7 @@ class FrequencyCodec(nn.Module):
         mask = self.component_mask[positions]
         is_self = self.is_self_conjugate[positions]
 
-        if self.config.normalization == "global_ecs":
+        if self.uses_global_scalar_affine:
             out = tokens * self.global_scale + mean
         elif self.config.normalization == "orbit_whiten":
             sqrt = self.orbit_sqrt[positions]
@@ -780,6 +798,43 @@ class FrequencyCodec(nn.Module):
         out = out.clone()
         out[..., 3:] = out[..., 3:] * (~is_self).to(out.dtype)[None, :, None]
         return out
+
+    def normalize_at(
+        self, tokens: torch.Tensor, positions: torch.Tensor
+    ) -> torch.Tensor:
+        """Normalize transformed-space tokens at selected orbit positions."""
+        self.assert_fitted()
+        bins = self.radius_bin[positions]
+        mean = self.normalization_mean()[positions]
+        mask = self.component_mask[positions]
+        centered = tokens - mean
+        if self.uses_global_scalar_affine:
+            out = centered / self.global_scale.clamp_min(1e-8)
+        elif self.config.normalization == "orbit_whiten":
+            inv_sqrt = self.orbit_inv_sqrt[positions]
+            out = torch.einsum("trc,btc->btr", inv_sqrt, centered)
+        elif self.config.normalization == "orbit_standardize":
+            out = centered / self._orbit_partial_scale()[positions].clamp_min(1e-8)
+        elif self.config.normalization == "radial_standardize":
+            out = centered / self.bin_std[bins].clamp_min(1e-8)
+        else:
+            inv_chol = self.bin_chol_inv[bins]
+            out = torch.einsum("trc,btc->btr", inv_chol, centered)
+        return out * mask
+
+    def normalized_to_raw_at(
+        self, tokens: torch.Tensor, positions: torch.Tensor
+    ) -> torch.Tensor:
+        """Convert selected normalized tokens to packed physical Cartesian values."""
+        return self._invert_value_transform_at(
+            self.denormalize_at(tokens, positions), positions
+        )
+
+    def raw_to_normalized_at(
+        self, tokens: torch.Tensor, positions: torch.Tensor
+    ) -> torch.Tensor:
+        """Convert selected packed physical Cartesian values to model history tokens."""
+        return self.normalize_at(self._apply_value_transform_at(tokens, positions), positions)
 
     def encode(self, images: torch.Tensor) -> torch.Tensor:
         """Full encode: image -> normalized continuous tokens [B, L, 6]."""
@@ -1003,6 +1058,10 @@ class FrequencyCodec(nn.Module):
         self,
         normalized_tokens: torch.Tensor,
         positions: Optional[torch.Tensor] = None,
+        *,
+        log_epsilon: float = 1.0,
+        amplitude_coordinate_mean: Optional[torch.Tensor] = None,
+        amplitude_coordinate_std: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Deterministic physical-space polar features for history conditioning.
 
@@ -1010,7 +1069,9 @@ class FrequencyCodec(nn.Module):
         positions: optional [T] orbit indices (defaults to 0..T-1).
 
         Returns [B, T, 9] with per RGB channel:
-          [log1p(a), g*cos(θ), g*sin(θ)], a = amp / expected_rms, g = a/(1+a).
+          [log(a+epsilon), g*cos(θ), g*sin(θ)],
+        where a = amp / expected_rms and g = a/(1+a). Optional population
+        moments standardize only the log-amplitude coordinate.
         """
         self.assert_fitted()
         if normalized_tokens.ndim != 3 or normalized_tokens.shape[-1] != TOKEN_DIM:
@@ -1058,6 +1119,15 @@ class FrequencyCodec(nn.Module):
             bins = self.radius_bin[positions]
             amp_scale = self.channel_amplitude_scale()[bins]  # [T, 3]
         amp_scale = amp_scale.to(device=device, dtype=dtype).clamp_min(1e-4)
+        if log_epsilon <= 0.0:
+            raise ValueError("log_epsilon must be positive")
+        if (amplitude_coordinate_mean is None) != (amplitude_coordinate_std is None):
+            raise ValueError("amplitude coordinate mean and std must be provided together")
+        coordinate_mean = None
+        coordinate_std = None
+        if amplitude_coordinate_mean is not None:
+            coordinate_mean = amplitude_coordinate_mean.to(device=device, dtype=dtype)
+            coordinate_std = amplitude_coordinate_std.to(device=device, dtype=dtype)
 
         feats = []
         for c in range(NUM_CHANNELS):
@@ -1069,7 +1139,10 @@ class FrequencyCodec(nn.Module):
             # Stable phase; gate→0 suppresses meaningless phase near zero amp.
             cos_t = torch.where(amp > 0, re / amp.clamp_min(1e-12), torch.ones_like(re))
             sin_t = torch.where(amp > 0, im / amp.clamp_min(1e-12), torch.zeros_like(im))
-            feats.extend([torch.log1p(a), gate * cos_t, gate * sin_t])
+            log_amp = torch.log(a + float(log_epsilon))
+            if coordinate_mean is not None:
+                log_amp = (log_amp - coordinate_mean[c]) / coordinate_std[c]
+            feats.extend([log_amp, gate * cos_t, gate * sin_t])
         return torch.stack(feats, dim=-1)  # [B, T, 9]
 
     # ------------------------------------------------------------------
@@ -1252,7 +1325,7 @@ class FrequencyCodec(nn.Module):
         else:
             self.to(device)
 
-        if self.config.normalization == "global_ecs":
+        if self.uses_global_scalar_affine:
             self._fit_global_ecs_from_loader(loader, max_batches, device)
             return
 
@@ -1324,6 +1397,7 @@ class FrequencyCodec(nn.Module):
         )
         sum_sq = torch.zeros(n_bins, TOKEN_DIM, dtype=torch.double, device=device)
         pixel_sum = torch.zeros((), dtype=torch.double, device=device)
+        pixel_sum_sq = torch.zeros((), dtype=torch.double, device=device)
         pixel_count = 0
         dc_chunks = []
         dc = ((self.ky == 0) & (self.kx == 0)).nonzero(
@@ -1340,6 +1414,7 @@ class FrequencyCodec(nn.Module):
             raw = self.encode_raw(images)
             self._accumulate_moments(raw, count, sum_x, sum_xx, sum_sq)
             pixel_sum += images.double().sum()
+            pixel_sum_sq += images.double().square().sum()
             pixel_count += images.numel()
             dc_chunks.append(raw[:, dc.item(), :NUM_CHANNELS].double())
 
@@ -1347,14 +1422,18 @@ class FrequencyCodec(nn.Module):
             raise ValueError("No samples seen while fitting global ECS statistics")
         self._finalize_moments(count, sum_x, sum_xx, sum_sq)
         pixel_mean = pixel_sum / float(pixel_count)
-        dc_values = torch.cat(dc_chunks, dim=0)
-        dc_values = dc_values - pixel_mean * math.sqrt(
-            self.config.height * self.config.width
-        )
-        quantile = self.config.ecs_percentile / 100.0
-        upper = torch.quantile(dc_values, quantile, dim=0)
-        lower = torch.quantile(dc_values, 1.0 - quantile, dim=0)
-        scale = torch.maximum(upper.abs(), lower.abs()).max().clamp_min(1e-8)
+        if self.config.normalization == "global_standardize":
+            variance = pixel_sum_sq / float(pixel_count) - pixel_mean.square()
+            scale = variance.clamp_min(1e-12).sqrt()
+        else:
+            dc_values = torch.cat(dc_chunks, dim=0)
+            dc_values = dc_values - pixel_mean * math.sqrt(
+                self.config.height * self.config.width
+            )
+            quantile = self.config.ecs_percentile / 100.0
+            upper = torch.quantile(dc_values, quantile, dim=0)
+            lower = torch.quantile(dc_values, 1.0 - quantile, dim=0)
+            scale = torch.maximum(upper.abs(), lower.abs()).max().clamp_min(1e-8)
         self.global_pixel_mean.copy_(pixel_mean.float())
         self.global_scale.copy_(scale.float())
         self.is_fitted.fill_(True)

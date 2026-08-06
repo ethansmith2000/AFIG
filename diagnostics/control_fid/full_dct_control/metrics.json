@@ -1,0 +1,24 @@
+{
+  "representation": "full_dct",
+  "checkpoint_dir": "/workspace/AFIG/latent_continuous_runs/full_dct_control",
+  "samples": 5000,
+  "seed": 71001,
+  "inference_steps": 50,
+  "fid_5k": 112.82180693554733,
+  "kid_5k": 0.09547103941440582,
+  "clipping_fraction": 0.022398763020833334,
+  "unclipped_min": -0.7867944240570068,
+  "unclipped_max": 1.7511217594146729,
+  "image_gradient_energy": 0.0075968270614743235,
+  "radial_power_relative_error": 0.12955149573688116,
+  "channel_mean": [
+    0.48336681118529234,
+    0.4746486879508273,
+    0.4339299331083108
+  ],
+  "channel_std": [
+    0.2298505435914299,
+    0.22610860001358174,
+    0.24311442720633625
+  ]
+}

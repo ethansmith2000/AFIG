@@ -1,0 +1,30 @@
+{
+  "history": [
+    {
+      "step": 1,
+      "loss": 3.314431667327881,
+      "phase_loss": 3.2793405055999756,
+      "cartesian_loss": 0.35091376304626465,
+      "grad_norm": 0.6010878682136536,
+      "learning_rate": 0.0001
+    }
+  ],
+  "source_checkpoint": "continuous_runs/ar_fft_factorized_polar_v2_eps01_global_10k/checkpoint_10000.pt",
+  "amplitude_coordinate_mean": [
+    -0.3450370728969574,
+    -0.3450370728969574,
+    -0.3450370728969574
+  ],
+  "amplitude_coordinate_std": [
+    0.6429005265235901,
+    0.6429005265235901,
+    0.6429005265235901
+  ],
+  "log_epsilon": 0.1,
+  "rows": [
+    "reference",
+    "true_phase",
+    "uniform_phase",
+    "sampled_phase"
+  ]
+}

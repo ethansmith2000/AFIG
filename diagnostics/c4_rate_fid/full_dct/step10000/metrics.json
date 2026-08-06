@@ -1,0 +1,25 @@
+{
+  "checkpoint": "/workspace/AFIG/continuous_runs/joint_c4_rate_full_dct_s1_30000/checkpoint_10000.pt",
+  "checkpoint_step": 10000,
+  "latent_basis": "full_dct_tiles",
+  "samples": 5000,
+  "seed": 71001,
+  "inference_steps": 50,
+  "fid_5k": 91.6060285875331,
+  "kid_5k": 0.09662584215402603,
+  "clipping_fraction": 0.0,
+  "unclipped_min": 1.3828277587890625e-05,
+  "unclipped_max": 1.0,
+  "image_gradient_energy": 0.00556553296148777,
+  "radial_power_relative_error": 0.48004382106390076,
+  "channel_mean": [
+    0.48294741068007424,
+    0.477000079675205,
+    0.4480601020288188
+  ],
+  "channel_std": [
+    0.23087350018207511,
+    0.22874449200631486,
+    0.24608370883866715
+  ]
+}

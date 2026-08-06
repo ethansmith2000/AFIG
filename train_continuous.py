@@ -30,6 +30,7 @@ from diffusers.optimization import get_scheduler
 from tqdm.auto import tqdm
 
 from diffusion_decoder import DiffusionDecoderConfig
+from factorized_polar_decoder import FactorizedPolarConfig
 from frequency import FrequencyCodec, FrequencyCodecConfig
 from model_continuous import (
     ContinuousFFTDecoder,
@@ -166,7 +167,10 @@ def parse_args(argv=None) -> argparse.Namespace:
         "--condition_diagnostic_steps",
         type=int,
         default=500,
-        help="Compare clean and batch-shuffled AR history; 0 disables.",
+        help=(
+            "Compare clean and batch-shuffled AR history on the deterministic "
+            "tail panel excluded from training; 0 disables."
+        ),
     )
     p.add_argument(
         "--spectral_diagnostic_steps",
@@ -232,6 +236,37 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     p.add_argument("--diff_width", type=int, default=512)
     p.add_argument("--diff_depth", type=int, default=6)
+    p.add_argument(
+        "--decoder_geometry",
+        choices=["cartesian", "factorized_polar"],
+        default="cartesian",
+        help="Single Cartesian token flow or amplitude-first intrinsic circular phase flow.",
+    )
+    p.add_argument("--factorized_log_epsilon", type=float, default=1e-4)
+    p.add_argument(
+        "--factorized_amplitude_standardization",
+        choices=["none", "global", "channel"],
+        default="none",
+        help=(
+            "Population standardization for log-relative amplitude coordinates. "
+            "global preserves all frequency and RGB hierarchy with one affine map; "
+            "channel fits one map per RGB channel across all frequencies."
+        ),
+    )
+    p.add_argument("--factorized_amplitude_loss_weight", type=float, default=1.0)
+    p.add_argument("--factorized_phase_loss_weight", type=float, default=1.0)
+    p.add_argument("--factorized_cartesian_loss_weight", type=float, default=0.1)
+    p.add_argument("--factorized_phase_gate", type=float, default=0.1)
+    p.add_argument(
+        "--factorized_phase_predicted_amplitude_probability", type=float, default=0.5
+    )
+    p.add_argument(
+        "--factorized_phase_process",
+        choices=["geodesic_flow", "wrapped_normal_score"],
+        default="geodesic_flow",
+    )
+    p.add_argument("--factorized_phase_sigma_min", type=float, default=0.01 * math.pi)
+    p.add_argument("--factorized_phase_sigma_max", type=float, default=math.pi)
     p.add_argument("--objective", type=str, default="ddpm", choices=["ddpm", "flow"])
     p.add_argument(
         "--rescale_betas_zero_snr",
@@ -362,8 +397,18 @@ def parse_args(argv=None) -> argparse.Namespace:
         "--history_polar_features",
         type=str,
         default="none",
-        choices=["none", "log_amp_gated_phase"],
+        choices=[
+            "none",
+            "log_amp_gated_phase",
+            "standardized_log_amp_gated_phase",
+        ],
         help="Deterministic polar features fused into history embeddings (Cartesian diffusion targets unchanged).",
+    )
+    p.add_argument(
+        "--history_polar_fusion",
+        choices=["add", "replace"],
+        default="add",
+        help="Add polar features to Cartesian embeddings or replace Cartesian trunk input.",
     )
     p.add_argument(
         "--history_cartesian_features",
@@ -565,11 +610,29 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
                 if getattr(args, "history_polar_features", "none") == "none"
                 else args.history_polar_features
             ),
+            fusion=getattr(args, "history_polar_fusion", "add"),
         ),
         history_features=HistoryFeatureConfig(
             cartesian_mode=args.history_cartesian_features,
             mean_policy=args.history_mean_policy,
             scale_policy=args.history_scale_policy,
+        ),
+        factorized_polar=FactorizedPolarConfig(
+            enabled=args.decoder_geometry == "factorized_polar",
+            log_epsilon=args.factorized_log_epsilon,
+            amplitude_standardization=getattr(
+                args, "factorized_amplitude_standardization", "none"
+            ),
+            amplitude_loss_weight=args.factorized_amplitude_loss_weight,
+            phase_loss_weight=args.factorized_phase_loss_weight,
+            cartesian_loss_weight=args.factorized_cartesian_loss_weight,
+            phase_gate=args.factorized_phase_gate,
+            phase_predicted_amplitude_probability=(
+                args.factorized_phase_predicted_amplitude_probability
+            ),
+            phase_process=args.factorized_phase_process,
+            phase_sigma_min=args.factorized_phase_sigma_min,
+            phase_sigma_max=args.factorized_phase_sigma_max,
         ),
         generation=GenerationConfig(
             num_inference_steps=args.num_inference_steps,
@@ -654,6 +717,17 @@ def _dataset_from_hf_arrow(arrow_path: str, transform=None):
     return _HFCifar()
 
 
+def _heldout_panel_count(dataset_size: int, requested_size: int) -> int:
+    """Return a tail-panel size that leaves a nonempty, disjoint train split."""
+    if dataset_size <= 1:
+        return 0
+    return min(
+        max(int(requested_size), 0),
+        dataset_size - 1,
+        max(dataset_size // 4, 1),
+    )
+
+
 def make_dataloader(args: argparse.Namespace):
     """Build train loader.
 
@@ -678,8 +752,10 @@ def make_dataloader(args: argparse.Namespace):
 
     if dataset_choice == "synthetic" or getattr(args, "synthetic_data", False):
         dataset = _synthetic_dataset(n=64 if args.smoke else 1024)
-        panel_size = int(getattr(args, "spectral_panel_size", 16))
-        train_size = max(len(dataset) - min(panel_size, len(dataset) // 4), 1)
+        panel_size = _heldout_panel_count(
+            len(dataset), int(getattr(args, "spectral_panel_size", 16))
+        )
+        train_size = len(dataset) - panel_size
         train_dataset = torch.utils.data.Subset(dataset, range(train_size))
         loader = torch.utils.data.DataLoader(
             train_dataset,
@@ -759,8 +835,10 @@ def make_dataloader(args: argparse.Namespace):
     else:
         use_workers = args.dataloader_num_workers
 
-    panel_size = int(getattr(args, "spectral_panel_size", 16))
-    train_size = max(len(dataset) - min(panel_size, len(dataset) // 4), 1)
+    panel_size = _heldout_panel_count(
+        len(dataset), int(getattr(args, "spectral_panel_size", 16))
+    )
+    train_size = len(dataset) - panel_size
     train_dataset = torch.utils.data.Subset(dataset, range(train_size))
     loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -778,7 +856,9 @@ def make_spectral_panel(dataset, panel_size: int) -> torch.Tensor:
     """Stack the deterministic tail split that is excluded from training."""
     if panel_size <= 0:
         raise ValueError("spectral_panel_size must be positive")
-    count = min(panel_size, max(len(dataset) - 1, 1))
+    count = _heldout_panel_count(len(dataset), panel_size)
+    if count <= 0:
+        raise ValueError("dataset must contain at least two examples")
     start = len(dataset) - count
     images = []
     for index in range(start, len(dataset)):
@@ -827,6 +907,117 @@ def fit_or_load_codec(
         payload = torch.load(stats_path, map_location="cpu")
         codec.load_exported(payload)
     return codec
+
+
+@torch.no_grad()
+def _fit_factorized_amplitude_stats(
+    loader,
+    codec: FrequencyCodec,
+    *,
+    log_epsilon: float,
+    scope: str,
+    max_batches: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Fit log-amplitude moments without equalizing individual frequencies."""
+    if scope not in ("global", "channel"):
+        raise ValueError("factorized amplitude scope must be global or channel")
+    positions = torch.arange(codec.seq_len, dtype=torch.long)
+    if codec.uses_orbit_statistics:
+        rms = codec.orbit_uncentered_rms()[positions, :3]
+        imag_active = codec.component_mask[positions, 3:]
+        amplitude_scale = rms * torch.sqrt(1.0 + imag_active)
+    else:
+        amplitude_scale = codec.channel_amplitude_scale()[codec.radius_bin[positions]]
+    amplitude_scale = amplitude_scale.double().clamp_min(1e-8)
+
+    total = torch.zeros(1 if scope == "global" else 3, dtype=torch.double)
+    total_sq = torch.zeros_like(total)
+    count = torch.zeros_like(total)
+    examples = 0
+    for batch_index, batch in enumerate(loader):
+        if max_batches is not None and batch_index >= max_batches:
+            break
+        images = batch[0] if isinstance(batch, (tuple, list)) else batch
+        tokens = codec.encode(images)
+        raw = codec.normalized_to_raw_at(tokens, positions).double()
+        amplitude = torch.sqrt(raw[..., :3].square() + raw[..., 3:].square())
+        coordinate = torch.log(
+            amplitude / amplitude_scale[None] + float(log_epsilon)
+        )
+        examples += int(images.shape[0])
+        if scope == "global":
+            total += coordinate.sum()
+            total_sq += coordinate.square().sum()
+            count += coordinate.numel()
+        else:
+            total += coordinate.sum(dim=(0, 1))
+            total_sq += coordinate.square().sum(dim=(0, 1))
+            count += coordinate.shape[0] * coordinate.shape[1]
+    if examples == 0 or bool((count == 0).any()):
+        raise RuntimeError("No examples were available for amplitude-coordinate fitting")
+    mean = total / count
+    variance = (total_sq / count - mean.square()).clamp_min(1e-12)
+    std = variance.sqrt()
+    if scope == "global":
+        mean = mean.expand(3).clone()
+        std = std.expand(3).clone()
+    return {
+        "version": 1,
+        "log_epsilon": float(log_epsilon),
+        "scope": scope,
+        "examples": examples,
+        "mean": mean.float(),
+        "std": std.float(),
+    }
+
+
+def fit_or_load_factorized_amplitude_stats(
+    args: argparse.Namespace,
+    accelerator: Accelerator,
+    train_loader,
+    codec: FrequencyCodec,
+    config: ContinuousModelConfig,
+) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+    scope = config.factorized_polar.amplitude_standardization
+    if not config.factorized_polar.enabled or scope == "none":
+        return None, None
+    path = os.path.join(args.output_dir, "amplitude_coordinate_stats.pt")
+    if accelerator.is_main_process and not os.path.isfile(path):
+        fit_loader = torch.utils.data.DataLoader(
+            train_loader.dataset,
+            batch_size=args.train_batch_size,
+            shuffle=False,
+            num_workers=args.dataloader_num_workers,
+        )
+        payload = _fit_factorized_amplitude_stats(
+            fit_loader,
+            codec,
+            log_epsilon=config.factorized_polar.log_epsilon,
+            scope=scope,
+            max_batches=8 if args.smoke else None,
+        )
+        torch.save(payload, path)
+        _log_info(
+            "Fitted amplitude-coordinate stats: "
+            f"scope={scope} epsilon={payload['log_epsilon']:g} "
+            f"examples={payload['examples']} mean={payload['mean'].tolist()} "
+            f"std={payload['std'].tolist()}"
+        )
+    accelerator.wait_for_everyone()
+    payload = torch.load(path, map_location="cpu", weights_only=False)
+    if payload.get("scope") != scope or not math.isclose(
+        float(payload.get("log_epsilon", -1.0)),
+        float(config.factorized_polar.log_epsilon),
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ):
+        raise ValueError(
+            "Amplitude-coordinate stats do not match the requested scope/epsilon: "
+            f"path={path} saved=({payload.get('scope')}, "
+            f"{payload.get('log_epsilon')}) requested=({scope}, "
+            f"{config.factorized_polar.log_epsilon})"
+        )
+    return payload["mean"].float(), payload["std"].float()
 
 
 def save_checkpoint(
@@ -1063,26 +1254,52 @@ def evaluate_spectral_panel(
     )
 
     positions = torch.arange(length - 1, device=device)
-    history = model._history_cartesian_features(tokens[:, :-1], positions)
+    if model.config.polar_history.enabled and model.config.polar_history.fusion == "replace":
+        history = model._polar_history_features(tokens[:, :-1], positions)
+    else:
+        history = model._history_cartesian_features(tokens[:, :-1], positions)
     token_projected = model.token_proj(history.to(model.token_proj.weight.dtype))
     metrics["projection/history_input_rms"] = history.float().square().mean().sqrt()
     metrics["projection/token_output_rms"] = (
         token_projected.float().square().mean().sqrt()
     )
     if model.polar_proj is not None:
-        polar = model.codec.polar_history_features(tokens[:, :-1], positions)
+        polar = model._polar_history_features(tokens[:, :-1], positions)
         polar_projected = model.polar_proj(polar.to(model.polar_proj.weight.dtype))
         metrics["projection/polar_input_rms"] = polar.float().square().mean().sqrt()
         metrics["projection/polar_output_rms"] = (
             polar_projected.float().square().mean().sqrt()
         )
-    input_projected = model.diffusion.net.input_proj(
-        tokens.to(model.diffusion.net.input_proj.weight.dtype)
-    )
-    metrics["projection/diffusion_input_rms"] = tokens.float().square().mean().sqrt()
-    metrics["projection/diffusion_projected_rms"] = (
-        input_projected.float().square().mean().sqrt()
-    )
+    if model.factorized_decoder is not None:
+        all_positions = torch.arange(length, device=device)
+        raw = model.codec.normalized_to_raw_at(tokens, all_positions)
+        log_amp, phase, _ = model.factorized_decoder.target_coordinates(
+            raw, model.factorized_amplitude_scale(all_positions)[None]
+        )
+        amp_projected = model.factorized_decoder.amplitude_net.input_proj(
+            log_amp.to(model.factorized_decoder.amplitude_net.input_proj.weight.dtype)
+        )
+        phasor = torch.cat([torch.cos(phase), torch.sin(phase)], dim=-1)
+        phase_projected = model.factorized_decoder.phase_net.input_proj(
+            phasor.to(model.factorized_decoder.phase_net.input_proj.weight.dtype)
+        )
+        metrics["projection/amplitude_input_rms"] = log_amp.float().square().mean().sqrt()
+        metrics["projection/amplitude_projected_rms"] = (
+            amp_projected.float().square().mean().sqrt()
+        )
+        metrics["projection/phase_input_rms"] = phasor.float().square().mean().sqrt()
+        metrics["projection/phase_projected_rms"] = (
+            phase_projected.float().square().mean().sqrt()
+        )
+    else:
+        assert model.diffusion is not None
+        input_projected = model.diffusion.net.input_proj(
+            tokens.to(model.diffusion.net.input_proj.weight.dtype)
+        )
+        metrics["projection/diffusion_input_rms"] = tokens.float().square().mean().sqrt()
+        metrics["projection/diffusion_projected_rms"] = (
+            input_projected.float().square().mean().sqrt()
+        )
     position_values = model.slot_embed.weight
     metrics["projection/slot_embedding_rms"] = (
         position_values.float().square().mean().sqrt()
@@ -1278,11 +1495,20 @@ def main(args: Optional[argparse.Namespace] = None):
     dataset, train_loader = make_dataloader(args)
     spectral_panel_images = (
         make_spectral_panel(dataset, args.spectral_panel_size)
-        if args.spectral_diagnostic_steps > 0
+        if args.spectral_diagnostic_steps > 0 or args.condition_diagnostic_steps > 0
         else None
     )
     config = build_model_config(args)
     codec = fit_or_load_codec(args, accelerator, train_loader, config)
+    factorized_amplitude_mean, factorized_amplitude_std = (
+        fit_or_load_factorized_amplitude_stats(
+            args,
+            accelerator,
+            train_loader,
+            codec,
+            config,
+        )
+    )
     if accelerator.is_main_process and args.loss_metric == "orbit_scale_power":
         scale_weights = codec.orbit_scale_power_metric(args.orbit_scale_exponent)
         active_weights = scale_weights[codec.component_mask.bool()]
@@ -1314,14 +1540,26 @@ def main(args: Optional[argparse.Namespace] = None):
             f"flow_solver={args.flow_solver}"
         )
         _log_info(
+            f"Decoder geometry: {args.decoder_geometry} "
+            f"amp/phase/cart_weights=("
+            f"{args.factorized_amplitude_loss_weight:g},"
+            f"{args.factorized_phase_loss_weight:g},"
+            f"{args.factorized_cartesian_loss_weight:g}) "
+            f"phase_gate={args.factorized_phase_gate:g} "
+            f"predicted_amp_probability="
+            f"{args.factorized_phase_predicted_amplitude_probability:g}"
+        )
+        _log_info(
             f"Polar history features: {args.history_polar_features} "
-            f"(enabled={args.history_polar_features != 'none'})"
+            f"(enabled={args.history_polar_features != 'none'} "
+            f"fusion={args.history_polar_fusion})"
         )
         _log_info(
             f"Attention geometry: qk_norm={bool(args.qk_norm)} "
             f"rope={args.attention_rope} rope_base={args.rope_base:g} "
             f"slot_embedding=learned transformer_film="
-            f"{bool(args.transformer_position_film)} decoder_position_condition=False"
+            f"{bool(args.transformer_position_film)} decoder_position_condition="
+            f"{args.decoder_geometry == 'factorized_polar'}"
         )
         _log_info(
             f"Representation: centering={args.centering} "
@@ -1336,7 +1574,12 @@ def main(args: Optional[argparse.Namespace] = None):
             f"input_init={args.input_projection_init} "
             f"adam=({args.adam_beta1:g},{args.adam_beta2:g})"
         )
-    model = ContinuousFFTDecoder(config, codec=codec)
+    model = ContinuousFFTDecoder(
+        config,
+        codec=codec,
+        factorized_amplitude_mean=factorized_amplitude_mean,
+        factorized_amplitude_std=factorized_amplitude_std,
+    )
     if args.gradient_checkpointing:
         model.enable_gradient_checkpointing()
 
@@ -1449,7 +1692,11 @@ def main(args: Optional[argparse.Namespace] = None):
             first_epoch = global_step // num_update_steps_per_epoch
             logger.info(f"Resumed from {path} at step {global_step}")
 
-    if accelerator.is_main_process and spectral_panel_images is not None:
+    if (
+        accelerator.is_main_process
+        and spectral_panel_images is not None
+        and args.spectral_diagnostic_steps > 0
+    ):
         initial_spectral_logs = evaluate_spectral_panel(
             accelerator.unwrap_model(model),
             spectral_panel_images,
@@ -1581,17 +1828,45 @@ def main(args: Optional[argparse.Namespace] = None):
                         )
                     if routine_log_step:
                         unwrapped_for_grads = accelerator.unwrap_model(model)
-                        for name, parameter in (
-                            ("token_proj", unwrapped_for_grads.token_proj.weight),
-                            (
-                                "diffusion_input",
-                                unwrapped_for_grads.diffusion.net.input_proj.weight,
-                            ),
-                            (
-                                "diffusion_output",
-                                unwrapped_for_grads.diffusion.net.final_layer.linear.weight,
-                            ),
-                        ):
+                        projection_parameters = [
+                            ("token_proj", unwrapped_for_grads.token_proj.weight)
+                        ]
+                        if unwrapped_for_grads.factorized_decoder is not None:
+                            projection_parameters.extend(
+                                [
+                                    (
+                                        "amplitude_input",
+                                        unwrapped_for_grads.factorized_decoder.amplitude_net.input_proj.weight,
+                                    ),
+                                    (
+                                        "amplitude_output",
+                                        unwrapped_for_grads.factorized_decoder.amplitude_net.final_layer.linear.weight,
+                                    ),
+                                    (
+                                        "phase_input",
+                                        unwrapped_for_grads.factorized_decoder.phase_net.input_proj.weight,
+                                    ),
+                                    (
+                                        "phase_output",
+                                        unwrapped_for_grads.factorized_decoder.phase_net.final_layer.linear.weight,
+                                    ),
+                                ]
+                            )
+                        else:
+                            assert unwrapped_for_grads.diffusion is not None
+                            projection_parameters.extend(
+                                [
+                                    (
+                                        "diffusion_input",
+                                        unwrapped_for_grads.diffusion.net.input_proj.weight,
+                                    ),
+                                    (
+                                        "diffusion_output",
+                                        unwrapped_for_grads.diffusion.net.final_layer.linear.weight,
+                                    ),
+                                ]
+                            )
+                        for name, parameter in projection_parameters:
                             if parameter.grad is not None:
                                 projection_grad_logs[
                                     f"projection_grad_rms/{name}"
@@ -1678,6 +1953,14 @@ def main(args: Optional[argparse.Namespace] = None):
                     if "phase_aux_loss" in out:
                         logs["phase_aux_loss"] = out["phase_aux_loss"].item()
                         logs["base_loss"] = out["base_loss"].item()
+                    for key in (
+                        "amplitude_flow_loss",
+                        "phase_flow_loss",
+                        "cartesian_reconstruction_loss",
+                        "phase_predicted_amplitude_fraction",
+                    ):
+                        if key in out:
+                            logs[f"factorized/{key}"] = out[key].item()
                     if "radial_weighted_mse" in out:
                         logs["radial_weighted_mse"] = out["radial_weighted_mse"].item()
                     if "radial_weights" in out:
@@ -1723,21 +2006,34 @@ def main(args: Optional[argparse.Namespace] = None):
                     and global_step % args.condition_diagnostic_steps == 0
                 ):
                     condition_started = time.perf_counter()
+                    if spectral_panel_images is None:
+                        raise RuntimeError(
+                            "condition diagnostics require the held-out tail panel"
+                        )
+                    with torch.no_grad():
+                        diagnostic_images = spectral_panel_images.to(
+                            device=images.device,
+                            dtype=torch.float32,
+                            non_blocking=True,
+                        )
+                        diagnostic_tokens = unwrapped.codec.encode(diagnostic_images)
                     cpu_rng_state = torch.random.get_rng_state()
                     cuda_rng_state = (
-                        torch.cuda.get_rng_state(tokens.device)
-                        if tokens.is_cuda
+                        torch.cuda.get_rng_state(diagnostic_tokens.device)
+                        if diagnostic_tokens.is_cuda
                         else None
                     )
                     with torch.no_grad(), accelerator.autocast():
-                        conditioned = model(tokens, corrupt=False)
+                        conditioned = model(diagnostic_tokens, corrupt=False)
                     torch.random.set_rng_state(cpu_rng_state)
                     if cuda_rng_state is not None:
-                        torch.cuda.set_rng_state(cuda_rng_state, tokens.device)
-                    shuffled_history = tokens.roll(1, dims=0)[:, :-1, :]
+                        torch.cuda.set_rng_state(
+                            cuda_rng_state, diagnostic_tokens.device
+                        )
+                    shuffled_history = diagnostic_tokens.roll(1, dims=0)[:, :-1, :]
                     with torch.no_grad(), accelerator.autocast():
                         shuffled = model(
-                            tokens,
+                            diagnostic_tokens,
                             corrupt=False,
                             history_override=shuffled_history,
                         )
@@ -1748,11 +2044,14 @@ def main(args: Optional[argparse.Namespace] = None):
                     logs["condition/shuffle_gap"] = (
                         shuffled_loss - conditioned_loss
                     )
+                    logs["condition/heldout_panel_size"] = int(
+                        diagnostic_tokens.shape[0]
+                    )
                     logs["timing/condition_diagnostic_wall_ms"] = (
                         time.perf_counter() - condition_started
                     ) * 1000.0
                     _log_info(
-                        "CONDITION_DIAGNOSTIC "
+                        "HELDOUT_CONDITION_DIAGNOSTIC "
                         f"step={global_step} clean={conditioned_loss:.6f} "
                         f"shuffled={shuffled_loss:.6f} "
                         f"gap={shuffled_loss - conditioned_loss:.6f}"

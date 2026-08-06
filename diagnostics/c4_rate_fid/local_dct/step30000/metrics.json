@@ -1,0 +1,25 @@
+{
+  "checkpoint": "/workspace/AFIG/continuous_runs/joint_c4_rate_local_dct_s1_30000/checkpoint_30000.pt",
+  "checkpoint_step": 30000,
+  "latent_basis": "patch_dct",
+  "samples": 5000,
+  "seed": 71001,
+  "inference_steps": 50,
+  "fid_5k": 62.39249551964929,
+  "kid_5k": 0.06393072754144669,
+  "clipping_fraction": 0.0,
+  "unclipped_min": 0.0003795623779296875,
+  "unclipped_max": 1.0,
+  "image_gradient_energy": 0.006137605074048042,
+  "radial_power_relative_error": 0.4255027592315357,
+  "channel_mean": [
+    0.48476688292622566,
+    0.47121380692720416,
+    0.43432132080867886
+  ],
+  "channel_std": [
+    0.24418193651777953,
+    0.2402124924975128,
+    0.2570455060027776
+  ]
+}

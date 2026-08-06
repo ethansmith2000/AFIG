@@ -1,0 +1,13 @@
+{
+  "checkpoint": "continuous_runs/ar_fft_factorized_polar_10k/checkpoint_10000.pt",
+  "seed": 20260804,
+  "steps": 20,
+  "rows": [
+    "reference",
+    "free_cutoff_32",
+    "free_cutoff_128",
+    "free_cutoff_256",
+    "free_cutoff_384"
+  ],
+  "metrics": {}
+}

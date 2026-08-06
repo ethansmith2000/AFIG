@@ -1,0 +1,24 @@
+{
+  "representation": "patch_dct",
+  "checkpoint_dir": "/workspace/AFIG/latent_continuous_runs/patch_dct_control",
+  "samples": 5000,
+  "seed": 71001,
+  "inference_steps": 50,
+  "fid_5k": 31.378167771229812,
+  "kid_5k": 0.020380882546305656,
+  "clipping_fraction": 0.005007877604166666,
+  "unclipped_min": -0.14025387167930603,
+  "unclipped_max": 1.162804365158081,
+  "image_gradient_energy": 0.00862108955681324,
+  "radial_power_relative_error": 0.054468326668710224,
+  "channel_mean": [
+    0.49742869524072447,
+    0.47995551356555954,
+    0.44652356876723936
+  ],
+  "channel_std": [
+    0.23970886493515195,
+    0.23984462934775055,
+    0.25761358932092776
+  ]
+}

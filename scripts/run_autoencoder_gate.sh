@@ -17,10 +17,13 @@ batch_size="${BATCH_SIZE:-128}"
 latent_dim="${LATENT_DIM:-64}"
 variational="${VARIATIONAL:-false}"
 kl_weight="${KL_WEIGHT:-0.0}"
+kl_free_bits="${KL_FREE_BITS:-0.0}"
 conditioning="${GROUP_CONDITIONING:-film_low_rank}"
 latent_noise="${LATENT_NOISE_STD:-0.0}"
 ring_dropout="${LATENT_RING_DROPOUT:-0.0}"
 high_dropout="${LATENT_HIGH_FREQUENCY_DROPOUT:-0.0}"
+perceptual_weight="${PERCEPTUAL_LOSS_WEIGHT:-0.0}"
+ring_block_causal="${RING_BLOCK_CAUSAL:-false}"
 
 mode_args=()
 case "${mode}" in
@@ -51,6 +54,12 @@ case "${mode}" in
       --target_tokens_per_latent "${target_tokens}"
       --max_ring_latents "${max_latents}"
     )
+    if [[ "${ring_block_causal}" == true ]]; then
+      run_name="${run_name}-ringblock"
+      mode_args+=(--ring_block_causal)
+    else
+      mode_args+=(--no-ring_block_causal)
+    fi
     ;;
   spatial_downsample)
     downsample="${SPATIAL_DOWNSAMPLE:-4}"
@@ -65,26 +74,40 @@ case "${mode}" in
 esac
 if [[ "${variational}" == true ]]; then
   run_name="${run_name}-vae-kl${kl_weight}"
+  if [[ "${kl_free_bits}" != 0 && "${kl_free_bits}" != 0.0 ]]; then
+    run_name="${run_name}-fb${kl_free_bits}"
+  fi
 fi
 whiten_exponent="${WHITEN_EXPONENT:-1.0}"
+codec_normalization="${CODEC_NORMALIZATION:-orbit_standardize}"
+if [[ "${codec_normalization}" != orbit_standardize ]]; then
+  run_name="${run_name}-${codec_normalization}"
+fi
 if [[ "${whiten_exponent}" != 1.0 ]]; then
   run_name="${run_name}-wx${whiten_exponent}"
 fi
 if [[ "${latent_noise}" != 0 && "${latent_noise}" != 0.0 ]]; then
   run_name="${run_name}-noise${latent_noise}"
 fi
+if [[ "${perceptual_weight}" != 0 && "${perceptual_weight}" != 0.0 ]]; then
+  run_name="${run_name}-lpips${perceptual_weight}"
+fi
 if [[ "${ring_dropout}" != 0 && "${ring_dropout}" != 0.0 ]] || \
    [[ "${high_dropout}" != 0 && "${high_dropout}" != 0.0 ]]; then
   run_name="${run_name}-drop${ring_dropout}-${high_dropout}"
 fi
-output_dir="autoencoder_runs/${run_name}"
+output_dir="${OUTPUT_DIR:-autoencoder_runs/${run_name}}"
+codec_stats_path="autoencoder_runs/codec_stats_${resolution}.pt"
+if [[ "${codec_normalization}" != orbit_standardize ]]; then
+  codec_stats_path="autoencoder_runs/codec_stats_${resolution}_${codec_normalization}.pt"
+fi
 
 vae_args=(--no-variational)
 if [[ "${variational}" == true ]]; then
   vae_args=(
     --variational
     --kl_weight "${kl_weight}"
-    --kl_free_bits "${KL_FREE_BITS:-0.0}"
+    --kl_free_bits "${kl_free_bits}"
   )
 fi
 
@@ -99,7 +122,8 @@ exec gpu-claim run --owner AFIG --job "${run_name}" --wait -- \
   --data_root "${DATA_ROOT:-/workspace/AFIG/data}" \
   --resolution "${resolution}" \
   --output_dir "${output_dir}" \
-  --codec_stats_path "autoencoder_runs/codec_stats_${resolution}.pt" \
+  --codec_stats_path "${codec_stats_path}" \
+  --codec_normalization "${codec_normalization}" \
   --whiten_exponent "${whiten_exponent}" \
   --seed "${seed}" \
   --max_train_steps "${steps}" \
@@ -125,6 +149,7 @@ exec gpu-claim run --owner AFIG --job "${run_name}" --wait -- \
   --reconstruction_loss "${RECONSTRUCTION_LOSS:-mse}" \
   --token_loss_weight "${TOKEN_LOSS_WEIGHT:-0.01}" \
   --image_loss_weight "${IMAGE_LOSS_WEIGHT:-1.0}" \
+  --perceptual_loss_weight "${perceptual_weight}" \
   --fourier_loss_weight 0 \
   --log_amplitude_weight "${LOG_AMPLITUDE_WEIGHT:-0.0}" \
   --phase_loss_weight "${PHASE_LOSS_WEIGHT:-0.0}" \

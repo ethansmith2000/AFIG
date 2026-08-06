@@ -1,0 +1,10 @@
+{
+  "reconstruction/log_amplitude_mae": 0.14849410483837128,
+  "reconstruction/phase_circular_error": 0.027683158630132675,
+  "reconstruction/physical_fourier_nrmse": 0.04274969488978386,
+  "reconstruction/pixel_mse": 0.0005305856037419289,
+  "reconstruction/psnr": 32.76009046020508,
+  "reconstruction/radial_power_relative_error": 0.030375141769647597,
+  "reconstruction/whitened_token_mse": 0.02962632914185524,
+  "test/examples": 10000.0
+}

@@ -1,4 +1,4 @@
-"""Frozen target-12 sequential-ring autoencoder interface for latent AFIG."""
+"""Frozen sequential-ring autoencoder interface for latent AFIG."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ import torch.nn as nn
 
 from autoencoder_models import AutoencoderConfig, CausalFrequencyAutoencoder
 from frequency import FrequencyCodec, FrequencyCodecConfig
-from model_latent_continuous import LATENT_SEQUENCE_LENGTH, LATENT_TOKEN_DIM
 
 
 POSITION_FEATURE_SCHEMA: List[str] = [
@@ -35,10 +34,8 @@ def _load_frozen_autoencoder(
 ) -> tuple[CausalFrequencyAutoencoder, FrequencyCodec, Dict[str, Any]]:
     payload = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     config = AutoencoderConfig(**payload["config"])
-    if config.mode != "causal_ring" or config.target_tokens_per_latent != 12:
-        raise ValueError("Latent AFIG requires the target-12 sequential-ring codec")
-    if config.latent_dim != LATENT_TOKEN_DIM:
-        raise ValueError(f"Expected latent_dim={LATENT_TOKEN_DIM}")
+    if config.mode != "causal_ring":
+        raise ValueError("Latent AFIG requires a sequential-ring codec")
     codec_payload = payload["codec"]
     codec = FrequencyCodec(FrequencyCodecConfig(**codec_payload["config"]))
     codec.load_exported(codec_payload)
@@ -59,11 +56,6 @@ def _load_frozen_autoencoder(
         raise RuntimeError(
             "Incompatible autoencoder checkpoint: "
             f"missing={disallowed_missing}, unexpected={incompatible.unexpected_keys}"
-        )
-    if autoencoder.exported_token_count != LATENT_SEQUENCE_LENGTH:
-        raise ValueError(
-            f"Expected {LATENT_SEQUENCE_LENGTH} exported latents, got "
-            f"{autoencoder.exported_token_count}"
         )
     return autoencoder, codec, payload
 
@@ -116,7 +108,8 @@ def build_position_features(
         ],
         dim=-1,
     )
-    if features.shape != (LATENT_SEQUENCE_LENGTH, len(POSITION_FEATURE_SCHEMA)):
+    expected = (autoencoder.exported_token_count, len(POSITION_FEATURE_SCHEMA))
+    if features.shape != expected:
         raise RuntimeError(f"Unexpected position feature shape {tuple(features.shape)}")
     return features
 
@@ -148,10 +141,13 @@ def layout_fingerprint(
     ):
         if codec_fingerprint.get(field) == default:
             codec_fingerprint.pop(field, None)
+    autoencoder_fingerprint = dict(autoencoder.config.fingerprint())
+    if not autoencoder_fingerprint.get("ring_block_causal", False):
+        autoencoder_fingerprint.pop("ring_block_causal", None)
     digest.update(
         json.dumps(
             {
-                "autoencoder": autoencoder.config.fingerprint(),
+                "autoencoder": autoencoder_fingerprint,
                 "codec": codec_fingerprint,
                 "schema": POSITION_FEATURE_SCHEMA,
             },
@@ -182,7 +178,9 @@ class FrozenLatentAutoencoder(nn.Module):
             )
         mean = interface["latent_mean"].float()
         std = interface["latent_std"].float()
-        expected = (LATENT_SEQUENCE_LENGTH, LATENT_TOKEN_DIM)
+        self.sequence_length = int(autoencoder.exported_token_count)
+        self.token_dim = int(autoencoder.config.latent_dim)
+        expected = (self.sequence_length, self.token_dim)
         if mean.shape != expected or std.shape != expected:
             raise ValueError(
                 f"latent_mean/std must both be {expected}, got "
@@ -247,7 +245,7 @@ class FrozenLatentAutoencoder(nn.Module):
         latents = self.autoencoder.export_latents(
             tokens, sample_posterior=self.sample_posterior
         )["latents"]
-        if latents.shape[1:] != (LATENT_SEQUENCE_LENGTH, LATENT_TOKEN_DIM):
+        if latents.shape[1:] != (self.sequence_length, self.token_dim):
             raise RuntimeError(f"Unexpected latent shape {tuple(latents.shape)}")
         return self.normalize(latents)
 
@@ -258,7 +256,7 @@ class FrozenLatentAutoencoder(nn.Module):
     def decode_latents_with_grad(
         self, normalized_latents: torch.Tensor
     ) -> torch.Tensor:
-        expected = (LATENT_SEQUENCE_LENGTH, LATENT_TOKEN_DIM)
+        expected = (self.sequence_length, self.token_dim)
         if normalized_latents.ndim != 3 or normalized_latents.shape[1:] != expected:
             raise ValueError(f"normalized_latents must be [B,{expected[0]},{expected[1]}]")
         latents = self.denormalize(normalized_latents)
@@ -275,8 +273,8 @@ class FrozenLatentAutoencoder(nn.Module):
             "layout_fingerprint": self.layout_hash,
             "position_feature_schema": POSITION_FEATURE_SCHEMA,
             "position_features": self.position_features.detach().cpu(),
-            "token_dim": LATENT_TOKEN_DIM,
-            "sequence_length": LATENT_SEQUENCE_LENGTH,
+            "token_dim": self.token_dim,
+            "sequence_length": self.sequence_length,
             "sample_posterior": self.sample_posterior,
         }
 
@@ -284,8 +282,8 @@ class FrozenLatentAutoencoder(nn.Module):
         required_equal = {
             "layout_fingerprint": self.layout_hash,
             "position_feature_schema": POSITION_FEATURE_SCHEMA,
-            "token_dim": LATENT_TOKEN_DIM,
-            "sequence_length": LATENT_SEQUENCE_LENGTH,
+            "token_dim": self.token_dim,
+            "sequence_length": self.sequence_length,
             "sample_posterior": self.sample_posterior,
         }
         for key, expected in required_equal.items():

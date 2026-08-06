@@ -1,0 +1,49 @@
+{
+  "checkpoint": "continuous_runs/ar_fft_factorized_polar_10k/checkpoint_10000.pt",
+  "seed": 20260804,
+  "steps": 20,
+  "rows": [
+    "reference",
+    "oracle_history",
+    "prefix_only_32",
+    "true_prefix_32",
+    "prefix_only_128",
+    "true_prefix_128",
+    "prefix_only_256",
+    "true_prefix_256",
+    "prefix_only_384",
+    "true_prefix_384"
+  ],
+  "metrics": {
+    "oracle_history": {
+      "normalized_mse": 0.0009014680981636047,
+      "physical_complex_nrmse": 0.6094436049461365,
+      "mean_amplitude_ratio": 1.0421457290649414,
+      "amplitude_weighted_phase_coherence": 0.47040045261383057
+    },
+    "true_prefix_32": {
+      "normalized_mse": 0.00014136121899355203,
+      "physical_complex_nrmse": 1.1753193140029907,
+      "mean_amplitude_ratio": 0.9709301590919495,
+      "amplitude_weighted_phase_coherence": 0.1278599500656128
+    },
+    "true_prefix_128": {
+      "normalized_mse": 5.0124566769227386e-05,
+      "physical_complex_nrmse": 1.1121864318847656,
+      "mean_amplitude_ratio": 1.0225666761398315,
+      "amplitude_weighted_phase_coherence": 0.20572853088378906
+    },
+    "true_prefix_256": {
+      "normalized_mse": 2.0596478861989453e-05,
+      "physical_complex_nrmse": 1.0107249021530151,
+      "mean_amplitude_ratio": 1.000022053718567,
+      "amplitude_weighted_phase_coherence": 0.32345062494277954
+    },
+    "true_prefix_384": {
+      "normalized_mse": 1.2332556252658833e-05,
+      "physical_complex_nrmse": 0.8945959806442261,
+      "mean_amplitude_ratio": 1.0283550024032593,
+      "amplitude_weighted_phase_coherence": 0.38376331329345703
+    }
+  }
+}

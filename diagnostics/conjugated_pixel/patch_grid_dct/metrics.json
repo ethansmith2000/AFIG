@@ -1,0 +1,10 @@
+{
+  "representation": "patch_grid_dct",
+  "pixel_checkpoint_dir": "/workspace/AFIG/latent_continuous_runs/pixel_control",
+  "count": 64,
+  "seed": 71021,
+  "inference_steps": 50,
+  "base_roundtrip_max_abs": 5.245208740234375e-06,
+  "unclipped_min": -0.046941012144088745,
+  "unclipped_max": 1.0523676872253418
+}

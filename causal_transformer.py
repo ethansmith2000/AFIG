@@ -22,6 +22,7 @@ class CausalTransformerConfig:
     dropout: float = 0.0
     max_seq_len: int = 53
     gradient_checkpointing: bool = False
+    qk_norm: bool = False
 
     def fingerprint(self) -> Dict[str, Any]:
         return asdict(self)
@@ -109,6 +110,7 @@ class CausalSelfAttention(nn.Module):
         dropout: float = 0.0,
         conditional_film: bool = False,
         causal: bool = True,
+        qk_norm: bool = False,
     ):
         super().__init__()
         if width % num_heads:
@@ -120,6 +122,16 @@ class CausalSelfAttention(nn.Module):
         self.norm = nn.LayerNorm(width)
         self.conditional_film = ConditionalFiLM(width) if conditional_film else None
         self.qkv = nn.Linear(width, 3 * width, bias=False)
+        self.q_norm = (
+            nn.RMSNorm(self.head_dim, elementwise_affine=True)
+            if qk_norm
+            else None
+        )
+        self.k_norm = (
+            nn.RMSNorm(self.head_dim, elementwise_affine=True)
+            if qk_norm
+            else None
+        )
         self.out_proj = nn.Linear(width, width)
 
     def forward(
@@ -140,6 +152,24 @@ class CausalSelfAttention(nn.Module):
         query = query.view(batch, length, self.num_heads, self.head_dim).transpose(1, 2)
         key = key.view(batch, length, self.num_heads, self.head_dim).transpose(1, 2)
         value = value.view(batch, length, self.num_heads, self.head_dim).transpose(1, 2)
+        if self.q_norm is not None:
+            # Autocast leaves RMSNorm's learned weight in fp32.  Passing a bf16
+            # activation and fp32 weight to nn.RMSNorm disables the fused CUDA
+            # path, so cast the small affine vector at use while preserving its
+            # fp32 master parameter and gradient.
+            query = F.rms_norm(
+                query,
+                self.q_norm.normalized_shape,
+                self.q_norm.weight.to(query.dtype),
+                self.q_norm.eps,
+            )
+            assert self.k_norm is not None
+            key = F.rms_norm(
+                key,
+                self.k_norm.normalized_shape,
+                self.k_norm.weight.to(key.dtype),
+                self.k_norm.eps,
+            )
         if rope is not None:
             cos, sin = rope
             # With a KV cache only the newest token(s) are passed in, so the
@@ -202,10 +232,11 @@ class CausalTransformerBlock(nn.Module):
         dropout: float,
         conditional_film: bool = False,
         causal: bool = True,
+        qk_norm: bool = False,
     ):
         super().__init__()
         self.attn = CausalSelfAttention(
-            width, num_heads, dropout, conditional_film, causal
+            width, num_heads, dropout, conditional_film, causal, qk_norm
         )
         self.ff = FeedForward(width, ff_mult, dropout, conditional_film)
 

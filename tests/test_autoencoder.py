@@ -312,6 +312,48 @@ class TestCausalFrequencyAutoencoder(unittest.TestCase):
             )
         )
 
+    def test_ring_block_masks_are_bidirectional_within_ring(self):
+        codec = _fitted_codec()
+        config = AutoencoderConfig(
+            **{
+                **self._config("causal_ring").fingerprint(),
+                "ring_block_causal": True,
+            }
+        )
+        model = CausalFrequencyAutoencoder(
+            config, codec.position_metadata(), codec.component_mask
+        )
+        encoder_mask = model.ring_encoder.block_causal_mask
+        decoder_mask = model.ring_decoder.latent_causal_mask
+        coordinate_mask = model.ring_decoder.coordinate_causal_mask
+
+        ring = int(torch.nonzero(model.layout.parent_counts > 1)[0])
+        ring_tokens = torch.nonzero(model.layout.token_parent == ring).flatten()
+        ring_latents = torch.nonzero(model.layout.latent_parent == ring).flatten()
+        self.assertTrue(encoder_mask[ring_tokens[:, None], ring_tokens[None, :]].all())
+        self.assertTrue(decoder_mask[ring_latents[:, None], ring_latents[None, :]].all())
+        self.assertTrue(coordinate_mask[ring_tokens[:, None], ring_latents[None, :]].all())
+
+        if ring + 1 < model.layout.num_parents:
+            later_tokens = torch.nonzero(
+                model.layout.token_parent == ring + 1
+            ).flatten()
+            later_latents = torch.nonzero(
+                model.layout.latent_parent == ring + 1
+            ).flatten()
+            self.assertFalse(
+                encoder_mask[ring_tokens[:, None], later_tokens[None, :]].any()
+            )
+            self.assertTrue(
+                encoder_mask[later_tokens[:, None], ring_tokens[None, :]].all()
+            )
+            self.assertFalse(
+                decoder_mask[ring_latents[:, None], later_latents[None, :]].any()
+            )
+            self.assertFalse(
+                coordinate_mask[ring_tokens[:, None], later_latents[None, :]].any()
+            )
+
     def test_tcn_full_streaming_parity(self):
         torch.manual_seed(7)
         model = CausalTCN(width=16, depth=4, kernel_size=3).eval()

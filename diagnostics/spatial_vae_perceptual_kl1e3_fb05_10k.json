@@ -1,0 +1,71 @@
+{
+  "checkpoint": "/workspace/AFIG/autoencoder_runs/ae-spatial-perceptual-vae-kl1e3-fb05-10k/checkpoint_10000.pt",
+  "images": 4096,
+  "latent_shape": [
+    8,
+    8,
+    8
+  ],
+  "mean": {
+    "mean": -0.02955631911754608,
+    "std": 0.8748043179512024,
+    "rms": 0.8753034472465515,
+    "abs_p50": 0.50390625,
+    "abs_p90": 1.4296875,
+    "abs_p99": 2.609375,
+    "abs_p99_9": 3.875,
+    "abs_max": 7.125,
+    "skew": 0.220879465341568,
+    "excess_kurtosis": 1.581376075744629
+  },
+  "sample": {
+    "mean": -0.029574697837233543,
+    "std": 0.8759640455245972,
+    "rms": 0.8764631152153015,
+    "abs_p50": 0.5068944692611694,
+    "abs_p90": 1.427858591079712,
+    "abs_p99": 2.613023281097412,
+    "abs_p99_9": 3.8744864463806152,
+    "abs_max": 7.154132843017578,
+    "skew": 0.22029083967208862,
+    "excess_kurtosis": 1.5756397247314453
+  },
+  "posterior_std": {
+    "rms": 0.04587109759449959,
+    "p50": 0.037581250071525574,
+    "p90": 0.06196100637316704,
+    "p99": 0.123224176466465,
+    "p99_9": 0.20961138606071472,
+    "max": 0.3002544343471527
+  },
+  "variance_decomposition": {
+    "mean_coordinate_variance": 0.738458514213562,
+    "expected_posterior_variance": 0.002104157814756036,
+    "expected_aggregate_variance": 0.7405626773834229,
+    "posterior_fraction": 0.0028412961401045322,
+    "paired_sample_noise_rms": 0.0458008274435997
+  },
+  "mean_dependence": {
+    "coordinate_count": 512,
+    "correlation_offdiag_rms": 0.09801476448774338,
+    "covariance_condition": 738.1578979492188,
+    "covariance_eigen_p01": 0.08010357618331909,
+    "covariance_eigen_p50": 0.39133474230766296,
+    "covariance_eigen_p99": 4.700207233428955
+  },
+  "sample_dependence": {
+    "coordinate_count": 512,
+    "correlation_offdiag_rms": 0.0977984219789505,
+    "covariance_condition": 711.8311767578125,
+    "covariance_eigen_p01": 0.0818212479352951,
+    "covariance_eigen_p50": 0.3923165798187256,
+    "covariance_eigen_p99": 4.69902229309082
+  },
+  "decode": {
+    "posterior_mean_mse": 0.0009040954270555327,
+    "posterior_mean_psnr": 30.43785858154297,
+    "posterior_sample_mse": 0.000928382195221881,
+    "posterior_sample_psnr": 30.32273292541504,
+    "mean_vs_sample_mse": 2.5946151860504568e-05
+  }
+}

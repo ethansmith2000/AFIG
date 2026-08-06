@@ -1,0 +1,25 @@
+{
+  "checkpoint": "/workspace/AFIG/continuous_runs/joint_c4_rate_full_hartley_s1_30000/checkpoint_30000.pt",
+  "checkpoint_step": 30000,
+  "latent_basis": "hartley",
+  "samples": 5000,
+  "seed": 71001,
+  "inference_steps": 50,
+  "fid_5k": 86.08687660859948,
+  "kid_5k": 0.08993648737668991,
+  "clipping_fraction": 0.0,
+  "unclipped_min": 4.5299530029296875e-05,
+  "unclipped_max": 1.0,
+  "image_gradient_energy": 0.0055753678441047665,
+  "radial_power_relative_error": 0.4645629114255368,
+  "channel_mean": [
+    0.48903785791741683,
+    0.48005935110980646,
+    0.44567383034192026
+  ],
+  "channel_std": [
+    0.2353012392214097,
+    0.23245769570003316,
+    0.2505587038362959
+  ]
+}

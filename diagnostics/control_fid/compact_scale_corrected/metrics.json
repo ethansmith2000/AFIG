@@ -1,0 +1,24 @@
+{
+  "representation": "fft_compact_isometric_scale",
+  "checkpoint_dir": "/workspace/AFIG/latent_continuous_runs/fft_compact_isometric_scale_control",
+  "samples": 5000,
+  "seed": 71001,
+  "inference_steps": 50,
+  "fid_5k": 214.03617499468837,
+  "kid_5k": 0.20414204895496368,
+  "clipping_fraction": 0.035024153645833334,
+  "unclipped_min": -0.6887098550796509,
+  "unclipped_max": 1.8238227367401123,
+  "image_gradient_energy": 0.008723952755331993,
+  "radial_power_relative_error": 0.07193926064369073,
+  "channel_mean": [
+    0.48929257039981894,
+    0.4814146729454515,
+    0.4413887880136841
+  ],
+  "channel_std": [
+    0.23708638587451356,
+    0.23364017656104347,
+    0.253260748251797
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "checkpoint": "/workspace/AFIG/latent_continuous_runs/fft_compact_isometric_spiral_control/final.pt",
+  "heldout_split": "cifar10_test",
+  "dataset_offset": 0,
+  "count": 16,
+  "seed": 54321,
+  "inference_steps": 50,
+  "normalization": {
+    "mean": 0.4724501073360443,
+    "std": 0.2522786259651184
+  },
+  "row_labels": [
+    "heldout_reference",
+    "unconditional_same_noise",
+    "radius_0_known_only",
+    "radius_0_completion",
+    "radius_2_known_only",
+    "radius_2_completion",
+    "radius_4_known_only",
+    "radius_4_completion",
+    "radius_8_known_only",
+    "radius_8_completion",
+    "full_spectrum_clamp"
+  ],
+  "cutoffs": [
+    {
+      "radius_cutoff": 0,
+      "selected_orbits": 1,
+      "selected_scalars": 3,
+      "selected_scalar_fraction": 0.0009765625,
+      "heldout_target_energy_fraction": 0.2360556721687317,
+      "unknown_zero_fill_mse": 0.728236734867096,
+      "unknown_completion_mse": 1.395613193511963,
+      "unknown_unconditional_mse": 1.4796288013458252,
+      "unknown_mse_fractional_improvement_over_zero": -0.9164278507232666,
+      "unknown_mse_fractional_improvement_over_unconditional": 0.05678153038024902,
+      "lowpass_pixel_mse": 0.04630301520228386,
+      "completion_pixel_mse": 0.087070994079113
+    },
+    {
+      "radius_cutoff": 2,
+      "selected_orbits": 13,
+      "selected_scalars": 75,
+      "selected_scalar_fraction": 0.0244140625,
+      "heldout_target_energy_fraction": 0.7217109203338623,
+      "unknown_zero_fill_mse": 0.27165472507476807,
+      "unknown_completion_mse": 0.41435495018959045,
+      "unknown_unconditional_mse": 0.47118374705314636,
+      "unknown_mse_fractional_improvement_over_zero": -0.5253000259399414,
+      "unknown_mse_fractional_improvement_over_unconditional": 0.12060856819152832,
+      "lowpass_pixel_mse": 0.016810059547424316,
+      "completion_pixel_mse": 0.025109974667429924
+    },
+    {
+      "radius_cutoff": 4,
+      "selected_orbits": 35,
+      "selected_scalars": 207,
+      "selected_scalar_fraction": 0.0673828125,
+      "heldout_target_energy_fraction": 0.8507159352302551,
+      "unknown_zero_fill_mse": 0.1524392068386078,
+      "unknown_completion_mse": 0.23105821013450623,
+      "unknown_unconditional_mse": 0.25914469361305237,
+      "unknown_mse_fractional_improvement_over_zero": -0.5157400369644165,
+      "unknown_mse_fractional_improvement_over_unconditional": 0.10838145017623901,
+      "lowpass_pixel_mse": 0.008990425616502762,
+      "completion_pixel_mse": 0.013352714478969574
+    },
+    {
+      "radius_cutoff": 8,
+      "selected_orbits": 125,
+      "selected_scalars": 747,
+      "selected_scalar_fraction": 0.2431640625,
+      "heldout_target_energy_fraction": 0.9506140947341919,
+      "unknown_zero_fill_mse": 0.062142472714185715,
+      "unknown_completion_mse": 0.08587783575057983,
+      "unknown_unconditional_mse": 0.10213299840688705,
+      "unknown_mse_fractional_improvement_over_zero": -0.3819507360458374,
+      "unknown_mse_fractional_improvement_over_unconditional": 0.15915679931640625,
+      "lowpass_pixel_mse": 0.0029684684704989195,
+      "completion_pixel_mse": 0.004021764732897282
+    }
+  ],
+  "full_clamp_max_token_error": 0.0
+}

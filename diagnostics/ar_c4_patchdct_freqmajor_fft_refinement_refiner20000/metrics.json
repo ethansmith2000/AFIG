@@ -1,0 +1,52 @@
+{
+  "scaffold_checkpoint": "/workspace/AFIG/continuous_runs/ar_spatial_ae_perceptual_c4_patchdct_freqmajor_s7_10k/checkpoint_10000.pt",
+  "scaffold_checkpoint_step": 10000,
+  "scaffold_model": "ar",
+  "refiner_checkpoint": "/workspace/AFIG/latent_continuous_runs/scaffold_fft_residual_oracle_c4_s1_30000/checkpoint_20000.pt",
+  "refiner_checkpoint_step": 20000,
+  "samples": 5000,
+  "seed": 71001,
+  "scaffold_inference_steps": 20,
+  "refiner_inference_steps": 50,
+  "condition_mode": "aligned",
+  "scaffold": {
+    "name": "generated_local_c4_scaffold",
+    "fid_5k": 91.1856999133766,
+    "kid_5k": 0.09965584427118301,
+    "clipping_fraction": 0.0,
+    "unclipped_min": 4.839897155761719e-05,
+    "unclipped_max": 1.0,
+    "image_gradient_energy": 0.005924006894230843,
+    "radial_power_relative_error": 0.4430590866053963,
+    "channel_mean": [
+      0.49007380718979987,
+      0.47815017631147055,
+      0.44211221474790946
+    ],
+    "channel_std": [
+      0.23930287806494457,
+      0.2370023697238059,
+      0.25195426329861004
+    ]
+  },
+  "completion": {
+    "name": "generated_scaffold_plus_fft_residual_aligned",
+    "fid_5k": 73.6633600679852,
+    "kid_5k": 0.05844450369477272,
+    "clipping_fraction": 0.012108138020833333,
+    "unclipped_min": -0.15383470058441162,
+    "unclipped_max": 1.2056307792663574,
+    "image_gradient_energy": 0.00954985810816288,
+    "radial_power_relative_error": 0.18988341360526886,
+    "channel_mean": [
+      0.4903305080719967,
+      0.47923676442430224,
+      0.4424221689851125
+    ],
+    "channel_std": [
+      0.24620379481552765,
+      0.24288991594939405,
+      0.2579731514377704
+    ]
+  }
+}

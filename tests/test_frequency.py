@@ -146,6 +146,36 @@ class TestFrequencyCodec(unittest.TestCase):
         self.assertEqual(float(restored.global_scale), float(codec.global_scale))
         self.assertTrue(torch.equal(restored.encode(images), data_tokens))
 
+    def test_global_standardize_is_tensor_wide_pixel_affine(self):
+        config = FrequencyCodecConfig(
+            normalization="global_standardize",
+            coordinate_packing="isometric",
+        )
+        codec = FrequencyCodec(config)
+        fit_batches = list(self._synth_loader(n_batches=8, batch_size=16, seed=31))
+        all_fit = torch.cat(fit_batches)
+        codec.fit_from_loader(fit_batches)
+        self.assertAlmostEqual(
+            float(codec.global_pixel_mean), float(all_fit.mean()), places=6
+        )
+        self.assertAlmostEqual(
+            float(codec.global_scale),
+            float(all_fit.std(unbiased=False)),
+            places=6,
+        )
+
+        encoded = codec.encode(all_fit)
+        active = codec.component_mask.bool()[None].expand_as(encoded)
+        # A pixel-space mean subtraction maps only to FFT DC.  Subtracting the
+        # arithmetic mean of all packed coefficients would move every complex
+        # origin and is deliberately not part of this geometry-safe affine.
+        self.assertLess(abs(float(encoded[active].mean())), 5e-3)
+        self.assertLess(
+            abs(float(encoded[active].square().mean().sqrt()) - 1.0), 2e-5
+        )
+        reconstructed = codec.decode(encoded)
+        self.assertLess(float((reconstructed - all_fit).abs().max()), 2e-5)
+
     def test_hermitian_by_construction(self):
         codec = FrequencyCodec(FrequencyCodecConfig())
         tokens = torch.randn(2, codec.seq_len, 6)

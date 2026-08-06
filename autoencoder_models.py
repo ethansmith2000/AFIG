@@ -27,6 +27,7 @@ class AutoencoderConfig:
     perceiver_width: int = 256
     perceiver_heads: int = 4
     ring_transformer_layers: int = 2
+    ring_block_causal: bool = False
     depth: int = 0  # 0 selects the minimum full-sequence receptive field
     kernel_size: int = 3
     group_size: int = 4
@@ -694,7 +695,7 @@ class CoordinateUnpooler(nn.Module):
 
 
 class SequentialRingEncoder(nn.Module):
-    """Block-causal coefficient encoder with bidirectional mixing inside sectors."""
+    """Block-causal coefficient encoder with configurable sector/ring blocks."""
 
     def __init__(
         self,
@@ -708,6 +709,7 @@ class SequentialRingEncoder(nn.Module):
         condition_dim: int,
         conditioning: str,
         conditioning_rank: int,
+        ring_block_causal: bool,
     ):
         super().__init__()
         self.layout = layout
@@ -745,7 +747,9 @@ class SequentialRingEncoder(nn.Module):
             nn.RMSNorm(width),
             nn.Linear(width, posterior_dim),
         )
-        token_sector = layout.token_latent
+        token_sector = (
+            layout.token_parent if ring_block_causal else layout.token_latent
+        )
         self.register_buffer(
             "block_causal_mask",
             token_sector[:, None] >= token_sector[None, :],
@@ -793,7 +797,7 @@ class SequentialRingEncoder(nn.Module):
 
 
 class SequentialRingDecoder(nn.Module):
-    """Causal sector-latent mixer and coordinate-conditioned coefficient decoder."""
+    """Sector- or ring-block latent mixer and coefficient decoder."""
 
     def __init__(
         self,
@@ -806,6 +810,7 @@ class SequentialRingDecoder(nn.Module):
         condition_dim: int,
         conditioning: str,
         conditioning_rank: int,
+        ring_block_causal: bool,
     ):
         super().__init__()
         self.layout = layout
@@ -836,14 +841,27 @@ class SequentialRingDecoder(nn.Module):
         )
         self.output = nn.Sequential(nn.RMSNorm(width), nn.Linear(width, token_dim))
         latent_ids = torch.arange(layout.num_latents)
+        latent_group = (
+            layout.latent_parent if ring_block_causal else latent_ids
+        )
         self.register_buffer(
             "latent_causal_mask",
-            latent_ids[:, None] >= latent_ids[None, :],
+            latent_group[:, None] >= latent_group[None, :],
             persistent=True,
+        )
+        coordinate_limit = (
+            layout.token_parent[:, None]
+            if ring_block_causal
+            else layout.token_latent[:, None]
+        )
+        latent_limit = (
+            layout.latent_parent[None, :]
+            if ring_block_causal
+            else latent_ids[None, :]
         )
         self.register_buffer(
             "coordinate_causal_mask",
-            latent_ids[None, :] <= layout.token_latent[:, None],
+            latent_limit <= coordinate_limit,
             persistent=True,
         )
 
@@ -959,6 +977,7 @@ class CausalFrequencyAutoencoder(nn.Module):
                 condition_dim,
                 config.group_conditioning,
                 config.conditioning_rank,
+                config.ring_block_causal,
             )
             self.ring_decoder = SequentialRingDecoder(
                 self.layout,
@@ -970,6 +989,7 @@ class CausalFrequencyAutoencoder(nn.Module):
                 condition_dim,
                 config.group_conditioning,
                 config.conditioning_rank,
+                config.ring_block_causal,
             )
             self.token_proj = None
             self.encoder = None

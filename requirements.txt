@@ -5,3 +5,4 @@ torch
 torchvision
 wandb
 datasets  # optional: local HuggingFace CIFAR arrow loading
+lpips==0.1.4  # optional: perceptual spatial-autoencoder objective
