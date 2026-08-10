@@ -14,7 +14,12 @@ from torchvision import transforms
 from torchvision.utils import save_image
 
 from live_evaluation import InceptionFeatures, StreamingMoments, _fid, _kid
-from progressive_tokenizer import JointFlowConfig, JointRectifiedFlow
+from progressive_tokenizer import (
+    AutoregressiveFlowConfig,
+    AutoregressiveRectifiedFlow,
+    JointFlowConfig,
+    JointRectifiedFlow,
+)
 from progressive_tokenizer.checkpoints import load_tokenizer_checkpoint
 
 
@@ -81,9 +86,17 @@ def main() -> None:
         raise ValueError("num_samples must be at least two")
     device = torch.device(args.device)
     payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    if payload.get("model_type") != "progressive_joint_rectified_flow":
-        raise ValueError("not a progressive joint-flow checkpoint")
-    model = JointRectifiedFlow(JointFlowConfig(**payload["model_config"]))
+    model_type = payload.get("model_type")
+    if model_type == "progressive_joint_rectified_flow":
+        model = JointRectifiedFlow(JointFlowConfig(**payload["model_config"]))
+        sample_method = "sample"
+    elif model_type == "progressive_autoregressive_rectified_flow":
+        model = AutoregressiveRectifiedFlow(
+            AutoregressiveFlowConfig(**payload["model_config"])
+        )
+        sample_method = "generate"
+    else:
+        raise ValueError("not a supported progressive-token flow checkpoint")
     model.load_state_dict(payload["model"])
     model = model.to(device).eval()
     mean = payload["normalization"]["mean"].float().to(device)
@@ -112,12 +125,19 @@ def main() -> None:
     while generated < args.num_samples:
         current = min(args.batch_size, args.num_samples - generated)
         with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
-            standardized = model.sample(
-                current,
-                steps=args.sample_steps,
-                solver="heun",
-                generator=generator,
-            )
+            if sample_method == "sample":
+                standardized = model.sample(
+                    current,
+                    steps=args.sample_steps,
+                    solver="heun",
+                    generator=generator,
+                )
+            else:
+                standardized = model.generate(
+                    current,
+                    steps=args.sample_steps,
+                    generator=generator,
+                )
             raw_latents = standardized.float() * scale + mean
             decoded = tokenizer.decode(raw_latents).float()
         images = decoded.add(1.0).div(2.0)
@@ -142,6 +162,7 @@ def main() -> None:
     latent_variance = latent_square_sum / latent_count - latent_mean**2
     metrics = {
         "checkpoint_step": int(payload["step"]),
+        "model_type": model_type,
         "num_samples": generated,
         "sample_steps": args.sample_steps,
         "fid": _fid(
