@@ -133,3 +133,35 @@ v_target = z - epsilon.
 Training samples `t` uniformly and applies ordinary unweighted MSE. Sampling
 uses 50-step Heun integration. EMA, CFG, per-coordinate whitening, timestep
 weighting, and class conditioning are absent from the first control.
+
+The joint control improved monotonically but slowly: 5k/10k/15k/20k FID was
+`127.64 / 94.27 / 80.53 / 75.30`, with corresponding KID
+`0.1288 / 0.0882 / 0.0719 / 0.0654`. At 20k the decoded samples contain
+recognizable animals, vehicles, and outdoor layouts, establishing that the
+continuous latent is generatively viable. Its quality remains substantially
+behind the earlier pixel and patch-local controls, so modelability is not yet a
+solved property of the tokenizer.
+
+## Gate D: ordered autoregressive prior
+
+The causal baseline factorizes the learned sequence in its intended order. The
+trunk receives the exact shifted sequence
+
+```text
+input:  [BOS, z_1, ..., z_31]
+target: [z_1, z_2, ..., z_32].
+```
+
+Learned target-position embeddings identify which register each residual state
+must predict, while 1-D RoPE and QKNorm shape causal attention. No separate
+source-token metadata is added: the fixed one-step shift and target identity are
+sufficient. Unit tests perturb each target and verify that it cannot influence
+its own condition.
+
+The output distribution is a shared six-block conditional rectified-flow MLP.
+It concatenates the width-512 trunk state with the timestep embedding, passes
+them through a two-layer fusion MLP, and supplies the resulting condition to
+canonical AdaLN-Zero blocks. Training noises all 32 teacher-forced targets in
+parallel; inference generates one complete 64-D register at a time with 50-step
+Heun integration. The normalization, optimizer, flow path, lack of EMA, and
+flat loss weighting match Gate C.
