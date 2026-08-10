@@ -1,0 +1,25 @@
+{
+  "checkpoint": "/workspace/AFIG/latent_continuous_runs/joint-clean-ring-v2-modern-opt-lr1e4-b095-b0999-matrixwd-const-w768-l12-b256-s1-n20000/checkpoint_final.pt",
+  "checkpoint_step": 20000,
+  "samples": 5000,
+  "seed": 71001,
+  "inference_steps": 50,
+  "fid_5k": 187.5493337473523,
+  "kid_5k": 0.17762687802314758,
+  "latent_rms": 0.9991897943373794,
+  "clipping_fraction": 0.0,
+  "unclipped_min": 0.0,
+  "unclipped_max": 1.0,
+  "image_gradient_energy": 0.0075453217081725595,
+  "radial_power_relative_error": 0.19890150662139583,
+  "channel_mean": [
+    0.500150149117635,
+    0.49134377185196343,
+    0.455952539321589
+  ],
+  "channel_std": [
+    0.22889579531004695,
+    0.22752285377024628,
+    0.24458066791657593
+  ]
+}

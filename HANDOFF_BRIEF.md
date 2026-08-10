@@ -1,6 +1,6 @@
 # AFIG Handoff Brief
 
-Last updated: 2026-08-05. Repo: `/workspace/AFIG`.
+Last updated: 2026-08-06. Repo: `/workspace/AFIG`.
 Supersedes the 2026-07-30 brief (kept at `HANDOFF_BRIEF_20260730.md.bak`), several
 of whose central claims turned out to be wrong — see section 6.
 
@@ -768,6 +768,355 @@ automatically. The consolidated breakpoint is:
    the returned FFT velocity masked to the current ring. Sample target rings in
    proportion to active scalar count and add explicit ring identity. Do not run
    more normalization/depth/solver/polar variants of the failed static ring MLP.
+18. the exact `global_standardize` direct-Fourier native-recipe gate is complete.
+   Velocity and native `x0` converge to highly correlated non-semantic samples
+   (`0.972/0.971` fixed/fresh paired-grid correlation), but velocity is safer:
+   common 5k FID/KID is `122.98/0.10705` versus `149.01/0.13233`; `x0` has rare
+   endpoint excursions to `[-7.67,13.74]` and radial error `80.42`, versus
+   `[-1.11,2.10]` and `0.252`. The lower native `x0` loss does not rank
+   generation, and the tail difference is loss-confounded:
+   `MSE_x0=(1-t)^2 MSE_v` for equivalent predictions. Thus native `x0`
+   underweights near-data implied-velocity errors before the solver divides by
+   `1-t`. Keep velocity as the practical Cartesian baseline, but do not call it
+   intrinsically more stable from this pair alone. The `x0`-output/velocity-loss
+   control at `continuous_runs/ar_fft_globalstandardized_flow_x0v_s1_10000/` was
+   stopped by design at step 1,061 after establishing the optimization confound;
+   resolving it is deferred behind higher-value geometry/interface tests.
+   That control's initial loss/gradient norm is about `34.4/181`: it fixes the
+   relative timestep weighting, but a near-zero direct-`x0` initialization maps
+   to a large implied velocity near the endpoint and changes optimizer scale.
+   If resumed, normalize the matched weights by their population mean before
+   treating a negative control as intrinsic to the output coordinate.
+19. polar v3 is implemented as a velocity-only trunk/head interface matrix. It
+   removes radial-relative amplitude entirely: the factorized decoder and polar
+   trunk use the exact FFT of globally standardized pixels,
+   with one fitted log-amplitude affine (`epsilon=0.003`, mean/std
+   `-1.53959/1.24584`). It retains one atomic coefficient step, depth-6
+   amplitude then intrinsic-phase heads, Bernoulli self-conjugate signs,
+   amplitude-squared phase weighting, and a full-weight physical Cartesian loss.
+   Batch 32 x accumulation 4 gives effective batch 128. The amplitude-`x0` arm
+   was stopped at step 1,000. The live arms are full polar v3, standardized-polar
+   trunk plus Cartesian velocity head, and Cartesian trunk plus factorized
+   amplitude-velocity/intrinsic-phase head. Together with the completed
+   Cartesian velocity reference, these isolate trunk readability from decoder
+   geometry. Runs are under
+   `continuous_runs/ar_fft_polar_v3_{physical_ampv,polar_trunk_cart_head,cart_trunk_polar_head}_s1_10000/`.
+20. a one-pass conditional latent distribution generator has been recorded for
+   later rather than conflated with a VAE rebuild. At generation it is simply
+   `h -> p(z|h) -> D(h,z)`. Training needs a target-aware latent inference path,
+   an invertible likelihood, or a proper distribution-matching score; ordinary
+   MSE against an independent prior sample collapses the stochastic mapping.
+   This is a decoder-family fallback if iterative diffusion remains limiting,
+   not the next experiment.
+21. a held-out numerical audit of the 2.5k full-polar checkpoint is at
+   `diagnostics/polar_v3_numerics_2500/report_v3.json`. The realized objective is
+   `6.75%` amplitude, `19.20%` phase, `0.046%` sign, and `74.00%` reconstructed
+   Cartesian. Its total still assigns `75.83%` to radii 0--2. The standardized
+   log amplitude is healthy (mean/std `0.006/1.000`, range `[-3.43,4.50]`), but
+   pooled log amplitude is already nearly Gaussian and phase is already nearly
+   uniform, so scalar marginals closely match their base distributions. The
+   signal is mainly conditional dependence.
+22. the same audit found two actionable implementation differences. Xavier maps
+   the amplitude/phase noisy state to RMS `0.072/0.088`, versus trunk condition
+   `1.16/1.23`. LayerNorm/AdaLN prevents interpreting this as direct suppression,
+   but the raw-state skip begins much smaller; test the existing fan-in
+   `kaiming_linear` option plus explicit `x_t` sensitivity. Factorized
+   Cartesian loss also ignored requested `fixed_dim` reduction, making DC
+   `44.26%` of its target-energy measure instead of the exact-coordinate
+   `28.43%`. The code and regression test are fixed for future runs; all current
+   live arms retain the old objective. Amplitude and phase draw independent
+   times, so the old aggregate-loss-versus-amplitude-time dashboard is invalid.
+   Both heads already use `x_t` strongly. The original `0.155x`, correlation
+   `0.988` phase-condition result must not be read as amplitude-only: it
+   globally shuffled the complete `[target slot, completed amplitude]` vector
+   and pooled all 514 frequencies. The corrected held-out diagnostic keeps
+   slot, trunk state, noisy phase, time, and frequency fixed while shuffling
+   only completed amplitude between images. On the raw-amplitude 10k checkpoint
+   its token-count-pooled delta is only `0.059x` (correlation `0.998`,
+   phase-velocity MSE `+0.54%`), but radius 1 is
+   `0.372x/0.936/+13.2%` and radius 2 is `0.170x/0.986/+6.4%`; the first AR
+   decile is `0.176x` and the last is `0.002x`. Thus the phase head uses
+   amplitude selectively where the spectrum carries energy and nearly ignores
+   it in weak late bands. Do not globally strengthen this path based on the
+   misleading pooled audit. The report and reusable entry point are
+   `diagnostics/polar_v4_ampcoord_raw_10k/phase_amplitude_condition_by_frequency_b16.json`
+   and `diagnose_phase_amplitude_condition.py`. fp32 recomputation changes head
+   outputs by only `0.40%/0.36%` RMS, so bf16 arithmetic is not implicated.
+23. a 32-image output-gradient audit is at
+   `diagnostics/polar_v3_numerics_2500/gradient_allocation_b32.json`. Flat native
+   log-amplitude MSE alone puts only `4.45%` of its amplitude-head gradient
+   energy in radii 0--2, but the configured Cartesian-primary objective puts
+   `98.92%` there; phase/trunk equivalents are `95.63%/97.03%`. The current
+   aggregate update is therefore already overwhelmingly focused on strong early
+   frequencies. Its metric changes with time: the Cartesian-to-velocity
+   gradient vanishes with `(1-t)`, leaving flat relative log loss near the data
+   endpoint. That is the expected implicit weighting of an `x0` reconstruction
+   term, not evidence by itself of a late-time hole. Keep uniform time and
+   unweighted native velocity as the reference. If a normalized
+   physical/Jacobian native-velocity metric is tested, treat it as an ablation
+   rather than an assumed repair or another blanket radial weight.
+   Fixed-dimensional recomputation reallocates amplitude gradient from
+   `75.8% DC / 21.9% radius 1` to `35.0% / 57.6%`; the first three radii still
+   receive `98.8%`. The fix changes the strong-band allocation rather than the
+   overall concentration.
+24. the amplitude-coordinate screen is complete at
+   `diagnostics/amplitude_transform_screen/report.json`. It compares globally
+   standardized log/log1p, power `p={1/3,1/2,2/3,0.8}`, squared-log1p, and raw
+   decoder coordinates on 10,000 images. Ordinary
+   `log(a+0.003)` gives radii 0--2 only `8.28%` of the zero-predictor native
+   velocity measure but `76.01%` of inverse-Jacobian-squared mass.
+   `log1p(a)` changes those to `21.10%/45.02%`. The power ladder progressively
+   restores physical spread; its radii-0--2 zero-`x0` shares are
+   `30.8/43.3/56.9/67.4%`, reaching `80.2%` for raw. Heavy pooled tails are
+   monitored rather than rejected because much of the spread is a mixture of
+   known frequency slots. Squared log1p's inverse derivative is singular at
+   zero; this is not a claim that it is heavier-tailed than raw. A corrected
+   ordinary-log reference plus matched decoder-only `log1p(a)` and raw arms
+   completed at
+   `continuous_runs/ar_fft_polar_v4_ampcoord_{logeps_ref,log1p_tau1,raw}_s1_10000/`.
+   All retain velocity, uniform time, the physical Cartesian-primary loss, and
+   the old standardized-log polar trunk. New code independently fits decoder
+   and history amplitude statistics. Raw was stable and improves held-out
+   physical complex NRMSE to `0.3454`, versus `0.4376/0.4516` for log/log1p,
+   but all three 10k rollout panels remain texture/blob failures. The common 5k
+   evaluation reverses the teacher-forced ranking: log/log1p/raw FID is
+   `195.39/258.70/333.05` and KID is `0.12966/0.20806/0.30612`. Raw collapses
+   toward low-variance output (gradient energy `0.000226`) despite its better
+   coefficient NRMSE. This is direct evidence that local reconstruction is not
+   a promotion metric under broken rollout. Ordinary log remains the practical
+   grouped-decoder reference; `p=2/3` is only a fallback.
+   A separate raw frequency-source arm then completed. It sets
+   source std to each slot's post-global-standardization RMS
+   `sqrt(E[u_j^2])`, giving total marginal SNR one at `t=0.5` without
+   per-frequency data whitening. The real-data source-scale
+   min/median/p99/max is `0.210/0.292/4.190/14.731`. Under velocity prediction
+   this also changes the native target to `u-s_j*epsilon`; keep that coupling in
+   the interpretation. The source audit finds radii 0--2 move from `41.34%` of
+   unit-source zero-predictor velocity energy to `80.15%`, exactly their signal
+   power share; unit-source midpoint SNR has median/p99/max
+   `0.085/17.55/217.0`. See
+   `diagnostics/amplitude_frequency_source_audit/report.json`. Its 10k panel is
+   still nonsemantic and correlates `0.927` with the raw/unit-source fixed grid;
+   its final held-out clean/shuffled loss is `0.660/0.870`. Its directory is
+   `continuous_runs/ar_fft_polar_v4_ampcoord_raw_frequency_rms_s1_10000/`.
+25. factorized decoder condition fusion now has an opt-in `joint_mlp` control.
+   Concatenation followed by one linear map is algebraically the same as the
+   existing sum of separate time, trunk, and direct-condition projections; it
+   does not test additional interaction capacity. The implemented control uses
+   `y = t + h + c + MLP([t,h,c])`. Its last layer is zero-initialized, so the
+   initial function and every shared weight are exactly the additive baseline,
+   while the nonlinear residual can learn time-by-history-by-current-amplitude
+   interactions before each block's own AdaLN modulation. This addresses a
+   plausible conditioning bottleneck without claiming that a full-rank trunk
+   vector must literally reserve coordinates for other conditions. The matched
+   raw/unit-source arm completed at 10k and remains nonsemantic; its fixed grid
+   correlates `0.981` with the additive raw reference and final held-out
+   clean/shuffled loss is `0.587/0.772`. Treat global condition fusion as closed.
+   The arm is `raw_joint_condition` in
+   `scripts/run_fft_polar_v4_amplitude_transform_gate.sh`.
+26. the next token-composition separator is implemented as exact radial sectors,
+   not another AE-ring replay. Consecutive coefficients are packed in groups of
+   at most four without crossing a radius boundary: 514 coefficient steps become
+   134 AR steps. One amplitude flow jointly predicts 12 values and one intrinsic
+   phase flow jointly predicts 12 angular velocities; completed four-coefficient
+   bundles then enter polar trunk history atomically. Padding is masked, all
+   coefficients round-trip exactly, one physical coefficient still has one unit
+   of population loss measure, and every self-conjugate orbit remains intact.
+   This retains the better-rollout ordinary-log coordinate, global pixel/FFT
+   standardization, unit Gaussian source, physical Cartesian-primary loss,
+   additive conditioning, QKNorm, and 2-D fp32 RoPE. It differs from the failed
+   old 134 x 16/64 AE arms by removing the learned codec and denoising actual
+   neighboring physical coefficients jointly. CPU causality/round-trip/generation
+   tests and a bf16 GPU train step pass (`199 passed, 3 subtests passed`). The
+   launcher is `scripts/run_fft_polar_v5_radial_sector4.sh`.
+27. repeated conditional sampling resolves the raw/log/log1p metric conflict.
+   `diagnose_factorized_calibration.py` holds each true causal prefix fixed and
+   uses four draws plus a proper multivariate energy score. Log/log1p/raw score
+   `0.262/0.390/0.352`; their mean-amplitude ratios are
+   `0.940/0.799/0.217`. Raw is not a better calibrated head: it predicts DC but
+   collapses radius 2 onward to about `0.14--0.17x` amplitude. Log1p clamps
+   `35.84%` of endpoint amplitude channels to zero, collapses the middle AR
+   sequence, and explodes the final decile to `130x` power. Log has almost no
+   endpoint projection and preserves later-band amplitude, but overshoots DC to
+   `11.6x` power. Reports are in
+   `diagnostics/polar_v4_conditional_calibration/`. A screened
+   inverse-softplus decoder coordinate is logarithmic for weak amplitudes and
+   linear for strong ones. `tau=2` has `0.209%` Gaussian support mismatch and
+   restores radii-0--2 zero-`x0` allocation from log's `14.0%` to `30.7%`.
+   The matched decoder-only arm, with the same ordinary-log trunk, is queued as
+   `ar_fft_polar_v4_ampcoord_inverse_softplus_tau2_s1_10000`.
+28. the radial-sector-4 arm completed negative at 10k: every panel remains
+   nonsemantic colored texture. Packing four same-radius coefficients into one
+   wider token and jointly mixing their coordinates with static MLPs does not
+   repair composition. Do not spend next on group sizes 2/8 without changing
+   the within-group architecture. The inverse-softplus `tau=2` arm reached 5k
+   and removes endpoint projection (`0%`) while retaining `0.925x` mean
+   amplitude. Against ordinary log at the same 5k step, however, its normalized
+   energy score is slightly worse (`0.276` versus `0.265`), power is more
+   underdispersed (`0.491x` versus `0.839x`), and it develops a monotonic radial
+   tilt from `0.418x` power in AR decile 0 to `3.96x` in decile 9. Its 5k panel
+   is also nonsemantic. The interrupted interactive process is now resumed from
+   checkpoint 5000 under supervisor service `afig-inverse-softplus-tau2`. It
+   subsequently completed 10k and the final panel remains wholly nonsemantic.
+   There is no visual reversal of the 5k verdict. Stop this transform family;
+   `p=1/2` remains a bounded closure idea, not the next active experiment.
+29. the causal-ring/local-compute separator completed positive. It keeps
+   the exact compact FFT residual as state and initializes every shared weight
+   from the passing 30k C1 local denoiser. Per image, a target ring is sampled
+   proportional to its active scalar count; lower rings are data, the current
+   ring is on its linear flow path, and future rings are fixed Gaussian base.
+   Each call IFFTs the hybrid state, computes on aligned 4x4 residual/scaffold
+   patches, FFTs the velocity back, and masks loss/update to the current ring.
+   A zero-initialized learned ring condition preserves C1's exact initial
+   function. Future-target leakage, current-only updates, exact partitioning,
+   initialization, backward, and sampling are tested; all 206 tests and a
+   full-width real-data CPU/CUDA steps pass. The 10k run is at
+   `latent_continuous_runs/scaffold_fft_causal_ring_local_oracle_c4_s1_10000/`.
+   Every preview preserves recognizable objects. On 5,000 common samples,
+   untouched scaffold versus aligned completion FID/KID is
+   `37.33/0.03649 -> 23.56/0.01325`; the old static ring model was
+   `74.53/0.05963`. Shuffling only the scaffold condition under the same noise
+   worsens completion to `50.26/0.03738` and paired PSNR from `24.40` to
+   `23.50 dB`, proving productive aligned condition use. Joint local compute is
+   still stronger at 10k/30k FID `19.44/12.63`, measuring a causal/schedule
+   cost. Curiously, causal radial error is `1.654` while the broken static model
+   is `0.052`; do not rank models by spectrum marginals. This pass identifies
+   the static global ring-summary/MLP compute interface as the major C2 failure,
+   not FFT state or radial commitment. It remains oracle-scaffold-conditioned
+   and C1-initialized. Next test the same local-compute ring law on direct
+   globally standardized image FFT without an external scaffold; generated-C4
+   attachment is a secondary engineering check.
+30. a final audit prevents over-reading the old globally standardized AE result.
+   It removed FFT whitening but retained a two-layer sector-causal codec,
+   overcomplete 53 x 64 latents, redundant additive/FiLM/low-rank identity paths,
+   affine RMSNorm under conditional scale/shift, and KL `1e-4` whose weighted
+   contribution was 38% of image MSE. Its downstream test was joint diffusion,
+   not the best revised ring AR. The clean v2 reconstruction gate now combines
+   global FFT standardization with full-ring bidirectionality, six width-256
+   layers, affine-free LayerNorm/QKNorm, canonical AdaLN-Zero, one shared
+   `10 -> 1024 -> 256` metadata encoder, no low-rank/tanh or query-conditioning
+   branch, and direct Perceiver attention output followed by an MLP. Learned
+   queries guide selection but are not added to pooled values. KL is `1e-6`.
+   `group_conditioning=adaln_zero` leaves old checkpoints unchanged; all 209 tests
+   plus 3 subtests, a legacy load, and full-width bf16 batch-128 CUDA pass. The
+   launcher is `scripts/run_autoencoder_clean_ring_v2.sh`. Gate on reconstruction
+   and latent diagnostics before spending on a generator.
+31. the clean ring AE completed and passed that gate. Official CIFAR-10 test
+   reconstruction is `38.27 dB` with posterior means and `38.28 dB` with
+   posterior sampling; physical FFT NRMSE is `0.02267`. Its aggregate latent is
+   anisotropic (covariance condition about `1.21e4`), so the promoted interface
+   uses one tensor-wide population mean/std rather than per-coordinate
+   whitening. Under that interface, held-out causal-probe improvement is
+   `89.91%` token-wise and `87.05%` for ring summaries, a major reversal from
+   the old codec's roughly `10--14%`. The 10k matched 23-ring generator is live
+   as supervisor service `afig-clean-ring-v2-latent-afig`, writing to
+   `latent_continuous_runs/grouped-ring-clean-ring-v2-tensor-w768-l12-d6-s1-n10000/`.
+   Its prior architecture is intentionally unchanged; inspect free samples at
+   2.5k before believing the much easier teacher-forced objective.
+32. that prior completed negative at 10k. The fixed panels barely change from
+   2.5k through 10k and remain pseudo-textures; CFG 1.5/2.0 only adds contrast.
+   Fresh seed 54321 is equally nonsemantic. Final training velocity MSE is
+   `0.16495`; midpoint conditional/null clean-target MSE is `0.05878/0.08063`,
+   so conditioning is used under teacher forcing but does not survive rollout.
+   Final ring active MSE is front-loaded (`0.219/0.585/0.616` for rings 0--2,
+   about `0.038` for ring 22). This closes longer training, CFG, marginal latent
+   normalization, and another frozen static-summary ring prior as immediate
+   repairs. Keep the clean AE as a strong codec. Next give the denoiser direct
+   access to evolving current-ring/lower-ring states through rolling attention
+   or aligned local computation, or couple representation learning to the prior.
+33. CFG-1 was verified in code to be truly unguided: the sampler returns the
+   conditional network before constructing any unconditional prediction or norm
+   match. Only the displayed 1.5/2.0 arms are CFG-biased. Do not rerun the saved
+   checkpoint for a no-CFG inference control. The clean AE is now in a matched
+   joint full-sequence latent-flow gate with no CFG or context dropout at
+   `latent_continuous_runs/joint-clean-ring-v2-mean-tensor-rf-w768-l12-b256-s1-n10000/`
+   (`afig-clean-ring-v2-joint-latent`). This is the basic representation/flow
+   control before rolling causality. Audit shared architecture and training flow
+   after this result, then build rolling attention without CFG.
+34. the clean-codec joint gate completed negative at 10k. Independent panels at
+   2.5k, 5k, 7.5k, and 10k are all nonsemantic texture. Flow MSE improves from
+   `0.31097` to `0.26656` and generated latent RMS remains about one, so basic
+   scaling is not exploding, but coherent joint structure is absent. This rules
+   out BOS mismatch, AR exposure, or a static one-vector summary as the *sole*
+   cause. It does not retire the v2 codec: the deliberately old joint baseline
+   disables learned absolute position, RoPE, QKNorm, canonical AdaLN-Zero, and
+   EMA. Audit/positive-control the common joint path before reusing it for a
+   rolling model.
+35. a final 20k modern-joint gate is queued as supervisor service
+   `afig-clean-ring-v2-joint-modern-20k`. It jointly enables learned absolute
+   position through AdaLN, radius/angle RoPE, affine-free QKNorm, canonical
+   affine-free AdaLN-Zero residual blocks, and EMA `0.9999`. Raw and EMA previews
+   are paired at every gate. The new block mode is backward compatible; the old
+   10k checkpoint was explicitly reloaded and the full CPU suite passes (210
+   tests plus 3 subtests). Output is
+   `latent_continuous_runs/joint-clean-ring-v2-modern-posfilm-rope2d-qknorm-adalnzero-ema-w768-l12-b256-s1-n20000/`.
+36. EMA `0.9999` in item 35 was a short-run mistake. It retains about 78%/37%/14%
+   of step-zero weights at 2.5k/10k/20k and its panels are visibly stale and
+   over-energized. EMA never affected gradients or optimizer updates; paired raw
+   panels and raw model weights are intact and are the valid result. A launcher
+   plus checkpoint audit found no other completed AFIG run with EMA enabled.
+   Future short joint launches specify `0.999`; the sampler defaults to raw. A
+   64-image fresh raw seed-54321 sample remains nonsemantic with latent RMS
+   `0.9992`, so the modern joint path is negative independently of stale EMA.
+37. an optimizer audit found a real but bounded hygiene issue: the modern joint
+   run applied AdamW decay `0.02` to biases, learned absolute frequency tables,
+   and all one-dimensional parameters. The training path now offers a tested
+   `matrix_only` partition: matrices decay; biases/vectors/norms and learned
+   absolute position tables do not. The AdaLN modulation matrix still decays,
+   while its one-dimensional zero-initialized bias/gates do not. Optimizer betas,
+   grouping, and scheduler are serialized in checkpoints. Three no-EMA,
+   from-scratch 20k arms are live with 2k warmup then constant LR:
+   `(4e-4,.95,.999)`, `(1e-4,.95,.999)`, and `(4e-4,.95,.99)`. They are managed
+   by supervisor services `afig-joint-opt-lr4e4-b095-b0999`,
+   `afig-joint-opt-lr1e4-b095-b0999`, and
+   `afig-joint-opt-lr4e4-b095-b099`. Their shared launcher is
+   `scripts/run_clean_ring_v2_joint_optimizer_arm.sh`. The comparison among arms
+   is controlled; comparison to item 35 also changes decay grouping and LR
+   schedule, so a win requires a later attribution control.
+38. all three optimizer arms completed. A new shared evaluator
+   (`evaluate_joint_latent_diffusion.py`) used 5,000 samples, seed 71001, raw
+   weights, and 50-step Heun for the three arms plus the old modern checkpoint.
+   FID/KID is `168.63/0.15681` for `(4e-4,.95,.999)`, `187.55/0.17763` for
+   `(1e-4,.95,.999)`, `164.15/0.15150` for `(4e-4,.95,.99)`, and
+   `185.32/0.17275` for the previous model. The best final-1k training MSE is
+   also the `.99` arm (`0.25233` versus old `0.25854`). This is a modest real
+   optimization gain but a generative negative: every panel remains nonsemantic,
+   and matched 64-image grids correlate `0.987--0.994` with the old broken grid.
+   No arm clips after 2.5k. Retain matrix-only decay and prefer
+   `lr=4e-4, betas=(.95,.99)` if reusing this model, but stop generic optimizer
+   tuning as a rescue. Metrics/panels are under
+   `diagnostics/joint_optimizer_5k/`.
+39. a controlled z32 clean-ring-v2 experiment is active. It changes only AE
+   latent width from 64 to 32, reducing the exported state from 3,392 to 1,696
+   scalars while keeping the 53-token/ring layout and all clean-v2 training
+   choices fixed. Service `afig-clean-ring-v2-z32-ae` trains 30k; managed service
+   `afig-clean-ring-v2-z32-continuation` then measures official deterministic
+   CIFAR-10 reconstruction, rejects only a catastrophic result below 34 dB,
+   fits a tensor-wide interface, and launches matched z32 joint-20k and ring-
+   AR-10k services. The joint implementation previously asserted 64-D latent
+   tokens; it now derives sequence length and width from the frozen interface,
+   with a passing z32 forward/backward/sample regression test. Reconstruction is
+   the only substantive codec gate; do not promote probe/PCA heuristics to a
+   verdict. Output and launch details are in the z32 scripts under `scripts/`.
+   The AE has now completed. Official deterministic test reconstruction is
+   `33.06 dB` / `4.9669e-4` pixel MSE, materially below z64's `38.27 dB` but
+   visually still preserving object identity and composition. The user chose to
+   proceed, so the provisional 34 dB automation cutoff was overridden. The
+   tensor interface is fitted (`90.30%` token-probe, `85.29%` ring-probe
+   improvement; sanity only), and services `afig-clean-ring-v2-z32-joint` and
+   `afig-clean-ring-v2-z32-ar` are actively training the matched priors. The
+   continuation's initial failure was a watcher bug: `supervisorctl status`
+   returns nonzero for the desired `EXITED` state under `set -e`; this is fixed.
+   Both z32 priors subsequently completed negative. The 20k joint and 10k ring-
+   AR final-window losses are `0.30884` and `0.18648`, respectively, versus
+   matched z64 values `0.25233` and `0.16179`; fewer dimensions made both native
+   objectives harder. Every fixed and fresh-seed panel remains nonsemantic.
+   AR CFG-1 changes little after 2.5k (2.5k/10k grid correlation `0.9716`), even
+   though its midpoint conditional/null clean-target MSE is `0.05595/0.08326`,
+   a stronger teacher-forced context gain than z64. Joint fresh-seed latent RMS
+   is healthy (`0.99794`). This closes z64 overcompleteness and another width-only
+   sweep as the primary repair; do not run z16. Fresh panels are in
+   `diagnostics/clean_ring_v2_z32_final/`.
 
 Keep the deterministic C4 patch-DCT codec/generator as the practical baseline.
 All GPU launches must go through `/workspace/bin/gpu-claim` and follow

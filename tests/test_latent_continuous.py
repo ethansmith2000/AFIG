@@ -35,6 +35,7 @@ from train_latent_continuous import (  # noqa: E402
     load_latent_checkpoint,
     save_latent_checkpoint,
 )
+from train_joint_latent_diffusion import build_optimizer_parameters  # noqa: E402
 from train_ring_latent_continuous import (  # noqa: E402
     load_checkpoint as load_ring_checkpoint,
     save_checkpoint as save_ring_checkpoint,
@@ -478,6 +479,110 @@ class TestLatentContinuous(unittest.TestCase):
         )
         self.assertTrue(torch.equal(first, second))
         self.assertEqual(first.shape, (1, 53, 64))
+
+    def test_joint_diffusion_supports_32d_latents(self):
+        config = JointLatentDiffusionConfig(
+            sequence_length=53,
+            token_dim=32,
+            metadata_dim=self.adapter.position_features.shape[-1],
+            transformer=CausalTransformerConfig(
+                width=32,
+                num_layers=1,
+                num_heads=4,
+                ff_mult=2,
+                max_seq_len=53,
+            ),
+            num_train_timesteps=20,
+            num_inference_steps=1,
+        )
+        model = JointLatentDiffusionModel(config)
+        output = model(
+            torch.randn(2, 53, 32), self.adapter.position_features
+        )
+        output["loss"].backward()
+        self.assertTrue(torch.isfinite(output["loss"]))
+        self.assertIsNotNone(model.input_projection.weight.grad)
+        self.assertEqual(model.final_layer.linear.out_features, 32)
+        generated = model.eval().generate_latents(
+            1,
+            self.adapter.position_features,
+            generator=torch.Generator().manual_seed(5),
+        )
+        self.assertEqual(generated.shape, (1, 53, 32))
+
+    def test_modern_joint_blocks_are_affine_free_qknorm_adaln_zero(self):
+        config = JointLatentDiffusionConfig(
+            metadata_dim=11,
+            transformer=CausalTransformerConfig(
+                width=32,
+                num_layers=1,
+                num_heads=4,
+                ff_mult=2,
+                max_seq_len=53,
+                qk_norm=True,
+            ),
+            num_train_timesteps=20,
+            num_inference_steps=2,
+            position_embedding_film=True,
+            rope="radius_angle",
+            block_conditioning="adaln_zero",
+        )
+        model = JointLatentDiffusionModel(config)
+        block = model.layers[0]
+        self.assertFalse(block.attn.norm.elementwise_affine)
+        self.assertFalse(block.ff.norm.elementwise_affine)
+        self.assertIsInstance(block.attn.q_norm, torch.nn.LayerNorm)
+        self.assertFalse(block.attn.q_norm.elementwise_affine)
+        self.assertIsNotNone(block.adaln)
+
+        states = torch.randn(2, 53, 32)
+        condition = torch.randn_like(states)
+        rope = model._rope_tables(self.adapter.position_features)
+        transformed, _ = block(states, condition, rope=rope)
+        self.assertTrue(torch.equal(states, transformed))
+
+        output = model(torch.randn(2, 53, 64), self.adapter.position_features)
+        self.assertTrue(torch.isfinite(output["loss"]))
+        output["loss"].backward()
+        self.assertIsNotNone(model.final_layer.linear.weight.grad)
+
+    def test_joint_matrix_only_weight_decay_partition(self):
+        config = JointLatentDiffusionConfig(
+            metadata_dim=11,
+            transformer=CausalTransformerConfig(
+                width=32,
+                num_layers=1,
+                num_heads=4,
+                ff_mult=2,
+                max_seq_len=53,
+                qk_norm=True,
+            ),
+            position_embedding_film=True,
+            rope="radius_angle",
+            block_conditioning="adaln_zero",
+        )
+        model = JointLatentDiffusionModel(config)
+        groups, report = build_optimizer_parameters(model, 0.02, "matrix_only")
+        parameter_names = {id(parameter): name for name, parameter in model.named_parameters()}
+        grouped_names = [
+            parameter_names[id(parameter)]
+            for group in groups
+            for parameter in group["params"]
+        ]
+
+        self.assertEqual(len(grouped_names), len(set(grouped_names)))
+        self.assertEqual(set(grouped_names), set(parameter_names.values()))
+        self.assertEqual(groups[0]["weight_decay"], 0.02)
+        self.assertEqual(groups[1]["weight_decay"], 0.0)
+        self.assertIn("position_embedding_film", report["no_decay_names"])
+        self.assertIn("layers.0.adaln.net.1.bias", report["no_decay_names"])
+        self.assertIn("layers.0.adaln.net.1.weight", report["decay_names"])
+        self.assertTrue(
+            all(
+                not name.endswith(".bias")
+                for name in report["decay_names"]
+            )
+        )
 
     def test_causality_and_kv_cache_parity(self):
         model = _tiny_model().eval()

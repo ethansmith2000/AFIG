@@ -75,6 +75,37 @@ class TestSmoke(unittest.TestCase):
             8.0,
         )
 
+    def test_factorized_timestep_ema_keeps_independent_times_separate(self):
+        from train_continuous import FactorizedTimestepLossEMA
+
+        tracker = FactorizedTimestepLossEMA(
+            num_buckets=2, num_timesteps=10, decay=0.5
+        )
+        tracker.update(
+            {
+                "amplitude_timesteps": torch.tensor([0, 4, 5, 9]),
+                "phase_timesteps": torch.tensor([5, 9, 0, 4]),
+                "amplitude_per_example": torch.tensor([1.0, 3.0, 2.0, 4.0]),
+                "phase_per_example": torch.tensor([10.0, 30.0, 20.0, 40.0]),
+                "cartesian_per_example": torch.tensor([5.0, 7.0, 6.0, 8.0]),
+            }
+        )
+        logs = tracker.logs()
+        self.assertAlmostEqual(
+            logs["factorized_timestep_ema/amplitude_loss/bin_00"], 2.0
+        )
+        self.assertAlmostEqual(
+            logs["factorized_timestep_ema/phase_loss/bin_00"], 30.0
+        )
+        self.assertAlmostEqual(
+            logs["factorized_timestep_ema/cartesian_by_amplitude_time/bin_00"],
+            6.0,
+        )
+        self.assertAlmostEqual(
+            logs["factorized_timestep_ema/cartesian_by_phase_time/bin_00"],
+            7.0,
+        )
+
     def test_live_metric_math_is_finite(self):
         from live_evaluation import StreamingMoments, _fid, _kid
 

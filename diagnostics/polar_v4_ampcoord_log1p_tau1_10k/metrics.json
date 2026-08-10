@@ -1,0 +1,25 @@
+{
+  "checkpoint": "/workspace/AFIG/continuous_runs/ar_fft_polar_v4_ampcoord_log1p_tau1_s1_10000/checkpoint_10000.pt",
+  "step": 10000,
+  "prediction_type": "v_prediction",
+  "normalization": "global_standardize",
+  "num_inference_steps": 20,
+  "samples": 5000,
+  "metrics": {
+    "final/fid_5k": 258.6980966534718,
+    "final/kid_5k": 0.20806141197681427,
+    "final/clipping_fraction": 0.18889283854166666,
+    "final/unclipped_min": -5.2485270500183105,
+    "final/unclipped_max": 6.437849044799805,
+    "final/image_gradient_energy": 0.05898819657564163,
+    "final/radial_power_relative_error": 72.95841865415497,
+    "final/orbit_mean_rmse": 0.08972854167222977,
+    "final/orbit_covariance_rmse": 1.1660431623458862,
+    "final/channel_mean_r": 0.5434587713483041,
+    "final/channel_std_r": 0.40735600695390245,
+    "final/channel_mean_g": 0.5364781393682008,
+    "final/channel_std_g": 0.3277882597628434,
+    "final/channel_mean_b": 0.4852064372816963,
+    "final/channel_std_b": 0.4024317987011957
+  }
+}

@@ -1,0 +1,2266 @@
+{
+  "version": 1,
+  "checkpoint": "/workspace/AFIG/continuous_runs/ar_fft_polar_v3_physical_ampv_s1_10000/checkpoint_2500.pt",
+  "checkpoint_step": 2500,
+  "batch_size": 8,
+  "component_reduction": "active_mean",
+  "notes": "Shares are squared gradients with respect to the head outputs, not parameter-gradient shares. All component passes reuse identical data, flow times, and base noise. phase_native includes the sign weight, but the sign head has no gradient to the continuous phase output.",
+  "components": {
+    "amplitude_native": {
+      "weights": {
+        "amplitude": 1.0,
+        "phase_and_sign": 0.0,
+        "cartesian": 0.0
+      },
+      "loss": 0.6401219964027405,
+      "amplitude_output": {
+        "total_gradient_energy": 0.00020757380116265267,
+        "gradient_rms": 0.00012971764954272658,
+        "by_radius": [
+          {
+            "index": 0,
+            "count": 8,
+            "mean_gradient_energy": 8.6882124605836e-08,
+            "gradient_energy_share": 0.0033484813757240772
+          },
+          {
+            "index": 1,
+            "count": 32,
+            "mean_gradient_energy": 6.89674095610826e-08,
+            "gradient_energy_share": 0.010632156394422054
+          },
+          {
+            "index": 2,
+            "count": 64,
+            "mean_gradient_energy": 5.604136177339569e-08,
+            "gradient_energy_share": 0.017278900370001793
+          },
+          {
+            "index": 3,
+            "count": 80,
+            "mean_gradient_energy": 5.410767656144344e-08,
+            "gradient_energy_share": 0.020853374153375626
+          },
+          {
+            "index": 4,
+            "count": 96,
+            "mean_gradient_energy": 5.743740061348035e-08,
+            "gradient_energy_share": 0.02656400017440319
+          },
+          {
+            "index": 5,
+            "count": 160,
+            "mean_gradient_energy": 6.106181871246008e-08,
+            "gradient_energy_share": 0.0470670685172081
+          },
+          {
+            "index": 6,
+            "count": 144,
+            "mean_gradient_energy": 5.026684490871958e-08,
+            "gradient_energy_share": 0.034871574491262436
+          },
+          {
+            "index": 7,
+            "count": 192,
+            "mean_gradient_energy": 5.436583450091348e-08,
+            "gradient_energy_share": 0.05028688535094261
+          },
+          {
+            "index": 8,
+            "count": 224,
+            "mean_gradient_energy": 5.415458659285832e-08,
+            "gradient_energy_share": 0.05844006687402725
+          },
+          {
+            "index": 9,
+            "count": 224,
+            "mean_gradient_energy": 5.170346994987085e-08,
+            "gradient_energy_share": 0.05579498037695885
+          },
+          {
+            "index": 10,
+            "count": 272,
+            "mean_gradient_energy": 4.91581673145447e-08,
+            "gradient_energy_share": 0.06441574543714523
+          },
+          {
+            "index": 11,
+            "count": 256,
+            "mean_gradient_energy": 5.345768272491114e-08,
+            "gradient_energy_share": 0.06592915952205658
+          },
+          {
+            "index": 12,
+            "count": 320,
+            "mean_gradient_energy": 5.0333397894064547e-08,
+            "gradient_energy_share": 0.07759498804807663
+          },
+          {
+            "index": 13,
+            "count": 368,
+            "mean_gradient_energy": 5.607243380723048e-08,
+            "gradient_energy_share": 0.09940876811742783
+          },
+          {
+            "index": 14,
+            "count": 352,
+            "mean_gradient_energy": 4.748298465528933e-08,
+            "gradient_energy_share": 0.08052080869674683
+          },
+          {
+            "index": 15,
+            "count": 384,
+            "mean_gradient_energy": 4.3831647644765326e-08,
+            "gradient_energy_share": 0.08108611404895782
+          },
+          {
+            "index": 16,
+            "count": 304,
+            "mean_gradient_energy": 5.1678195944759864e-08,
+            "gradient_energy_share": 0.07568474858999252
+          },
+          {
+            "index": 17,
+            "count": 240,
+            "mean_gradient_energy": 3.565176598385733e-08,
+            "gradient_energy_share": 0.04122111573815346
+          },
+          {
+            "index": 18,
+            "count": 144,
+            "mean_gradient_energy": 4.6208938897507323e-08,
+            "gradient_energy_share": 0.03205648809671402
+          },
+          {
+            "index": 19,
+            "count": 128,
+            "mean_gradient_energy": 4.685237087187488e-08,
+            "gradient_energy_share": 0.02889142744243145
+          },
+          {
+            "index": 20,
+            "count": 64,
+            "mean_gradient_energy": 4.677738374425644e-08,
+            "gradient_energy_share": 0.014422593638300896
+          },
+          {
+            "index": 21,
+            "count": 48,
+            "mean_gradient_energy": 4.702043199245054e-08,
+            "gradient_energy_share": 0.01087314821779728
+          },
+          {
+            "index": 22,
+            "count": 8,
+            "mean_gradient_energy": 7.154483938620615e-08,
+            "gradient_energy_share": 0.002757374430075288
+          }
+        ],
+        "by_time": [
+          {
+            "index": 0,
+            "count": 423,
+            "mean_gradient_energy": 1.95800708979732e-08,
+            "gradient_energy_share": 0.03990084305405617
+          },
+          {
+            "index": 1,
+            "count": 445,
+            "mean_gradient_energy": 3.077861521205705e-08,
+            "gradient_energy_share": 0.06598368287086487
+          },
+          {
+            "index": 2,
+            "count": 427,
+            "mean_gradient_energy": 3.1786886012241666e-08,
+            "gradient_energy_share": 0.06538879871368408
+          },
+          {
+            "index": 3,
+            "count": 382,
+            "mean_gradient_energy": 4.1501849068481533e-08,
+            "gradient_energy_share": 0.07637623697519302
+          },
+          {
+            "index": 4,
+            "count": 390,
+            "mean_gradient_energy": 5.4275130167980024e-08,
+            "gradient_energy_share": 0.10197481513023376
+          },
+          {
+            "index": 5,
+            "count": 398,
+            "mean_gradient_energy": 5.123481727764556e-08,
+            "gradient_energy_share": 0.09823714196681976
+          },
+          {
+            "index": 6,
+            "count": 395,
+            "mean_gradient_energy": 6.614742886767999e-08,
+            "gradient_energy_share": 0.12587442994117737
+          },
+          {
+            "index": 7,
+            "count": 418,
+            "mean_gradient_energy": 6.65698749457988e-08,
+            "gradient_energy_share": 0.1340545266866684
+          },
+          {
+            "index": 8,
+            "count": 424,
+            "mean_gradient_energy": 7.36998373440656e-08,
+            "gradient_energy_share": 0.150542750954628
+          },
+          {
+            "index": 9,
+            "count": 410,
+            "mean_gradient_energy": 7.172270954924898e-08,
+            "gradient_energy_share": 0.14166676998138428
+          }
+        ]
+      },
+      "phase_output": {
+        "total_gradient_energy": 0.0,
+        "gradient_rms": 0.0,
+        "by_radius": [
+          {
+            "index": 0,
+            "count": 8,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 1,
+            "count": 32,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 2,
+            "count": 64,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 3,
+            "count": 80,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 4,
+            "count": 96,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 5,
+            "count": 160,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 6,
+            "count": 144,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 7,
+            "count": 192,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 8,
+            "count": 224,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 9,
+            "count": 224,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 10,
+            "count": 272,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 11,
+            "count": 256,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 12,
+            "count": 320,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 13,
+            "count": 368,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 14,
+            "count": 352,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 15,
+            "count": 384,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 16,
+            "count": 304,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 17,
+            "count": 240,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 18,
+            "count": 144,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 19,
+            "count": 128,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 20,
+            "count": 64,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 21,
+            "count": 48,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 22,
+            "count": 8,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          }
+        ],
+        "by_time": [
+          {
+            "index": 0,
+            "count": 401,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 1,
+            "count": 383,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 2,
+            "count": 435,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 3,
+            "count": 396,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 4,
+            "count": 411,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 5,
+            "count": 425,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 6,
+            "count": 426,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 7,
+            "count": 433,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 8,
+            "count": 385,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 9,
+            "count": 417,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          }
+        ]
+      },
+      "trunk_output": {
+        "total_gradient_energy": 1.1258374797762372e-05,
+        "gradient_rms": 1.8881247569879633e-06,
+        "by_radius": [
+          {
+            "index": 0,
+            "count": 8,
+            "mean_gradient_energy": 2.571257207151234e-09,
+            "gradient_energy_share": 0.0018270894652232528
+          },
+          {
+            "index": 1,
+            "count": 32,
+            "mean_gradient_energy": 3.0954163676710778e-09,
+            "gradient_energy_share": 0.008798190392553806
+          },
+          {
+            "index": 2,
+            "count": 64,
+            "mean_gradient_energy": 2.626110440218099e-09,
+            "gradient_energy_share": 0.014928537420928478
+          },
+          {
+            "index": 3,
+            "count": 80,
+            "mean_gradient_energy": 2.287596334582531e-09,
+            "gradient_energy_share": 0.016255250200629234
+          },
+          {
+            "index": 4,
+            "count": 96,
+            "mean_gradient_energy": 2.8102196125701084e-09,
+            "gradient_energy_share": 0.023962702602148056
+          },
+          {
+            "index": 5,
+            "count": 160,
+            "mean_gradient_energy": 2.7462794260912915e-09,
+            "gradient_energy_share": 0.03902914375066757
+          },
+          {
+            "index": 6,
+            "count": 144,
+            "mean_gradient_energy": 2.5727904251482414e-09,
+            "gradient_energy_share": 0.03290722146630287
+          },
+          {
+            "index": 7,
+            "count": 192,
+            "mean_gradient_energy": 3.0953750673745617e-09,
+            "gradient_energy_share": 0.05278843641281128
+          },
+          {
+            "index": 8,
+            "count": 224,
+            "mean_gradient_energy": 2.861682668608978e-09,
+            "gradient_energy_share": 0.05693689361214638
+          },
+          {
+            "index": 9,
+            "count": 224,
+            "mean_gradient_energy": 2.7715816308671037e-09,
+            "gradient_energy_share": 0.05514421686530113
+          },
+          {
+            "index": 10,
+            "count": 272,
+            "mean_gradient_energy": 2.7189273055228114e-09,
+            "gradient_energy_share": 0.06568872183561325
+          },
+          {
+            "index": 11,
+            "count": 256,
+            "mean_gradient_energy": 3.2116718173824665e-09,
+            "gradient_energy_share": 0.07302901148796082
+          },
+          {
+            "index": 12,
+            "count": 320,
+            "mean_gradient_energy": 2.7540452141039395e-09,
+            "gradient_energy_share": 0.07827901095151901
+          },
+          {
+            "index": 13,
+            "count": 368,
+            "mean_gradient_energy": 2.7982038908191953e-09,
+            "gradient_energy_share": 0.09146426618099213
+          },
+          {
+            "index": 14,
+            "count": 352,
+            "mean_gradient_energy": 2.614183314264551e-09,
+            "gradient_energy_share": 0.08173404633998871
+          },
+          {
+            "index": 15,
+            "count": 384,
+            "mean_gradient_energy": 2.5598345665400757e-09,
+            "gradient_energy_share": 0.08731068670749664
+          },
+          {
+            "index": 16,
+            "count": 304,
+            "mean_gradient_energy": 3.0680702423069306e-09,
+            "gradient_energy_share": 0.08284440636634827
+          },
+          {
+            "index": 17,
+            "count": 240,
+            "mean_gradient_energy": 2.1034256558749576e-09,
+            "gradient_energy_share": 0.04483969882130623
+          },
+          {
+            "index": 18,
+            "count": 144,
+            "mean_gradient_energy": 2.2689918832696776e-09,
+            "gradient_energy_share": 0.02902149222791195
+          },
+          {
+            "index": 19,
+            "count": 128,
+            "mean_gradient_energy": 3.1773268460710824e-09,
+            "gradient_energy_share": 0.03612402826547623
+          },
+          {
+            "index": 20,
+            "count": 64,
+            "mean_gradient_energy": 2.6874431569012813e-09,
+            "gradient_energy_share": 0.015277192927896976
+          },
+          {
+            "index": 21,
+            "count": 48,
+            "mean_gradient_energy": 2.1888364454270004e-09,
+            "gradient_energy_share": 0.009332087822258472
+          },
+          {
+            "index": 22,
+            "count": 8,
+            "mean_gradient_energy": 3.486806621211258e-09,
+            "gradient_energy_share": 0.002477662404999137
+          }
+        ]
+      }
+    },
+    "phase_native": {
+      "weights": {
+        "amplitude": 0.0,
+        "phase_and_sign": 1.0,
+        "cartesian": 0.0
+      },
+      "loss": 1.4585344791412354,
+      "amplitude_output": {
+        "total_gradient_energy": 0.0,
+        "gradient_rms": 0.0,
+        "by_radius": [
+          {
+            "index": 0,
+            "count": 8,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 1,
+            "count": 32,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 2,
+            "count": 64,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 3,
+            "count": 80,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 4,
+            "count": 96,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 5,
+            "count": 160,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 6,
+            "count": 144,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 7,
+            "count": 192,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 8,
+            "count": 224,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 9,
+            "count": 224,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 10,
+            "count": 272,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 11,
+            "count": 256,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 12,
+            "count": 320,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 13,
+            "count": 368,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 14,
+            "count": 352,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 15,
+            "count": 384,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 16,
+            "count": 304,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 17,
+            "count": 240,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 18,
+            "count": 144,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 19,
+            "count": 128,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 20,
+            "count": 64,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 21,
+            "count": 48,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 22,
+            "count": 8,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          }
+        ],
+        "by_time": [
+          {
+            "index": 0,
+            "count": 423,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 1,
+            "count": 445,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 2,
+            "count": 427,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 3,
+            "count": 382,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 4,
+            "count": 390,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 5,
+            "count": 398,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 6,
+            "count": 395,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 7,
+            "count": 418,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 8,
+            "count": 424,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 9,
+            "count": 410,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          }
+        ]
+      },
+      "phase_output": {
+        "total_gradient_energy": 0.03566553443670273,
+        "gradient_rms": 0.0017003455432131886,
+        "by_radius": [
+          {
+            "index": 0,
+            "count": 8,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 1,
+            "count": 32,
+            "mean_gradient_energy": 0.0009100546594709158,
+            "gradient_energy_share": 0.816523551940918
+          },
+          {
+            "index": 2,
+            "count": 64,
+            "mean_gradient_energy": 7.913501758594066e-05,
+            "gradient_energy_share": 0.14200378954410553
+          },
+          {
+            "index": 3,
+            "count": 80,
+            "mean_gradient_energy": 1.220888862007996e-05,
+            "gradient_energy_share": 0.02738529071211815
+          },
+          {
+            "index": 4,
+            "count": 96,
+            "mean_gradient_energy": 2.85431815427728e-06,
+            "gradient_energy_share": 0.0076828948222100735
+          },
+          {
+            "index": 5,
+            "count": 160,
+            "mean_gradient_energy": 8.233828339143656e-07,
+            "gradient_energy_share": 0.0036937971599400043
+          },
+          {
+            "index": 6,
+            "count": 144,
+            "mean_gradient_energy": 2.856112644167297e-07,
+            "gradient_energy_share": 0.001153158606030047
+          },
+          {
+            "index": 7,
+            "count": 192,
+            "mean_gradient_energy": 1.1000543054251466e-07,
+            "gradient_energy_share": 0.000592197582591325
+          },
+          {
+            "index": 8,
+            "count": 224,
+            "mean_gradient_energy": 1.1783828313127742e-07,
+            "gradient_energy_share": 0.0007400918984785676
+          },
+          {
+            "index": 9,
+            "count": 224,
+            "mean_gradient_energy": 1.528071358336547e-08,
+            "gradient_energy_share": 9.59716344368644e-05
+          },
+          {
+            "index": 10,
+            "count": 272,
+            "mean_gradient_energy": 6.767229887572057e-09,
+            "gradient_energy_share": 5.1609673391794786e-05
+          },
+          {
+            "index": 11,
+            "count": 256,
+            "mean_gradient_energy": 5.867734298448113e-09,
+            "gradient_energy_share": 4.2117411794606596e-05
+          },
+          {
+            "index": 12,
+            "count": 320,
+            "mean_gradient_energy": 2.295742485003416e-09,
+            "gradient_energy_share": 2.0597968614310957e-05
+          },
+          {
+            "index": 13,
+            "count": 368,
+            "mean_gradient_energy": 6.314089251446831e-10,
+            "gradient_energy_share": 6.514930191769963e-06
+          },
+          {
+            "index": 14,
+            "count": 352,
+            "mean_gradient_energy": 4.874185499659234e-10,
+            "gradient_energy_share": 4.810563495993847e-06
+          },
+          {
+            "index": 15,
+            "count": 384,
+            "mean_gradient_energy": 2.697105871973804e-10,
+            "gradient_energy_share": 2.9038922093604924e-06
+          },
+          {
+            "index": 16,
+            "count": 304,
+            "mean_gradient_energy": 5.76443337507726e-11,
+            "gradient_energy_share": 4.913392785965698e-07
+          },
+          {
+            "index": 17,
+            "count": 240,
+            "mean_gradient_energy": 1.61207974053168e-11,
+            "gradient_energy_share": 1.0847983844541886e-07
+          },
+          {
+            "index": 18,
+            "count": 144,
+            "mean_gradient_energy": 7.900648017755696e-12,
+            "gradient_energy_share": 3.189895636523943e-08
+          },
+          {
+            "index": 19,
+            "count": 128,
+            "mean_gradient_energy": 1.4342123409033514e-12,
+            "gradient_energy_share": 5.147243076208952e-09
+          },
+          {
+            "index": 20,
+            "count": 64,
+            "mean_gradient_energy": 9.74662191233211e-13,
+            "gradient_energy_share": 1.748982070282068e-09
+          },
+          {
+            "index": 21,
+            "count": 48,
+            "mean_gradient_energy": 6.369395028765767e-13,
+            "gradient_energy_share": 8.57216797545135e-10
+          },
+          {
+            "index": 22,
+            "count": 8,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          }
+        ],
+        "by_time": [
+          {
+            "index": 0,
+            "count": 401,
+            "mean_gradient_energy": 3.810954149230383e-05,
+            "gradient_energy_share": 0.42847880721092224
+          },
+          {
+            "index": 1,
+            "count": 383,
+            "mean_gradient_energy": 4.540179077139328e-07,
+            "gradient_energy_share": 0.004875543061643839
+          },
+          {
+            "index": 2,
+            "count": 435,
+            "mean_gradient_energy": 8.829280886857305e-06,
+            "gradient_energy_share": 0.10768763720989227
+          },
+          {
+            "index": 3,
+            "count": 396,
+            "mean_gradient_energy": 2.6447125947015593e-06,
+            "gradient_energy_share": 0.029364658519625664
+          },
+          {
+            "index": 4,
+            "count": 411,
+            "mean_gradient_energy": 2.3202870579552837e-05,
+            "gradient_energy_share": 0.2673836350440979
+          },
+          {
+            "index": 5,
+            "count": 425,
+            "mean_gradient_energy": 2.265704551973613e-06,
+            "gradient_energy_share": 0.026998737826943398
+          },
+          {
+            "index": 6,
+            "count": 426,
+            "mean_gradient_energy": 1.8509091432861169e-06,
+            "gradient_energy_share": 0.022107820957899094
+          },
+          {
+            "index": 7,
+            "count": 433,
+            "mean_gradient_energy": 4.066660949320067e-06,
+            "gradient_energy_share": 0.049371592700481415
+          },
+          {
+            "index": 8,
+            "count": 385,
+            "mean_gradient_energy": 5.1727065510931425e-06,
+            "gradient_energy_share": 0.05583799630403519
+          },
+          {
+            "index": 9,
+            "count": 417,
+            "mean_gradient_energy": 6.751214982614329e-07,
+            "gradient_energy_share": 0.00789349339902401
+          }
+        ]
+      },
+      "trunk_output": {
+        "total_gradient_energy": 0.005697788670659065,
+        "gradient_rms": 4.247623655828647e-05,
+        "by_radius": [
+          {
+            "index": 0,
+            "count": 8,
+            "mean_gradient_energy": 7.698014448109802e-11,
+            "gradient_energy_share": 1.0808423667185707e-07
+          },
+          {
+            "index": 1,
+            "count": 32,
+            "mean_gradient_energy": 0.000161899792146869,
+            "gradient_energy_share": 0.9092638492584229
+          },
+          {
+            "index": 2,
+            "count": 64,
+            "mean_gradient_energy": 6.896962986502331e-06,
+            "gradient_energy_share": 0.07746963948011398
+          },
+          {
+            "index": 3,
+            "count": 80,
+            "mean_gradient_energy": 5.548366743823863e-07,
+            "gradient_energy_share": 0.007790203206241131
+          },
+          {
+            "index": 4,
+            "count": 96,
+            "mean_gradient_energy": 1.689096507107024e-07,
+            "gradient_energy_share": 0.0028458982706069946
+          },
+          {
+            "index": 5,
+            "count": 160,
+            "mean_gradient_energy": 5.0625853731389725e-08,
+            "gradient_energy_share": 0.0014216280542314053
+          },
+          {
+            "index": 6,
+            "count": 144,
+            "mean_gradient_energy": 2.83886212315565e-08,
+            "gradient_energy_share": 0.0007174645434133708
+          },
+          {
+            "index": 7,
+            "count": 192,
+            "mean_gradient_energy": 7.708030658193366e-09,
+            "gradient_energy_share": 0.00025973969604820013
+          },
+          {
+            "index": 8,
+            "count": 224,
+            "mean_gradient_energy": 3.255636205068413e-09,
+            "gradient_energy_share": 0.00012799043906852603
+          },
+          {
+            "index": 9,
+            "count": 224,
+            "mean_gradient_energy": 1.3948251442741366e-09,
+            "gradient_energy_share": 5.483545101014897e-05
+          },
+          {
+            "index": 10,
+            "count": 272,
+            "mean_gradient_energy": 2.5113319757075203e-10,
+            "gradient_energy_share": 1.1988551705144346e-05
+          },
+          {
+            "index": 11,
+            "count": 256,
+            "mean_gradient_energy": 3.768604317500035e-10,
+            "gradient_energy_share": 1.693223020993173e-05
+          },
+          {
+            "index": 12,
+            "count": 320,
+            "mean_gradient_energy": 1.3977240198581597e-10,
+            "gradient_energy_share": 7.849916983104777e-06
+          },
+          {
+            "index": 13,
+            "count": 368,
+            "mean_gradient_energy": 4.16153014826115e-11,
+            "gradient_energy_share": 2.6877848995354725e-06
+          },
+          {
+            "index": 14,
+            "count": 352,
+            "mean_gradient_energy": 4.296888192478754e-11,
+            "gradient_energy_share": 2.6545467335381545e-06
+          },
+          {
+            "index": 15,
+            "count": 384,
+            "mean_gradient_energy": 2.069161508799766e-11,
+            "gradient_energy_share": 1.394502419316268e-06
+          },
+          {
+            "index": 16,
+            "count": 304,
+            "mean_gradient_energy": 4.9366791904370544e-11,
+            "gradient_energy_share": 2.6339173473388655e-06
+          },
+          {
+            "index": 17,
+            "count": 240,
+            "mean_gradient_energy": 9.95004859755122e-13,
+            "gradient_energy_share": 4.1911196291266606e-08
+          },
+          {
+            "index": 18,
+            "count": 144,
+            "mean_gradient_energy": 5.659802596209851e-13,
+            "gradient_energy_share": 1.4303997097897536e-08
+          },
+          {
+            "index": 19,
+            "count": 128,
+            "mean_gradient_energy": 3.4170821554269093e-13,
+            "gradient_energy_share": 7.676425717306756e-09
+          },
+          {
+            "index": 20,
+            "count": 64,
+            "mean_gradient_energy": 7.33180402783147e-14,
+            "gradient_energy_share": 8.235395698719117e-10
+          },
+          {
+            "index": 21,
+            "count": 48,
+            "mean_gradient_energy": 1.308866751960347e-13,
+            "gradient_energy_share": 1.1026313195827697e-09
+          },
+          {
+            "index": 22,
+            "count": 8,
+            "mean_gradient_energy": 1.820224304616147e-09,
+            "gradient_energy_share": 2.555692162786727e-06
+          }
+        ]
+      }
+    },
+    "cartesian_endpoint": {
+      "weights": {
+        "amplitude": 0.0,
+        "phase_and_sign": 0.0,
+        "cartesian": 1.0
+      },
+      "loss": 0.7334551811218262,
+      "amplitude_output": {
+        "total_gradient_energy": 0.0032968008890748024,
+        "gradient_rms": 0.0005169627256691456,
+        "by_radius": [
+          {
+            "index": 0,
+            "count": 8,
+            "mean_gradient_energy": 0.0003516821307130158,
+            "gradient_energy_share": 0.8533900380134583
+          },
+          {
+            "index": 1,
+            "count": 32,
+            "mean_gradient_energy": 1.4323070899990853e-05,
+            "gradient_energy_share": 0.13902516663074493
+          },
+          {
+            "index": 2,
+            "count": 64,
+            "mean_gradient_energy": 2.6312179102205846e-07,
+            "gradient_energy_share": 0.0051079196855425835
+          },
+          {
+            "index": 3,
+            "count": 80,
+            "mean_gradient_energy": 7.465948925755583e-08,
+            "gradient_energy_share": 0.0018116832943633199
+          },
+          {
+            "index": 4,
+            "count": 96,
+            "mean_gradient_energy": 9.574550929869474e-09,
+            "gradient_energy_share": 0.0002788026467896998
+          },
+          {
+            "index": 5,
+            "count": 160,
+            "mean_gradient_energy": 4.2041996550779e-09,
+            "gradient_energy_share": 0.00020403778762556612
+          },
+          {
+            "index": 6,
+            "count": 144,
+            "mean_gradient_energy": 1.3580538915647367e-09,
+            "gradient_energy_share": 5.9318037529010326e-05
+          },
+          {
+            "index": 7,
+            "count": 192,
+            "mean_gradient_energy": 5.458837826211038e-10,
+            "gradient_energy_share": 3.179132909281179e-05
+          },
+          {
+            "index": 8,
+            "count": 224,
+            "mean_gradient_energy": 4.6526130170754243e-10,
+            "gradient_energy_share": 3.161201675538905e-05
+          },
+          {
+            "index": 9,
+            "count": 224,
+            "mean_gradient_energy": 1.8484075381408616e-10,
+            "gradient_energy_share": 1.2558940397866536e-05
+          },
+          {
+            "index": 10,
+            "count": 272,
+            "mean_gradient_energy": 1.9634995018780188e-10,
+            "gradient_energy_share": 1.619969953026157e-05
+          },
+          {
+            "index": 11,
+            "count": 256,
+            "mean_gradient_energy": 2.3821919437061467e-10,
+            "gradient_energy_share": 1.849796717579011e-05
+          },
+          {
+            "index": 12,
+            "count": 320,
+            "mean_gradient_energy": 1.4026071970540954e-11,
+            "gradient_energy_share": 1.3614237559522735e-06
+          },
+          {
+            "index": 13,
+            "count": 368,
+            "mean_gradient_energy": 3.508407800389968e-11,
+            "gradient_energy_share": 3.9162023313110694e-06
+          },
+          {
+            "index": 14,
+            "count": 352,
+            "mean_gradient_energy": 9.161810199387332e-12,
+            "gradient_energy_share": 9.782080496734125e-07
+          },
+          {
+            "index": 15,
+            "count": 384,
+            "mean_gradient_energy": 4.227947852930569e-11,
+            "gradient_energy_share": 4.924567747366382e-06
+          },
+          {
+            "index": 16,
+            "count": 304,
+            "mean_gradient_energy": 1.3222162080495092e-11,
+            "gradient_energy_share": 1.2192234635222121e-06
+          },
+          {
+            "index": 17,
+            "count": 240,
+            "mean_gradient_energy": 1.714974597879712e-13,
+            "gradient_energy_share": 1.2484645317556442e-08
+          },
+          {
+            "index": 18,
+            "count": 144,
+            "mean_gradient_energy": 4.8712166841446275e-14,
+            "gradient_energy_share": 2.127684473052227e-09
+          },
+          {
+            "index": 19,
+            "count": 128,
+            "mean_gradient_energy": 1.520641319569145e-14,
+            "gradient_energy_share": 5.903968425258199e-10
+          },
+          {
+            "index": 20,
+            "count": 64,
+            "mean_gradient_energy": 4.453483243261561e-15,
+            "gradient_energy_share": 8.645439225629659e-11
+          },
+          {
+            "index": 21,
+            "count": 48,
+            "mean_gradient_energy": 3.306797991355949e-15,
+            "gradient_energy_share": 4.8145553516176776e-11
+          },
+          {
+            "index": 22,
+            "count": 8,
+            "mean_gradient_energy": 1.956633535012123e-16,
+            "gradient_energy_share": 4.747956585185453e-13
+          }
+        ],
+        "by_time": [
+          {
+            "index": 0,
+            "count": 423,
+            "mean_gradient_energy": 2.636898670971277e-06,
+            "gradient_energy_share": 0.3383304476737976
+          },
+          {
+            "index": 1,
+            "count": 445,
+            "mean_gradient_energy": 4.217499451897311e-07,
+            "gradient_energy_share": 0.056927528232336044
+          },
+          {
+            "index": 2,
+            "count": 427,
+            "mean_gradient_energy": 1.2559778106435715e-08,
+            "gradient_energy_share": 0.0016267362516373396
+          },
+          {
+            "index": 3,
+            "count": 382,
+            "mean_gradient_energy": 7.29983611336138e-08,
+            "gradient_energy_share": 0.008458312600851059
+          },
+          {
+            "index": 4,
+            "count": 390,
+            "mean_gradient_energy": 4.105862444703234e-06,
+            "gradient_energy_share": 0.48570916056632996
+          },
+          {
+            "index": 5,
+            "count": 398,
+            "mean_gradient_energy": 8.238498026003072e-07,
+            "gradient_energy_share": 0.09945769608020782
+          },
+          {
+            "index": 6,
+            "count": 395,
+            "mean_gradient_energy": 6.145646658239912e-09,
+            "gradient_energy_share": 0.0007363291224464774
+          },
+          {
+            "index": 7,
+            "count": 418,
+            "mean_gradient_energy": 6.785353434679564e-08,
+            "gradient_energy_share": 0.00860312208533287
+          },
+          {
+            "index": 8,
+            "count": 424,
+            "mean_gradient_energy": 1.1561703816553859e-09,
+            "gradient_energy_share": 0.00014869452570565045
+          },
+          {
+            "index": 9,
+            "count": 410,
+            "mean_gradient_energy": 1.6406367583932102e-11,
+            "gradient_energy_share": 2.040344952547457e-06
+          }
+        ]
+      },
+      "phase_output": {
+        "total_gradient_energy": 0.0002693721908144653,
+        "gradient_rms": 0.00014777100295759737,
+        "by_radius": [
+          {
+            "index": 0,
+            "count": 8,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 1,
+            "count": 32,
+            "mean_gradient_energy": 7.637208909727633e-06,
+            "gradient_energy_share": 0.9072602391242981
+          },
+          {
+            "index": 2,
+            "count": 64,
+            "mean_gradient_energy": 2.5266069769713795e-07,
+            "gradient_energy_share": 0.0600295253098011
+          },
+          {
+            "index": 3,
+            "count": 80,
+            "mean_gradient_energy": 7.665857282290744e-08,
+            "gradient_energy_share": 0.022766586393117905
+          },
+          {
+            "index": 4,
+            "count": 96,
+            "mean_gradient_energy": 1.7014675890436592e-08,
+            "gradient_energy_share": 0.006063762120902538
+          },
+          {
+            "index": 5,
+            "count": 160,
+            "mean_gradient_energy": 3.294110317852983e-09,
+            "gradient_energy_share": 0.001956614898517728
+          },
+          {
+            "index": 6,
+            "count": 144,
+            "mean_gradient_energy": 1.989144848835167e-09,
+            "gradient_energy_share": 0.0010633497731760144
+          },
+          {
+            "index": 7,
+            "count": 192,
+            "mean_gradient_energy": 6.300883703680427e-10,
+            "gradient_energy_share": 0.00044910708675161004
+          },
+          {
+            "index": 8,
+            "count": 224,
+            "mean_gradient_energy": 1.9873408474424537e-10,
+            "gradient_energy_share": 0.00016525994578842074
+          },
+          {
+            "index": 9,
+            "count": 224,
+            "mean_gradient_energy": 8.133627799056242e-11,
+            "gradient_energy_share": 6.763624696759507e-05
+          },
+          {
+            "index": 10,
+            "count": 272,
+            "mean_gradient_energy": 9.652068033716432e-11,
+            "gradient_energy_share": 9.746226714923978e-05
+          },
+          {
+            "index": 11,
+            "count": 256,
+            "mean_gradient_energy": 2.2130540455744807e-11,
+            "gradient_energy_share": 2.103193401126191e-05
+          },
+          {
+            "index": 12,
+            "count": 320,
+            "mean_gradient_energy": 3.179115651286146e-11,
+            "gradient_energy_share": 3.776622179429978e-05
+          },
+          {
+            "index": 13,
+            "count": 368,
+            "mean_gradient_energy": 8.395783200609852e-12,
+            "gradient_energy_share": 1.1469810488051735e-05
+          },
+          {
+            "index": 14,
+            "count": 352,
+            "mean_gradient_energy": 3.5152898387319498e-12,
+            "gradient_energy_share": 4.593577159539564e-06
+          },
+          {
+            "index": 15,
+            "count": 384,
+            "mean_gradient_energy": 3.5491475210147616e-12,
+            "gradient_energy_share": 5.0594403546710964e-06
+          },
+          {
+            "index": 16,
+            "count": 304,
+            "mean_gradient_energy": 4.5285842675650556e-13,
+            "gradient_energy_share": 5.110733809488011e-07
+          },
+          {
+            "index": 17,
+            "count": 240,
+            "mean_gradient_energy": 1.0563049729610946e-13,
+            "gradient_energy_share": 9.411260037950342e-08
+          },
+          {
+            "index": 18,
+            "count": 144,
+            "mean_gradient_energy": 6.923892611598176e-14,
+            "gradient_energy_share": 3.701349271523213e-08
+          },
+          {
+            "index": 19,
+            "count": 128,
+            "mean_gradient_energy": 1.344456518364472e-14,
+            "gradient_energy_share": 6.388574558258142e-09
+          },
+          {
+            "index": 20,
+            "count": 64,
+            "mean_gradient_energy": 4.5869968115725204e-15,
+            "gradient_energy_share": 1.0898222324584594e-09
+          },
+          {
+            "index": 21,
+            "count": 48,
+            "mean_gradient_energy": 2.2547447426252447e-15,
+            "gradient_energy_share": 4.017777222031782e-10
+          },
+          {
+            "index": 22,
+            "count": 8,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          }
+        ],
+        "by_time": [
+          {
+            "index": 0,
+            "count": 401,
+            "mean_gradient_energy": 4.102963941932103e-07,
+            "gradient_energy_share": 0.6107863187789917
+          },
+          {
+            "index": 1,
+            "count": 383,
+            "mean_gradient_energy": 2.217510974844572e-08,
+            "gradient_energy_share": 0.03152911737561226
+          },
+          {
+            "index": 2,
+            "count": 435,
+            "mean_gradient_energy": 3.241902035711064e-08,
+            "gradient_energy_share": 0.05235237255692482
+          },
+          {
+            "index": 3,
+            "count": 396,
+            "mean_gradient_energy": 2.478211591494528e-08,
+            "gradient_energy_share": 0.03643181547522545
+          },
+          {
+            "index": 4,
+            "count": 411,
+            "mean_gradient_energy": 1.5952595333601494e-07,
+            "gradient_energy_share": 0.24339991807937622
+          },
+          {
+            "index": 5,
+            "count": 425,
+            "mean_gradient_energy": 1.0545844197906717e-08,
+            "gradient_energy_share": 0.016638629138469696
+          },
+          {
+            "index": 6,
+            "count": 426,
+            "mean_gradient_energy": 3.5688423327684404e-09,
+            "gradient_energy_share": 0.005643963348120451
+          },
+          {
+            "index": 7,
+            "count": 433,
+            "mean_gradient_energy": 1.7845546151917802e-09,
+            "gradient_energy_share": 0.002868566894903779
+          },
+          {
+            "index": 8,
+            "count": 385,
+            "mean_gradient_energy": 2.426507050845572e-10,
+            "gradient_energy_share": 0.00034680834505707026
+          },
+          {
+            "index": 9,
+            "count": 417,
+            "mean_gradient_energy": 1.6360681255947473e-12,
+            "gradient_energy_share": 2.5327053663204424e-06
+          }
+        ]
+      },
+      "trunk_output": {
+        "total_gradient_energy": 0.00020296615548431873,
+        "gradient_rms": 8.01686655904632e-06,
+        "by_radius": [
+          {
+            "index": 0,
+            "count": 8,
+            "mean_gradient_energy": 1.759556653269101e-05,
+            "gradient_energy_share": 0.6935369968414307
+          },
+          {
+            "index": 1,
+            "count": 32,
+            "mean_gradient_energy": 1.8573234683572082e-06,
+            "gradient_energy_share": 0.29282888770103455
+          },
+          {
+            "index": 2,
+            "count": 64,
+            "mean_gradient_energy": 1.9804893724995054e-08,
+            "gradient_energy_share": 0.006244948599487543
+          },
+          {
+            "index": 3,
+            "count": 80,
+            "mean_gradient_energy": 9.47907530246539e-09,
+            "gradient_energy_share": 0.0037362189032137394
+          },
+          {
+            "index": 4,
+            "count": 96,
+            "mean_gradient_energy": 6.015155928906779e-09,
+            "gradient_energy_share": 0.002845080103725195
+          },
+          {
+            "index": 5,
+            "count": 160,
+            "mean_gradient_energy": 4.884267990057367e-10,
+            "gradient_energy_share": 0.00038503113319166005
+          },
+          {
+            "index": 6,
+            "count": 144,
+            "mean_gradient_energy": 2.0333831840524397e-10,
+            "gradient_energy_share": 0.00014426404959522188
+          },
+          {
+            "index": 7,
+            "count": 192,
+            "mean_gradient_energy": 1.0972427133548734e-10,
+            "gradient_energy_share": 0.00010379592276876792
+          },
+          {
+            "index": 8,
+            "count": 224,
+            "mean_gradient_energy": 6.209685543545618e-11,
+            "gradient_energy_share": 6.853209197288379e-05
+          },
+          {
+            "index": 9,
+            "count": 224,
+            "mean_gradient_energy": 3.332404491240837e-11,
+            "gradient_energy_share": 3.677748827612959e-05
+          },
+          {
+            "index": 10,
+            "count": 272,
+            "mean_gradient_energy": 1.4029982904617544e-11,
+            "gradient_energy_share": 1.880192940006964e-05
+          },
+          {
+            "index": 11,
+            "count": 256,
+            "mean_gradient_energy": 2.3873437948740417e-11,
+            "gradient_energy_share": 3.0111425076029263e-05
+          },
+          {
+            "index": 12,
+            "count": 320,
+            "mean_gradient_energy": 2.84928352613234e-12,
+            "gradient_energy_share": 4.492230345931603e-06
+          },
+          {
+            "index": 13,
+            "count": 368,
+            "mean_gradient_energy": 2.8094098228348408e-12,
+            "gradient_energy_share": 5.093769232189516e-06
+          },
+          {
+            "index": 14,
+            "count": 352,
+            "mean_gradient_energy": 1.0343753848243709e-12,
+            "gradient_energy_share": 1.7938958762897528e-06
+          },
+          {
+            "index": 15,
+            "count": 384,
+            "mean_gradient_energy": 3.069824342644134e-12,
+            "gradient_energy_share": 5.807926299894461e-06
+          },
+          {
+            "index": 16,
+            "count": 304,
+            "mean_gradient_energy": 2.2596148042952624e-12,
+            "gradient_energy_share": 3.3844210065581137e-06
+          },
+          {
+            "index": 17,
+            "count": 240,
+            "mean_gradient_energy": 2.7247235568597823e-14,
+            "gradient_energy_share": 3.221884981030598e-08
+          },
+          {
+            "index": 18,
+            "count": 144,
+            "mean_gradient_energy": 1.1554384903825383e-14,
+            "gradient_energy_share": 8.19758039227736e-09
+          },
+          {
+            "index": 19,
+            "count": 128,
+            "mean_gradient_energy": 5.335707021342489e-15,
+            "gradient_energy_share": 3.364947653849981e-09
+          },
+          {
+            "index": 20,
+            "count": 64,
+            "mean_gradient_energy": 1.5957112874096283e-15,
+            "gradient_energy_share": 5.031652872133918e-10
+          },
+          {
+            "index": 21,
+            "count": 48,
+            "mean_gradient_energy": 7.030976443790019e-16,
+            "gradient_energy_share": 1.662774085087193e-10
+          },
+          {
+            "index": 22,
+            "count": 8,
+            "mean_gradient_energy": 6.959886556713742e-16,
+            "gradient_energy_share": 2.7432698473939254e-11
+          }
+        ]
+      }
+    },
+    "configured_total": {
+      "weights": {
+        "amplitude": 0.1,
+        "phase_and_sign": 0.1,
+        "cartesian": 1.0
+      },
+      "loss": 0.9433208703994751,
+      "amplitude_output": {
+        "total_gradient_energy": 0.003298297757282853,
+        "gradient_rms": 0.0005170800141058862,
+        "by_radius": [
+          {
+            "index": 0,
+            "count": 8,
+            "mean_gradient_energy": 0.00035135343205183744,
+            "gradient_energy_share": 0.8522055149078369
+          },
+          {
+            "index": 1,
+            "count": 32,
+            "mean_gradient_energy": 1.4355739949678537e-05,
+            "gradient_energy_share": 0.13927902281284332
+          },
+          {
+            "index": 2,
+            "count": 64,
+            "mean_gradient_energy": 2.7044296757594566e-07,
+            "gradient_energy_share": 0.005247661378234625
+          },
+          {
+            "index": 3,
+            "count": 80,
+            "mean_gradient_energy": 7.72371322455001e-08,
+            "gradient_energy_share": 0.001873381668701768
+          },
+          {
+            "index": 4,
+            "count": 96,
+            "mean_gradient_energy": 1.093155610476515e-08,
+            "gradient_energy_share": 0.0003181729989591986
+          },
+          {
+            "index": 5,
+            "count": 160,
+            "mean_gradient_energy": 5.456168850059839e-09,
+            "gradient_energy_share": 0.00026467806310392916
+          },
+          {
+            "index": 6,
+            "count": 144,
+            "mean_gradient_energy": 2.1803592265001726e-09,
+            "gradient_energy_share": 9.519205195829272e-05
+          },
+          {
+            "index": 7,
+            "count": 192,
+            "mean_gradient_energy": 1.279667927178707e-09,
+            "gradient_energy_share": 7.449182885466143e-05
+          },
+          {
+            "index": 8,
+            "count": 224,
+            "mean_gradient_energy": 1.2385908965129033e-09,
+            "gradient_energy_share": 8.411743328906596e-05
+          },
+          {
+            "index": 9,
+            "count": 224,
+            "mean_gradient_energy": 8.193461464856e-10,
+            "gradient_energy_share": 5.564492312259972e-05
+          },
+          {
+            "index": 10,
+            "count": 272,
+            "mean_gradient_energy": 7.733001461396327e-10,
+            "gradient_energy_share": 6.377157842507586e-05
+          },
+          {
+            "index": 11,
+            "count": 256,
+            "mean_gradient_energy": 8.799944106741009e-10,
+            "gradient_energy_share": 6.830146594438702e-05
+          },
+          {
+            "index": 12,
+            "count": 320,
+            "mean_gradient_energy": 5.621957344104089e-10,
+            "gradient_energy_share": 5.454408164951019e-05
+          },
+          {
+            "index": 13,
+            "count": 368,
+            "mean_gradient_energy": 6.31495578051755e-10,
+            "gradient_energy_share": 7.045767415547743e-05
+          },
+          {
+            "index": 14,
+            "count": 352,
+            "mean_gradient_energy": 5.016818627190389e-10,
+            "gradient_energy_share": 5.354034874471836e-05
+          },
+          {
+            "index": 15,
+            "count": 384,
+            "mean_gradient_energy": 5.046472129066615e-10,
+            "gradient_energy_share": 5.8752892073243856e-05
+          },
+          {
+            "index": 16,
+            "count": 304,
+            "mean_gradient_energy": 5.467394315061824e-10,
+            "gradient_energy_share": 5.039229290559888e-05
+          },
+          {
+            "index": 17,
+            "count": 240,
+            "mean_gradient_energy": 3.5985903146240616e-10,
+            "gradient_energy_share": 2.6185072783846408e-05
+          },
+          {
+            "index": 18,
+            "count": 144,
+            "mean_gradient_energy": 4.635293537891272e-10,
+            "gradient_energy_share": 2.0237175704096444e-05
+          },
+          {
+            "index": 19,
+            "count": 128,
+            "mean_gradient_energy": 4.704850953274331e-10,
+            "gradient_energy_share": 1.8258537238580175e-05
+          },
+          {
+            "index": 20,
+            "count": 64,
+            "mean_gradient_energy": 4.686687704591463e-10,
+            "gradient_energy_share": 9.094024790101685e-06
+          },
+          {
+            "index": 21,
+            "count": 48,
+            "mean_gradient_energy": 4.70803118712837e-10,
+            "gradient_energy_share": 6.851579200883862e-06
+          },
+          {
+            "index": 22,
+            "count": 8,
+            "mean_gradient_energy": 7.168241555888244e-10,
+            "gradient_energy_share": 1.738652372296201e-06
+          }
+        ],
+        "by_time": [
+          {
+            "index": 0,
+            "count": 423,
+            "mean_gradient_energy": 2.6306604468118167e-06,
+            "gradient_energy_share": 0.3373768627643585
+          },
+          {
+            "index": 1,
+            "count": 445,
+            "mean_gradient_energy": 4.228207046708121e-07,
+            "gradient_energy_share": 0.057046160101890564
+          },
+          {
+            "index": 2,
+            "count": 427,
+            "mean_gradient_energy": 1.3229795037261738e-08,
+            "gradient_energy_share": 0.0017127387691289186
+          },
+          {
+            "index": 3,
+            "count": 382,
+            "mean_gradient_energy": 7.476661778582638e-08,
+            "gradient_energy_share": 0.008659268729388714
+          },
+          {
+            "index": 4,
+            "count": 390,
+            "mean_gradient_energy": 4.107363565708511e-06,
+            "gradient_energy_share": 0.4856662154197693
+          },
+          {
+            "index": 5,
+            "count": 398,
+            "mean_gradient_energy": 8.249700158557971e-07,
+            "gradient_energy_share": 0.09954773634672165
+          },
+          {
+            "index": 6,
+            "count": 395,
+            "mean_gradient_energy": 6.942655339514658e-09,
+            "gradient_energy_share": 0.0008314437000080943
+          },
+          {
+            "index": 7,
+            "count": 418,
+            "mean_gradient_energy": 6.940940266986217e-08,
+            "gradient_energy_share": 0.008796395733952522
+          },
+          {
+            "index": 8,
+            "count": 424,
+            "mean_gradient_energy": 2.1188206744682248e-09,
+            "gradient_energy_share": 0.000272376841166988
+          },
+          {
+            "index": 9,
+            "count": 410,
+            "mean_gradient_energy": 7.307907612386089e-10,
+            "gradient_energy_share": 9.084207704290748e-05
+          }
+        ]
+      },
+      "phase_output": {
+        "total_gradient_energy": 0.0006315151695162058,
+        "gradient_rms": 0.0002262584021082148,
+        "by_radius": [
+          {
+            "index": 0,
+            "count": 8,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          },
+          {
+            "index": 1,
+            "count": 32,
+            "mean_gradient_energy": 1.5400526535813697e-05,
+            "gradient_energy_share": 0.780372142791748
+          },
+          {
+            "index": 2,
+            "count": 64,
+            "mean_gradient_energy": 1.5388139900096576e-06,
+            "gradient_energy_share": 0.15594889223575592
+          },
+          {
+            "index": 3,
+            "count": 80,
+            "mean_gradient_energy": 3.5755530802816793e-07,
+            "gradient_energy_share": 0.04529491066932678
+          },
+          {
+            "index": 4,
+            "count": 96,
+            "mean_gradient_energy": 6.748680903001514e-08,
+            "gradient_energy_share": 0.010259031318128109
+          },
+          {
+            "index": 5,
+            "count": 160,
+            "mean_gradient_energy": 1.7840198651697392e-08,
+            "gradient_energy_share": 0.004519973415881395
+          },
+          {
+            "index": 6,
+            "count": 144,
+            "mean_gradient_energy": 8.097218007208085e-09,
+            "gradient_energy_share": 0.0018463521264493465
+          },
+          {
+            "index": 7,
+            "count": 192,
+            "mean_gradient_energy": 2.790462971802299e-09,
+            "gradient_energy_share": 0.0008483864367008209
+          },
+          {
+            "index": 8,
+            "count": 224,
+            "mean_gradient_energy": 1.5535893682638857e-09,
+            "gradient_energy_share": 0.000551061995793134
+          },
+          {
+            "index": 9,
+            "count": 224,
+            "mean_gradient_energy": 3.642668666703486e-10,
+            "gradient_energy_share": 0.00012920635344926268
+          },
+          {
+            "index": 10,
+            "count": 272,
+            "mean_gradient_energy": 2.459584758085498e-10,
+            "gradient_energy_share": 0.00010593681508908048
+          },
+          {
+            "index": 11,
+            "count": 256,
+            "mean_gradient_energy": 1.1629669449675362e-10,
+            "gradient_energy_share": 4.714368697023019e-05
+          },
+          {
+            "index": 12,
+            "count": 320,
+            "mean_gradient_energy": 9.249521287779672e-11,
+            "gradient_energy_share": 4.6868972276570275e-05
+          },
+          {
+            "index": 13,
+            "count": 368,
+            "mean_gradient_energy": 2.5267237954706978e-11,
+            "gradient_energy_share": 1.4723864296684042e-05
+          },
+          {
+            "index": 14,
+            "count": 352,
+            "mean_gradient_energy": 1.3514310330531298e-11,
+            "gradient_energy_share": 7.532735708082328e-06
+          },
+          {
+            "index": 15,
+            "count": 384,
+            "mean_gradient_energy": 1.1072874388229348e-11,
+            "gradient_energy_share": 6.732987458235584e-06
+          },
+          {
+            "index": 16,
+            "count": 304,
+            "mean_gradient_energy": 1.7971172510192202e-12,
+            "gradient_energy_share": 8.650998211123806e-07
+          },
+          {
+            "index": 17,
+            "count": 240,
+            "mean_gradient_energy": 4.2840907145576257e-13,
+            "gradient_energy_share": 1.6281187242839223e-07
+          },
+          {
+            "index": 18,
+            "count": 144,
+            "mean_gradient_energy": 2.6632355717461087e-13,
+            "gradient_energy_share": 6.072789915378962e-08
+          },
+          {
+            "index": 19,
+            "count": 128,
+            "mean_gradient_energy": 4.819059783384497e-14,
+            "gradient_energy_share": 9.76761427295969e-09
+          },
+          {
+            "index": 20,
+            "count": 64,
+            "mean_gradient_energy": 2.3484615267006445e-14,
+            "gradient_energy_share": 2.380014629821403e-09
+          },
+          {
+            "index": 21,
+            "count": 48,
+            "mean_gradient_energy": 1.3530275600544435e-14,
+            "gradient_energy_share": 1.0284048057584982e-09
+          },
+          {
+            "index": 22,
+            "count": 8,
+            "mean_gradient_energy": 0.0,
+            "gradient_energy_share": 0.0
+          }
+        ],
+        "by_time": [
+          {
+            "index": 0,
+            "count": 401,
+            "mean_gradient_energy": 2.153099956103688e-07,
+            "gradient_energy_share": 0.13671770691871643
+          },
+          {
+            "index": 1,
+            "count": 383,
+            "mean_gradient_energy": 4.435695188931277e-08,
+            "gradient_energy_share": 0.02690150961279869
+          },
+          {
+            "index": 2,
+            "count": 435,
+            "mean_gradient_energy": 1.7310195232767e-07,
+            "gradient_energy_share": 0.11923601478338242
+          },
+          {
+            "index": 3,
+            "count": 396,
+            "mean_gradient_energy": 1.0070841227616256e-07,
+            "gradient_energy_share": 0.063150554895401
+          },
+          {
+            "index": 4,
+            "count": 411,
+            "mean_gradient_energy": 7.761264555483649e-07,
+            "gradient_energy_share": 0.505115270614624
+          },
+          {
+            "index": 5,
+            "count": 425,
+            "mean_gradient_energy": 6.333926449997307e-08,
+            "gradient_energy_share": 0.04262635111808777
+          },
+          {
+            "index": 6,
+            "count": 426,
+            "mean_gradient_energy": 3.7794698926063575e-08,
+            "gradient_energy_share": 0.025495097041130066
+          },
+          {
+            "index": 7,
+            "count": 433,
+            "mean_gradient_energy": 5.886029441626306e-08,
+            "gradient_energy_share": 0.04035771265625954
+          },
+          {
+            "index": 8,
+            "count": 385,
+            "mean_gradient_energy": 5.874948882933495e-08,
+            "gradient_energy_share": 0.03581632673740387
+          },
+          {
+            "index": 9,
+            "count": 417,
+            "mean_gradient_energy": 6.9413519376837485e-09,
+            "gradient_energy_share": 0.004583490546792746
+          }
+        ]
+      },
+      "trunk_output": {
+        "total_gradient_energy": 0.00018034351523965597,
+        "gradient_rms": 7.556890068372013e-06,
+        "by_radius": [
+          {
+            "index": 0,
+            "count": 8,
+            "mean_gradient_energy": 1.7581913198227994e-05,
+            "gradient_energy_share": 0.7799299359321594
+          },
+          {
+            "index": 1,
+            "count": 32,
+            "mean_gradient_energy": 8.916783826862229e-07,
+            "gradient_energy_share": 0.158218652009964
+          },
+          {
+            "index": 2,
+            "count": 64,
+            "mean_gradient_energy": 1.1674839583974972e-07,
+            "gradient_energy_share": 0.04143147170543671
+          },
+          {
+            "index": 3,
+            "count": 80,
+            "mean_gradient_energy": 2.3513910818451222e-08,
+            "gradient_energy_share": 0.010430720634758472
+          },
+          {
+            "index": 4,
+            "count": 96,
+            "mean_gradient_energy": 1.2967403151264989e-08,
+            "gradient_energy_share": 0.006902774795889854
+          },
+          {
+            "index": 5,
+            "count": 160,
+            "mean_gradient_energy": 1.301074692428017e-09,
+            "gradient_energy_share": 0.0011543078580871224
+          },
+          {
+            "index": 6,
+            "count": 144,
+            "mean_gradient_energy": 8.023210984475782e-10,
+            "gradient_energy_share": 0.0006406342727132142
+          },
+          {
+            "index": 7,
+            "count": 192,
+            "mean_gradient_energy": 3.4827704609163845e-10,
+            "gradient_energy_share": 0.0003707878931891173
+          },
+          {
+            "index": 8,
+            "count": 224,
+            "mean_gradient_energy": 1.5341226899945326e-10,
+            "gradient_energy_share": 0.00019054939912166446
+          },
+          {
+            "index": 9,
+            "count": 224,
+            "mean_gradient_energy": 1.0763663571555782e-10,
+            "gradient_energy_share": 0.0001336926652584225
+          },
+          {
+            "index": 10,
+            "count": 272,
+            "mean_gradient_energy": 5.3775581210224743e-11,
+            "gradient_energy_share": 8.110609633149579e-05
+          },
+          {
+            "index": 11,
+            "count": 256,
+            "mean_gradient_energy": 7.257880407784967e-11,
+            "gradient_energy_share": 0.00010302657028660178
+          },
+          {
+            "index": 12,
+            "count": 320,
+            "mean_gradient_energy": 3.81825508710687e-11,
+            "gradient_energy_share": 6.775079236831516e-05
+          },
+          {
+            "index": 13,
+            "count": 368,
+            "mean_gradient_energy": 3.5089261357645896e-11,
+            "gradient_energy_share": 7.160140376072377e-05
+          },
+          {
+            "index": 14,
+            "count": 352,
+            "mean_gradient_energy": 2.976669605248006e-11,
+            "gradient_energy_share": 5.8099547459278256e-05
+          },
+          {
+            "index": 15,
+            "count": 384,
+            "mean_gradient_energy": 3.1587427118395794e-11,
+            "gradient_energy_share": 6.725815183017403e-05
+          },
+          {
+            "index": 16,
+            "count": 304,
+            "mean_gradient_energy": 3.5786911628532536e-11,
+            "gradient_energy_share": 6.0324990045046434e-05
+          },
+          {
+            "index": 17,
+            "count": 240,
+            "mean_gradient_energy": 2.1382352485832534e-11,
+            "gradient_energy_share": 2.8455497158574872e-05
+          },
+          {
+            "index": 18,
+            "count": 144,
+            "mean_gradient_energy": 2.2839993785161994e-11,
+            "gradient_energy_share": 1.8237191397929564e-05
+          },
+          {
+            "index": 19,
+            "count": 128,
+            "mean_gradient_energy": 3.199415385402027e-11,
+            "gradient_energy_share": 2.270806180604268e-05
+          },
+          {
+            "index": 20,
+            "count": 64,
+            "mean_gradient_energy": 2.6967254818099917e-11,
+            "gradient_energy_share": 9.570093425281812e-06
+          },
+          {
+            "index": 21,
+            "count": 48,
+            "mean_gradient_energy": 2.197732273945263e-11,
+            "gradient_energy_share": 5.849456101714168e-06
+          },
+          {
+            "index": 22,
+            "count": 8,
+            "mean_gradient_energy": 5.541376732476344e-11,
+            "gradient_energy_share": 2.4581429443060188e-06
+          }
+        ]
+      }
+    }
+  }
+}

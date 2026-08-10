@@ -30,7 +30,7 @@ from diffusers.optimization import get_scheduler
 from tqdm.auto import tqdm
 
 from diffusion_decoder import DiffusionDecoderConfig
-from factorized_polar_decoder import FactorizedPolarConfig
+from factorized_polar_decoder import FactorizedPolarConfig, transform_amplitude
 from frequency import FrequencyCodec, FrequencyCodecConfig
 from model_continuous import (
     ContinuousFFTDecoder,
@@ -225,6 +225,21 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     p.add_argument("--rope_base", type=float, default=10000.0)
     p.add_argument(
+        "--generation_grouping",
+        choices=["coefficient", "radial_sector"],
+        default="coefficient",
+        help=(
+            "Atomic AR unit: one compact coefficient or fixed-capacity sectors "
+            "that never cross an integer-radius ring."
+        ),
+    )
+    p.add_argument(
+        "--generation_group_size",
+        type=int,
+        default=1,
+        help="Maximum coefficients jointly denoised by each radial-sector step.",
+    )
+    p.add_argument(
         "--transformer-position-film",
         dest="transformer_position_film",
         action=argparse.BooleanOptionalAction,
@@ -244,6 +259,18 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     p.add_argument("--factorized_log_epsilon", type=float, default=1e-4)
     p.add_argument(
+        "--factorized_amplitude_transform",
+        choices=["log_eps", "log1p", "inverse_softplus", "power", "raw"],
+        default="log_eps",
+        help="Monotone physical-amplitude coordinate used only by the polar decoder.",
+    )
+    p.add_argument(
+        "--factorized_amplitude_transform_parameter",
+        type=float,
+        default=1.0,
+        help="Knee tau for log1p/inverse-softplus or exponent for power.",
+    )
+    p.add_argument(
         "--factorized_amplitude_standardization",
         choices=["none", "global", "channel"],
         default="none",
@@ -251,6 +278,24 @@ def parse_args(argv=None) -> argparse.Namespace:
             "Population standardization for log-relative amplitude coordinates. "
             "global preserves all frequency and RGB hierarchy with one affine map; "
             "channel fits one map per RGB channel across all frequencies."
+        ),
+    )
+    p.add_argument(
+        "--factorized_amplitude_source_scale",
+        choices=["unit", "frequency_rms"],
+        default="unit",
+        help=(
+            "Scale the amplitude flow's Gaussian source globally (unit) or by "
+            "the post-standardization RMS of each frequency/RGB coordinate."
+        ),
+    )
+    p.add_argument(
+        "--factorized_condition_fusion",
+        choices=["add", "joint_mlp"],
+        default="add",
+        help=(
+            "Fuse projected time/trunk/direct conditions additively or add a "
+            "zero-initialized nonlinear joint residual before decoder AdaLN."
         ),
     )
     p.add_argument("--factorized_amplitude_loss_weight", type=float, default=1.0)
@@ -267,6 +312,30 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     p.add_argument("--factorized_phase_sigma_min", type=float, default=0.01 * math.pi)
     p.add_argument("--factorized_phase_sigma_max", type=float, default=math.pi)
+    p.add_argument(
+        "--factorized_coordinate_mode",
+        choices=["relative_raw", "physical_standardized"],
+        default="relative_raw",
+        help=(
+            "Legacy radial-relative raw FFT amplitude or exact isometric FFT "
+            "coordinates of globally standardized pixels."
+        ),
+    )
+    p.add_argument(
+        "--factorized_amplitude_prediction_type",
+        choices=["v_prediction", "x0"],
+        default="v_prediction",
+    )
+    p.add_argument(
+        "--factorized_phase_weighting",
+        choices=["relative_gate", "physical_energy"],
+        default="relative_gate",
+    )
+    p.add_argument(
+        "--factorized_self_conjugate_sign",
+        choices=["phase", "bernoulli"],
+        default="phase",
+    )
     p.add_argument("--objective", type=str, default="ddpm", choices=["ddpm", "flow"])
     p.add_argument(
         "--rescale_betas_zero_snr",
@@ -351,7 +420,13 @@ def parse_args(argv=None) -> argparse.Namespace:
             "orbit_whiten",
             "orbit_standardize",
             "global_ecs",
+            "global_standardize",
         ],
+        help=(
+            "Coordinate affine. global_standardize subtracts one train-population "
+            "pixel mean, divides by one pixel standard deviation, and then uses "
+            "the exact isometric FFT packing without per-frequency whitening."
+        ),
     )
     p.add_argument(
         "--coordinate_packing",
@@ -401,6 +476,7 @@ def parse_args(argv=None) -> argparse.Namespace:
             "none",
             "log_amp_gated_phase",
             "standardized_log_amp_gated_phase",
+            "physical_standardized_log_amp_phase",
         ],
         help="Deterministic polar features fused into history embeddings (Cartesian diffusion targets unchanged).",
     )
@@ -410,6 +486,21 @@ def parse_args(argv=None) -> argparse.Namespace:
         default="add",
         help="Add polar features to Cartesian embeddings or replace Cartesian trunk input.",
     )
+    p.add_argument(
+        "--history_polar_amplitude_transform",
+        choices=[
+            "match_decoder",
+            "log_eps",
+            "log1p",
+            "inverse_softplus",
+            "power",
+            "raw",
+        ],
+        default="match_decoder",
+        help="Amplitude coordinate for polar trunk history; may differ from the decoder.",
+    )
+    p.add_argument("--history_polar_amplitude_transform_parameter", type=float, default=1.0)
+    p.add_argument("--history_polar_log_epsilon", type=float, default=1e-4)
     p.add_argument(
         "--history_cartesian_features",
         type=str,
@@ -611,6 +702,13 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
                 else args.history_polar_features
             ),
             fusion=getattr(args, "history_polar_fusion", "add"),
+            amplitude_transform=getattr(
+                args, "history_polar_amplitude_transform", "match_decoder"
+            ),
+            amplitude_transform_parameter=getattr(
+                args, "history_polar_amplitude_transform_parameter", 1.0
+            ),
+            log_epsilon=getattr(args, "history_polar_log_epsilon", 1e-4),
         ),
         history_features=HistoryFeatureConfig(
             cartesian_mode=args.history_cartesian_features,
@@ -620,8 +718,20 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
         factorized_polar=FactorizedPolarConfig(
             enabled=args.decoder_geometry == "factorized_polar",
             log_epsilon=args.factorized_log_epsilon,
+            amplitude_transform=getattr(
+                args, "factorized_amplitude_transform", "log_eps"
+            ),
+            amplitude_transform_parameter=getattr(
+                args, "factorized_amplitude_transform_parameter", 1.0
+            ),
             amplitude_standardization=getattr(
                 args, "factorized_amplitude_standardization", "none"
+            ),
+            amplitude_source_scale=getattr(
+                args, "factorized_amplitude_source_scale", "unit"
+            ),
+            condition_fusion=getattr(
+                args, "factorized_condition_fusion", "add"
             ),
             amplitude_loss_weight=args.factorized_amplitude_loss_weight,
             phase_loss_weight=args.factorized_phase_loss_weight,
@@ -633,13 +743,26 @@ def build_model_config(args: argparse.Namespace) -> ContinuousModelConfig:
             phase_process=args.factorized_phase_process,
             phase_sigma_min=args.factorized_phase_sigma_min,
             phase_sigma_max=args.factorized_phase_sigma_max,
+            coordinate_mode=getattr(
+                args, "factorized_coordinate_mode", "relative_raw"
+            ),
+            amplitude_prediction_type=getattr(
+                args, "factorized_amplitude_prediction_type", "v_prediction"
+            ),
+            phase_weighting=getattr(
+                args, "factorized_phase_weighting", "relative_gate"
+            ),
+            self_conjugate_sign=getattr(
+                args, "factorized_self_conjugate_sign", "phase"
+            ),
         ),
         generation=GenerationConfig(
             num_inference_steps=args.num_inference_steps,
             eta=0.0,
             temperature=1.0,
             cfg_enabled=False,
-            grouping="coefficient",
+            grouping=getattr(args, "generation_grouping", "coefficient"),
+            group_size=getattr(args, "generation_group_size", 1),
         ),
     )
 
@@ -916,13 +1039,24 @@ def _fit_factorized_amplitude_stats(
     *,
     log_epsilon: float,
     scope: str,
+    coordinate_mode: str = "relative_raw",
+    amplitude_transform: str = "log_eps",
+    amplitude_transform_parameter: float = 1.0,
     max_batches: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Fit log-amplitude moments without equalizing individual frequencies."""
+    """Fit amplitude-coordinate moments without equalizing frequencies."""
     if scope not in ("global", "channel"):
         raise ValueError("factorized amplitude scope must be global or channel")
+    if coordinate_mode not in ("relative_raw", "physical_standardized"):
+        raise ValueError(f"Unknown factorized coordinate mode: {coordinate_mode}")
     positions = torch.arange(codec.seq_len, dtype=torch.long)
-    if codec.uses_orbit_statistics:
+    if coordinate_mode == "physical_standardized":
+        if codec.config.normalization != "global_standardize":
+            raise ValueError(
+                "physical_standardized amplitude fitting requires global_standardize"
+            )
+        amplitude_scale = torch.ones(codec.seq_len, 3, dtype=torch.double)
+    elif codec.uses_orbit_statistics:
         rms = codec.orbit_uncentered_rms()[positions, :3]
         imag_active = codec.component_mask[positions, 3:]
         amplitude_scale = rms * torch.sqrt(1.0 + imag_active)
@@ -933,18 +1067,29 @@ def _fit_factorized_amplitude_stats(
     total = torch.zeros(1 if scope == "global" else 3, dtype=torch.double)
     total_sq = torch.zeros_like(total)
     count = torch.zeros_like(total)
+    frequency_total = torch.zeros(codec.seq_len, 3, dtype=torch.double)
+    frequency_total_sq = torch.zeros_like(frequency_total)
     examples = 0
     for batch_index, batch in enumerate(loader):
         if max_batches is not None and batch_index >= max_batches:
             break
         images = batch[0] if isinstance(batch, (tuple, list)) else batch
         tokens = codec.encode(images)
-        raw = codec.normalized_to_raw_at(tokens, positions).double()
+        raw = (
+            tokens.double()
+            if coordinate_mode == "physical_standardized"
+            else codec.normalized_to_raw_at(tokens, positions).double()
+        )
         amplitude = torch.sqrt(raw[..., :3].square() + raw[..., 3:].square())
-        coordinate = torch.log(
-            amplitude / amplitude_scale[None] + float(log_epsilon)
+        coordinate = transform_amplitude(
+            amplitude / amplitude_scale[None],
+            amplitude_transform,
+            log_epsilon=log_epsilon,
+            parameter=amplitude_transform_parameter,
         )
         examples += int(images.shape[0])
+        frequency_total += coordinate.sum(dim=0)
+        frequency_total_sq += coordinate.square().sum(dim=0)
         if scope == "global":
             total += coordinate.sum()
             total_sq += coordinate.square().sum()
@@ -961,13 +1106,31 @@ def _fit_factorized_amplitude_stats(
     if scope == "global":
         mean = mean.expand(3).clone()
         std = std.expand(3).clone()
+    frequency_mean = frequency_total / examples
+    frequency_second_moment = frequency_total_sq / examples
+    standardized_frequency_mean = (frequency_mean - mean[None]) / std[None]
+    standardized_frequency_second_moment = (
+        frequency_second_moment
+        - 2.0 * mean[None] * frequency_mean
+        + mean[None].square()
+    ) / std[None].square()
+    frequency_rms = standardized_frequency_second_moment.clamp_min(1e-12).sqrt()
+    frequency_variance = (
+        frequency_second_moment - frequency_mean.square()
+    ).clamp_min(1e-12) / std[None].square()
     return {
-        "version": 1,
+        "version": 4,
         "log_epsilon": float(log_epsilon),
+        "amplitude_transform": amplitude_transform,
+        "amplitude_transform_parameter": float(amplitude_transform_parameter),
         "scope": scope,
+        "coordinate_mode": coordinate_mode,
         "examples": examples,
         "mean": mean.float(),
         "std": std.float(),
+        "standardized_frequency_mean": standardized_frequency_mean.float(),
+        "standardized_frequency_std": frequency_variance.sqrt().float(),
+        "standardized_frequency_rms": frequency_rms.float(),
     }
 
 
@@ -977,47 +1140,147 @@ def fit_or_load_factorized_amplitude_stats(
     train_loader,
     codec: FrequencyCodec,
     config: ContinuousModelConfig,
-) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+) -> tuple[
+    Optional[torch.Tensor],
+    Optional[torch.Tensor],
+    Optional[torch.Tensor],
+    Optional[torch.Tensor],
+    Optional[torch.Tensor],
+]:
+    """Fit decoder and history coordinates, sharing stats only when identical."""
     scope = config.factorized_polar.amplitude_standardization
-    if not config.factorized_polar.enabled or scope == "none":
-        return None, None
-    path = os.path.join(args.output_dir, "amplitude_coordinate_stats.pt")
-    if accelerator.is_main_process and not os.path.isfile(path):
-        fit_loader = torch.utils.data.DataLoader(
-            train_loader.dataset,
-            batch_size=args.train_batch_size,
-            shuffle=False,
-            num_workers=args.dataloader_num_workers,
-        )
-        payload = _fit_factorized_amplitude_stats(
-            fit_loader,
-            codec,
-            log_epsilon=config.factorized_polar.log_epsilon,
-            scope=scope,
-            max_batches=8 if args.smoke else None,
-        )
-        torch.save(payload, path)
-        _log_info(
-            "Fitted amplitude-coordinate stats: "
-            f"scope={scope} epsilon={payload['log_epsilon']:g} "
-            f"examples={payload['examples']} mean={payload['mean'].tolist()} "
-            f"std={payload['std'].tolist()}"
-        )
-    accelerator.wait_for_everyone()
-    payload = torch.load(path, map_location="cpu", weights_only=False)
-    if payload.get("scope") != scope or not math.isclose(
-        float(payload.get("log_epsilon", -1.0)),
+    standardized_history = config.polar_history.enabled and config.polar_history.mode in (
+        "standardized_log_amp_gated_phase",
+        "physical_standardized_log_amp_phase",
+    )
+    if (not config.factorized_polar.enabled and not standardized_history) or scope == "none":
+        return None, None, None, None, None
+
+    decoder_spec = (
+        config.factorized_polar.amplitude_transform,
+        float(config.factorized_polar.amplitude_transform_parameter),
         float(config.factorized_polar.log_epsilon),
-        rel_tol=0.0,
-        abs_tol=1e-12,
-    ):
-        raise ValueError(
-            "Amplitude-coordinate stats do not match the requested scope/epsilon: "
-            f"path={path} saved=({payload.get('scope')}, "
-            f"{payload.get('log_epsilon')}) requested=({scope}, "
-            f"{config.factorized_polar.log_epsilon})"
+    )
+    if config.polar_history.amplitude_transform == "match_decoder":
+        history_spec = decoder_spec
+    else:
+        history_spec = (
+            config.polar_history.amplitude_transform,
+            float(config.polar_history.amplitude_transform_parameter),
+            float(config.polar_history.log_epsilon),
         )
-    return payload["mean"].float(), payload["std"].float()
+
+    def load_one(path: str, spec: tuple[str, float, float], label: str):
+        transform, parameter, log_epsilon = spec
+        if accelerator.is_main_process and not os.path.isfile(path):
+            fit_loader = torch.utils.data.DataLoader(
+                train_loader.dataset,
+                batch_size=args.train_batch_size,
+                shuffle=False,
+                num_workers=args.dataloader_num_workers,
+            )
+            payload = _fit_factorized_amplitude_stats(
+                fit_loader,
+                codec,
+                log_epsilon=log_epsilon,
+                scope=scope,
+                coordinate_mode=config.factorized_polar.coordinate_mode,
+                amplitude_transform=transform,
+                amplitude_transform_parameter=parameter,
+                max_batches=8 if args.smoke else None,
+            )
+            torch.save(payload, path)
+            _log_info(
+                f"Fitted {label} amplitude-coordinate stats: scope={scope} "
+                f"transform={transform} parameter={parameter:g} "
+                f"epsilon={log_epsilon:g} "
+                f"coordinate_mode={payload['coordinate_mode']} "
+                f"examples={payload['examples']} mean={payload['mean'].tolist()} "
+                f"std={payload['std'].tolist()}"
+            )
+        accelerator.wait_for_everyone()
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+        saved_coordinate_mode = payload.get("coordinate_mode", "relative_raw")
+        saved_transform = payload.get("amplitude_transform", "log_eps")
+        saved_parameter = float(payload.get("amplitude_transform_parameter", 1.0))
+        mismatched = (
+            payload.get("scope") != scope
+            or saved_coordinate_mode != config.factorized_polar.coordinate_mode
+            or saved_transform != transform
+            or not math.isclose(saved_parameter, parameter, rel_tol=0.0, abs_tol=1e-12)
+            or not math.isclose(
+                float(payload.get("log_epsilon", -1.0)),
+                log_epsilon,
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+        )
+        if mismatched:
+            raise ValueError(
+                f"{label} amplitude-coordinate stats mismatch: path={path} "
+                f"saved=({payload.get('scope')}, {saved_transform}, "
+                f"{saved_parameter}, {payload.get('log_epsilon')}, "
+                f"{saved_coordinate_mode}) requested=({scope}, {transform}, "
+                f"{parameter}, {log_epsilon}, "
+                f"{config.factorized_polar.coordinate_mode})"
+            )
+        return payload
+
+    decoder_needed = config.factorized_polar.enabled
+    history_needed = standardized_history
+    decoder_stats = (None, None)
+    decoder_source_rms = None
+    history_stats = (None, None)
+    shared = decoder_spec == history_spec
+    if decoder_needed:
+        decoder_payload = load_one(
+            os.path.join(args.output_dir, "amplitude_coordinate_stats.pt"),
+            decoder_spec,
+            "decoder",
+        )
+        decoder_stats = (
+            decoder_payload["mean"].float(),
+            decoder_payload["std"].float(),
+        )
+        if config.factorized_polar.amplitude_source_scale == "frequency_rms":
+            if "standardized_frequency_rms" not in decoder_payload:
+                raise ValueError(
+                    "frequency_rms source scaling requires v4 amplitude stats; "
+                    "remove the old amplitude_coordinate_stats.pt and refit"
+                )
+            decoder_source_rms = decoder_payload[
+                "standardized_frequency_rms"
+            ].float()
+            if accelerator.is_main_process:
+                flat_rms = decoder_source_rms.flatten()
+                quantiles = torch.quantile(
+                    flat_rms, torch.tensor([0.0, 0.5, 0.9, 0.99, 1.0])
+                )
+                _log_info(
+                    "Frequency/RGB amplitude source RMS after shared "
+                    "standardization: "
+                    f"min={quantiles[0].item():.4g} "
+                    f"p50={quantiles[1].item():.4g} "
+                    f"p90={quantiles[2].item():.4g} "
+                    f"p99={quantiles[3].item():.4g} "
+                    f"max={quantiles[4].item():.4g}"
+                )
+    if history_needed:
+        if decoder_needed and shared:
+            history_stats = decoder_stats
+        else:
+            history_path = os.path.join(
+                args.output_dir,
+                "amplitude_coordinate_stats.pt"
+                if not decoder_needed
+                else "history_amplitude_coordinate_stats.pt",
+            )
+            history_payload = load_one(history_path, history_spec, "history")
+            history_stats = (
+                history_payload["mean"].float(),
+                history_payload["std"].float(),
+            )
+    return (*decoder_stats, decoder_source_rms, *history_stats)
 
 
 def save_checkpoint(
@@ -1272,7 +1535,7 @@ def evaluate_spectral_panel(
         )
     if model.factorized_decoder is not None:
         all_positions = torch.arange(length, device=device)
-        raw = model.codec.normalized_to_raw_at(tokens, all_positions)
+        raw = model.factorized_cartesian_target(tokens, all_positions)
         log_amp, phase, _ = model.factorized_decoder.target_coordinates(
             raw, model.factorized_amplitude_scale(all_positions)[None]
         )
@@ -1433,6 +1696,81 @@ class TimestepLossEMA:
         return logs
 
 
+class FactorizedTimestepLossEMA:
+    """Separate amplitude/phase time diagnostics for the polar objective.
+
+    The two flows sample time independently, so assigning their aggregate loss
+    to either timestamp creates a physically meaningless curve.
+    """
+
+    metric_specs = (
+        ("amplitude_loss", "amplitude_timesteps", "amplitude_per_example"),
+        ("phase_loss", "phase_timesteps", "phase_per_example"),
+        (
+            "cartesian_by_amplitude_time",
+            "amplitude_timesteps",
+            "cartesian_per_example",
+        ),
+        ("cartesian_by_phase_time", "phase_timesteps", "cartesian_per_example"),
+    )
+
+    def __init__(self, num_buckets: int, num_timesteps: int, decay: float):
+        if num_buckets <= 0:
+            raise ValueError("num_buckets must be positive")
+        if num_timesteps <= 0:
+            raise ValueError("num_timesteps must be positive")
+        if not 0.0 <= decay < 1.0:
+            raise ValueError("EMA decay must be in [0, 1)")
+        self.num_buckets = num_buckets
+        self.num_timesteps = num_timesteps
+        self.decay = decay
+        self.ema: Optional[torch.Tensor] = None
+        self.initialized: Optional[torch.Tensor] = None
+
+    @torch.no_grad()
+    def update(self, out: Dict[str, torch.Tensor]) -> None:
+        means = []
+        counts = []
+        for _name, timestep_key, value_key in self.metric_specs:
+            bucketed, current_counts = _bucket_means(
+                out[timestep_key],
+                out[value_key],
+                num_buckets=self.num_buckets,
+                num_timesteps=self.num_timesteps,
+            )
+            means.append(bucketed)
+            counts.append(current_counts)
+        current = torch.stack(means)
+        current_counts = torch.stack(counts)
+        if self.ema is None:
+            self.ema = torch.zeros_like(current)
+            self.initialized = torch.zeros_like(current_counts, dtype=torch.bool)
+        assert self.initialized is not None
+        valid = current_counts > 0
+        continuing = valid & self.initialized
+        starting = valid & ~self.initialized
+        self.ema[continuing] = (
+            self.decay * self.ema[continuing]
+            + (1.0 - self.decay) * current[continuing]
+        )
+        self.ema[starting] = current[starting]
+        self.initialized |= valid
+
+    def logs(self) -> Dict[str, float]:
+        if self.ema is None or self.initialized is None:
+            return {}
+        logs: Dict[str, float] = {}
+        for metric_index, (metric_name, _timestep_key, _value_key) in enumerate(
+            self.metric_specs
+        ):
+            for bucket in range(self.num_buckets):
+                if bool(self.initialized[metric_index, bucket]):
+                    logs[
+                        f"factorized_timestep_ema/{metric_name}/bin_{bucket:02d}"
+                    ] = self.ema[metric_index, bucket].item()
+        return logs
+
+
 class CudaStepTimer:
     """Sparse CUDA-event timer that synchronizes only when a sample is reported."""
 
@@ -1500,7 +1838,13 @@ def main(args: Optional[argparse.Namespace] = None):
     )
     config = build_model_config(args)
     codec = fit_or_load_codec(args, accelerator, train_loader, config)
-    factorized_amplitude_mean, factorized_amplitude_std = (
+    (
+        factorized_amplitude_mean,
+        factorized_amplitude_std,
+        factorized_amplitude_source_rms,
+        history_amplitude_mean,
+        history_amplitude_std,
+    ) = (
         fit_or_load_factorized_amplitude_stats(
             args,
             accelerator,
@@ -1547,12 +1891,22 @@ def main(args: Optional[argparse.Namespace] = None):
             f"{args.factorized_cartesian_loss_weight:g}) "
             f"phase_gate={args.factorized_phase_gate:g} "
             f"predicted_amp_probability="
-            f"{args.factorized_phase_predicted_amplitude_probability:g}"
+            f"{args.factorized_phase_predicted_amplitude_probability:g} "
+            f"coordinate={args.factorized_coordinate_mode} "
+            f"amplitude_transform={args.factorized_amplitude_transform} "
+            f"transform_parameter={args.factorized_amplitude_transform_parameter:g} "
+            f"amplitude_prediction={args.factorized_amplitude_prediction_type} "
+            f"amplitude_source={args.factorized_amplitude_source_scale} "
+            f"condition_fusion={args.factorized_condition_fusion} "
+            f"phase_weighting={args.factorized_phase_weighting} "
+            f"self_sign={args.factorized_self_conjugate_sign}"
         )
         _log_info(
             f"Polar history features: {args.history_polar_features} "
             f"(enabled={args.history_polar_features != 'none'} "
-            f"fusion={args.history_polar_fusion})"
+            f"fusion={args.history_polar_fusion} "
+            f"amplitude_transform={args.history_polar_amplitude_transform} "
+            f"transform_parameter={args.history_polar_amplitude_transform_parameter:g})"
         )
         _log_info(
             f"Attention geometry: qk_norm={bool(args.qk_norm)} "
@@ -1579,6 +1933,9 @@ def main(args: Optional[argparse.Namespace] = None):
         codec=codec,
         factorized_amplitude_mean=factorized_amplitude_mean,
         factorized_amplitude_std=factorized_amplitude_std,
+        factorized_amplitude_source_rms=factorized_amplitude_source_rms,
+        history_amplitude_mean=history_amplitude_mean,
+        history_amplitude_std=history_amplitude_std,
     )
     if args.gradient_checkpointing:
         model.enable_gradient_checkpointing()
@@ -1735,7 +2092,11 @@ def main(args: Optional[argparse.Namespace] = None):
     benchmark_start = None
     benchmark_start_step = 0
     timestep_loss_ema = (
-        TimestepLossEMA(
+        (
+            FactorizedTimestepLossEMA
+            if config.factorized_polar.enabled
+            else TimestepLossEMA
+        )(
             num_buckets=args.timestep_histogram_bins,
             num_timesteps=config.diffusion.num_train_timesteps,
             decay=args.timestep_histogram_decay,
@@ -1956,6 +2317,7 @@ def main(args: Optional[argparse.Namespace] = None):
                     for key in (
                         "amplitude_flow_loss",
                         "phase_flow_loss",
+                        "self_conjugate_sign_loss",
                         "cartesian_reconstruction_loss",
                         "phase_predicted_amplitude_fraction",
                     ):
@@ -1973,13 +2335,37 @@ def main(args: Optional[argparse.Namespace] = None):
                         logs["output_gain/mean"] = gains.mean().item()
                         logs["output_gain/min"] = gains.min().item()
                         logs["output_gain/max"] = gains.max().item()
-                    logs.update(
-                        bucket_timestep_loss(
-                            out["timesteps"],
-                            out["per_example"],
-                            num_timesteps=config.diffusion.num_train_timesteps,
+                    if "amplitude_timesteps" in out:
+                        for label, timestep_key, value_key in (
+                            (
+                                "amplitude",
+                                "amplitude_timesteps",
+                                "amplitude_per_example",
+                            ),
+                            ("phase", "phase_timesteps", "phase_per_example"),
+                        ):
+                            component_logs = bucket_timestep_loss(
+                                out[timestep_key],
+                                out[value_key],
+                                num_timesteps=config.diffusion.num_train_timesteps,
+                            )
+                            logs.update(
+                                {
+                                    key.replace(
+                                        "loss/t_bucket_",
+                                        f"factorized/{label}_t_bucket_",
+                                    ): value
+                                    for key, value in component_logs.items()
+                                }
+                            )
+                    else:
+                        logs.update(
+                            bucket_timestep_loss(
+                                out["timesteps"],
+                                out["per_example"],
+                                num_timesteps=config.diffusion.num_train_timesteps,
+                            )
                         )
-                    )
                 if timestep_loss_ema is not None:
                     timestep_loss_ema.update(out)
                     if (

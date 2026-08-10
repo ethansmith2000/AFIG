@@ -1,0 +1,25 @@
+{
+  "checkpoint": "/workspace/AFIG/latent_continuous_runs/joint-clean-ring-v2-modern-posfilm-rope2d-qknorm-adalnzero-ema-w768-l12-b256-s1-n20000/checkpoint_final.pt",
+  "checkpoint_step": 20000,
+  "samples": 5000,
+  "seed": 71001,
+  "inference_steps": 50,
+  "fid_5k": 185.324768148178,
+  "kid_5k": 0.17275230586528778,
+  "latent_rms": 0.9992315197548944,
+  "clipping_fraction": 0.0,
+  "unclipped_min": 0.0,
+  "unclipped_max": 1.0,
+  "image_gradient_energy": 0.006842166346311569,
+  "radial_power_relative_error": 0.27249879595739296,
+  "channel_mean": [
+    0.4967841623262715,
+    0.48787849668071087,
+    0.45138680709679385
+  ],
+  "channel_std": [
+    0.22552318884262598,
+    0.2231045057516411,
+    0.2402276606753202
+  ]
+}

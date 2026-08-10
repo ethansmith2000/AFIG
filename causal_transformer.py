@@ -102,6 +102,19 @@ class ConditionalFiLM(nn.Module):
         return x * (1.0 + scale) + shift
 
 
+class AdaLNZeroModulation(nn.Module):
+    """Canonical zero-initialized modulation and residual gates."""
+
+    def __init__(self, width: int):
+        super().__init__()
+        self.net = nn.Sequential(nn.SiLU(), nn.Linear(width, 6 * width))
+        nn.init.zeros_(self.net[-1].weight)
+        nn.init.zeros_(self.net[-1].bias)
+
+    def forward(self, condition: torch.Tensor) -> Tuple[torch.Tensor, ...]:
+        return self.net(condition).chunk(6, dim=-1)
+
+
 class CausalSelfAttention(nn.Module):
     def __init__(
         self,
@@ -111,6 +124,7 @@ class CausalSelfAttention(nn.Module):
         conditional_film: bool = False,
         causal: bool = True,
         qk_norm: bool = False,
+        affine_free_layer_norm: bool = False,
     ):
         super().__init__()
         if width % num_heads:
@@ -119,19 +133,18 @@ class CausalSelfAttention(nn.Module):
         self.head_dim = width // num_heads
         self.dropout = dropout
         self.causal = causal
-        self.norm = nn.LayerNorm(width)
+        self.norm = nn.LayerNorm(
+            width, elementwise_affine=not affine_free_layer_norm
+        )
         self.conditional_film = ConditionalFiLM(width) if conditional_film else None
         self.qkv = nn.Linear(width, 3 * width, bias=False)
-        self.q_norm = (
-            nn.RMSNorm(self.head_dim, elementwise_affine=True)
-            if qk_norm
-            else None
+        norm_factory = (
+            lambda: nn.LayerNorm(self.head_dim, elementwise_affine=False)
+            if affine_free_layer_norm
+            else nn.RMSNorm(self.head_dim, elementwise_affine=True)
         )
-        self.k_norm = (
-            nn.RMSNorm(self.head_dim, elementwise_affine=True)
-            if qk_norm
-            else None
-        )
+        self.q_norm = norm_factory() if qk_norm else None
+        self.k_norm = norm_factory() if qk_norm else None
         self.out_proj = nn.Linear(width, width)
 
     def forward(
@@ -141,9 +154,11 @@ class CausalSelfAttention(nn.Module):
         kv_cache: Optional[KVCache] = None,
         use_cache: bool = False,
         rope: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        normalized_input: bool = False,
+        residual: bool = True,
     ) -> Tuple[torch.Tensor, Optional[KVCache]]:
         batch, length, _ = x.shape
-        hidden = self.norm(x)
+        hidden = x if normalized_input else self.norm(x)
         if self.conditional_film is not None:
             if condition is None:
                 raise ValueError("condition is required when metadata FiLM is enabled")
@@ -157,19 +172,24 @@ class CausalSelfAttention(nn.Module):
             # activation and fp32 weight to nn.RMSNorm disables the fused CUDA
             # path, so cast the small affine vector at use while preserving its
             # fp32 master parameter and gradient.
-            query = F.rms_norm(
-                query,
-                self.q_norm.normalized_shape,
-                self.q_norm.weight.to(query.dtype),
-                self.q_norm.eps,
-            )
-            assert self.k_norm is not None
-            key = F.rms_norm(
-                key,
-                self.k_norm.normalized_shape,
-                self.k_norm.weight.to(key.dtype),
-                self.k_norm.eps,
-            )
+            if isinstance(self.q_norm, nn.RMSNorm):
+                query = F.rms_norm(
+                    query,
+                    self.q_norm.normalized_shape,
+                    self.q_norm.weight.to(query.dtype),
+                    self.q_norm.eps,
+                )
+                assert isinstance(self.k_norm, nn.RMSNorm)
+                key = F.rms_norm(
+                    key,
+                    self.k_norm.normalized_shape,
+                    self.k_norm.weight.to(key.dtype),
+                    self.k_norm.eps,
+                )
+            else:
+                query = self.q_norm(query)
+                assert self.k_norm is not None
+                key = self.k_norm(key)
         if rope is not None:
             cos, sin = rope
             # With a KV cache only the newest token(s) are passed in, so the
@@ -190,7 +210,8 @@ class CausalSelfAttention(nn.Module):
             is_causal=self.causal and kv_cache is None and length > 1,
         )
         attention = attention.transpose(1, 2).contiguous().view(batch, length, -1)
-        return x + self.out_proj(attention), (key, value) if use_cache else None
+        output = self.out_proj(attention)
+        return (x + output if residual else output), (key, value) if use_cache else None
 
 
 class FeedForward(nn.Module):
@@ -200,9 +221,12 @@ class FeedForward(nn.Module):
         mult: int,
         dropout: float,
         conditional_film: bool = False,
+        affine_free_layer_norm: bool = False,
     ):
         super().__init__()
-        self.norm = nn.LayerNorm(width)
+        self.norm = nn.LayerNorm(
+            width, elementwise_affine=not affine_free_layer_norm
+        )
         self.conditional_film = ConditionalFiLM(width) if conditional_film else None
         self.net = nn.Sequential(
             nn.Linear(width, width * mult),
@@ -213,14 +237,19 @@ class FeedForward(nn.Module):
         )
 
     def forward(
-        self, x: torch.Tensor, condition: Optional[torch.Tensor] = None
+        self,
+        x: torch.Tensor,
+        condition: Optional[torch.Tensor] = None,
+        normalized_input: bool = False,
+        residual: bool = True,
     ) -> torch.Tensor:
-        hidden = self.norm(x)
+        hidden = x if normalized_input else self.norm(x)
         if self.conditional_film is not None:
             if condition is None:
                 raise ValueError("condition is required when metadata FiLM is enabled")
             hidden = self.conditional_film(hidden, condition)
-        return x + self.net(hidden)
+        output = self.net(hidden)
+        return x + output if residual else output
 
 
 class CausalTransformerBlock(nn.Module):
@@ -233,12 +262,29 @@ class CausalTransformerBlock(nn.Module):
         conditional_film: bool = False,
         causal: bool = True,
         qk_norm: bool = False,
+        adaln_zero: bool = False,
     ):
         super().__init__()
+        if adaln_zero and conditional_film:
+            raise ValueError("adaln_zero replaces conditional_film")
+        self.adaln_zero = adaln_zero
         self.attn = CausalSelfAttention(
-            width, num_heads, dropout, conditional_film, causal, qk_norm
+            width,
+            num_heads,
+            dropout,
+            conditional_film,
+            causal,
+            qk_norm,
+            affine_free_layer_norm=adaln_zero,
         )
-        self.ff = FeedForward(width, ff_mult, dropout, conditional_film)
+        self.ff = FeedForward(
+            width,
+            ff_mult,
+            dropout,
+            conditional_film,
+            affine_free_layer_norm=adaln_zero,
+        )
+        self.adaln = AdaLNZeroModulation(width) if adaln_zero else None
 
     def forward(
         self,
@@ -248,5 +294,33 @@ class CausalTransformerBlock(nn.Module):
         use_cache: bool = False,
         rope: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, Optional[KVCache]]:
+        if self.adaln_zero:
+            if condition is None or self.adaln is None:
+                raise ValueError("condition is required for AdaLN-Zero")
+            (
+                shift_attention,
+                scale_attention,
+                gate_attention,
+                shift_ffn,
+                scale_ffn,
+                gate_ffn,
+            ) = self.adaln(condition)
+            hidden = self.attn.norm(x)
+            hidden = hidden * (1.0 + scale_attention) + shift_attention
+            attention, new_cache = self.attn(
+                hidden,
+                kv_cache=kv_cache,
+                use_cache=use_cache,
+                rope=rope,
+                normalized_input=True,
+                residual=False,
+            )
+            x = x + gate_attention * attention
+            hidden = self.ff.norm(x)
+            hidden = hidden * (1.0 + scale_ffn) + shift_ffn
+            feed_forward = self.ff(
+                hidden, normalized_input=True, residual=False
+            )
+            return x + gate_ffn * feed_forward, new_cache
         x, new_cache = self.attn(x, condition, kv_cache, use_cache, rope)
         return self.ff(x, condition), new_cache

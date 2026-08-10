@@ -48,6 +48,7 @@ class JointLatentDiffusionConfig:
     # mixes ring with sector slot).
     rope: str = "none"  # none | sequence | radius_angle
     rope_base: float = 10000.0
+    block_conditioning: str = "legacy_film"  # legacy_film | adaln_zero
 
     def fingerprint(self) -> Dict[str, Any]:
         payload = asdict(self)
@@ -71,6 +72,7 @@ def joint_config_from_dict(payload: Dict[str, Any]) -> JointLatentDiffusionConfi
         timestep_sampling_alpha=float(payload.get("timestep_sampling_alpha", 0.0)),
         rope=str(payload.get("rope", "none")),
         rope_base=float(payload.get("rope_base", 10000.0)),
+        block_conditioning=str(payload.get("block_conditioning", "legacy_film")),
     )
 
 
@@ -81,14 +83,14 @@ class JointLatentDiffusionModel(nn.Module):
         super().__init__()
         self.config = config or JointLatentDiffusionConfig()
         cfg = self.config
-        if cfg.sequence_length != LATENT_SEQUENCE_LENGTH:
-            raise ValueError(f"Expected {LATENT_SEQUENCE_LENGTH} latent tokens")
-        if cfg.token_dim != LATENT_TOKEN_DIM:
-            raise ValueError(f"Expected {LATENT_TOKEN_DIM}-D latent tokens")
+        if cfg.sequence_length <= 0 or cfg.token_dim <= 0:
+            raise ValueError("sequence_length and token_dim must be positive")
         if cfg.transformer.max_seq_len < cfg.sequence_length:
             raise ValueError("Transformer max_seq_len is shorter than the latent sequence")
         if cfg.flow_solver not in ("euler", "heun"):
             raise ValueError("flow_solver must be euler or heun")
+        if cfg.block_conditioning not in ("legacy_film", "adaln_zero"):
+            raise ValueError("block_conditioning must be legacy_film or adaln_zero")
 
         width = cfg.transformer.width
         self.input_projection = nn.Linear(cfg.token_dim + cfg.metadata_dim, width)
@@ -100,8 +102,10 @@ class JointLatentDiffusionModel(nn.Module):
                     num_heads=cfg.transformer.num_heads,
                     ff_mult=cfg.transformer.ff_mult,
                     dropout=cfg.transformer.dropout,
-                    conditional_film=True,
+                    conditional_film=cfg.block_conditioning == "legacy_film",
                     causal=False,
+                    qk_norm=cfg.transformer.qk_norm,
+                    adaln_zero=cfg.block_conditioning == "adaln_zero",
                 )
                 for _ in range(cfg.transformer.num_layers)
             ]
@@ -176,7 +180,10 @@ class JointLatentDiffusionModel(nn.Module):
             self.config.sequence_length,
             self.config.token_dim,
         ):
-            raise ValueError("noisy_latents must be [B,53,64]")
+            raise ValueError(
+                "noisy_latents must be "
+                f"[B,{self.config.sequence_length},{self.config.token_dim}]"
+            )
         if flow_time.shape != (noisy_latents.shape[0],):
             raise ValueError("flow_time must be [B]")
         # Preserve the source coordinate precision for RoPE.  The metadata copy

@@ -1,0 +1,28 @@
+GPU_CLAIM_RUN index=1 uuid=GPU-fbb710c4-8e98-0a46-5208-5cfda9d95b85 owner=AFIG job=eval-polar-v4-logeps_ref-10k cmd=/venv/main/bin/python -u /workspace/AFIG/evaluate_continuous_checkpoint.py --checkpoint /workspace/AFIG/continuous_runs/ar_fft_polar_v4_ampcoord_logeps_ref_s1_10000/checkpoint_10000.pt --output_dir /workspace/AFIG/diagnostics/polar_v4_ampcoord_logeps_ref_10k --samples 5000 --batch_size 32 --num_inference_steps 20
+/venv/main/lib/python3.12/site-packages/torch/nn/functional.py:2954: UserWarning: Mismatch dtype between input and weight: input dtype = c10::BFloat16, weight dtype = float, Cannot dispatch to fused implementation. (Triggered internally at /pytorch/aten/src/ATen/native/layer_norm.cpp:344.)
+  return torch.rms_norm(input, normalized_shape, weight, eps)
+{
+  "checkpoint": "/workspace/AFIG/continuous_runs/ar_fft_polar_v4_ampcoord_logeps_ref_s1_10000/checkpoint_10000.pt",
+  "step": 10000,
+  "prediction_type": "v_prediction",
+  "normalization": "global_standardize",
+  "num_inference_steps": 20,
+  "samples": 5000,
+  "metrics": {
+    "final/fid_5k": 195.39284984801606,
+    "final/kid_5k": 0.12965969741344452,
+    "final/clipping_fraction": 0.25103502604166666,
+    "final/unclipped_min": -1.6397501230239868,
+    "final/unclipped_max": 3.09751033782959,
+    "final/image_gradient_energy": 0.0014366834331303836,
+    "final/radial_power_relative_error": 0.8707756866266082,
+    "final/orbit_mean_rmse": 0.16096244752407074,
+    "final/orbit_covariance_rmse": 2.3684535026550293,
+    "final/channel_mean_r": 0.6772068025578258,
+    "final/channel_std_r": 0.47680671879501624,
+    "final/channel_mean_g": 0.6410051908475555,
+    "final/channel_std_g": 0.43164878338220947,
+    "final/channel_mean_b": 0.5783074619812685,
+    "final/channel_std_b": 0.3842600705861508
+  }
+}

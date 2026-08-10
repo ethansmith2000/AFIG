@@ -354,6 +354,107 @@ class TestCausalFrequencyAutoencoder(unittest.TestCase):
                 coordinate_mask[ring_tokens[:, None], later_latents[None, :]].any()
             )
 
+    def test_clean_ring_v2_has_one_condition_path_and_affine_free_layernorm(self):
+        codec = _fitted_codec()
+        config = AutoencoderConfig(
+            **{
+                **self._config("causal_ring", variational=True).fingerprint(),
+                "group_conditioning": "adaln_zero",
+                "ring_block_causal": True,
+                "ring_transformer_layers": 2,
+                "perceiver_width": 24,
+            }
+        )
+        model = CausalFrequencyAutoencoder(
+            config, codec.position_metadata(), codec.component_mask
+        )
+
+        self.assertTrue(model.clean_ring_v2)
+        self.assertIsNone(model.position.proj)
+        self.assertIsNotNone(model.metadata_conditioner)
+        self.assertEqual(model.metadata_conditioner.net[0].in_features, 10)
+        self.assertEqual(model.metadata_conditioner.net[0].out_features, 4 * 24)
+        self.assertEqual(model.metadata_conditioner.net[-1].out_features, 24)
+        self.assertIsNone(model.ring_encoder.query_condition)
+        self.assertFalse(model.ring_encoder.pool_query_residual)
+        self.assertFalse(
+            any(
+                module.__class__.__name__ == "ConditionalAdapter"
+                for module in model.modules()
+            )
+        )
+        self.assertFalse(
+            any(isinstance(module, torch.nn.RMSNorm) for module in model.modules())
+        )
+        layer_norms = [
+            module for module in model.modules() if isinstance(module, torch.nn.LayerNorm)
+        ]
+        self.assertTrue(layer_norms)
+        self.assertTrue(
+            all(not module.elementwise_affine for module in layer_norms)
+        )
+        self.assertEqual(model.position().abs().max().item(), 0.0)
+
+    def test_clean_ring_v2_adaln_blocks_initialize_as_identity(self):
+        codec = _fitted_codec()
+        config = AutoencoderConfig(
+            **{
+                **self._config("causal_ring").fingerprint(),
+                "group_conditioning": "adaln_zero",
+                "ring_block_causal": True,
+                "perceiver_width": 24,
+            }
+        )
+        model = CausalFrequencyAutoencoder(
+            config, codec.position_metadata(), codec.component_mask
+        )
+        batch = 2
+        width = config.perceiver_width
+        states = torch.randn(batch, codec.seq_len, width)
+        token_condition = model.metadata_conditioner(model.token_condition)
+        token_condition = token_condition[None].expand(batch, -1, -1)
+        encoder_block = model.ring_encoder.blocks[0]
+        encoded = encoder_block(
+            states, token_condition, model.ring_encoder.block_causal_mask
+        )
+        self.assertTrue(torch.equal(encoded, states))
+
+        queries = torch.randn(batch, codec.seq_len, width)
+        latent_states = torch.randn(batch, model.exported_token_count, width)
+        cross_block = model.ring_decoder.coordinate_blocks[0]
+        decoded = cross_block(
+            queries,
+            latent_states,
+            token_condition,
+            model.ring_decoder.coordinate_causal_mask,
+        )
+        self.assertTrue(torch.equal(decoded, queries))
+
+    def test_clean_ring_v2_full_forward_backward_is_finite(self):
+        codec = _fitted_codec()
+        config = AutoencoderConfig(
+            **{
+                **self._config("causal_ring", variational=True).fingerprint(),
+                "group_conditioning": "adaln_zero",
+                "ring_block_causal": True,
+                "ring_transformer_layers": 2,
+                "perceiver_width": 24,
+            }
+        )
+        model = CausalFrequencyAutoencoder(
+            config, codec.position_metadata(), codec.component_mask
+        )
+        tokens = codec.encode(torch.rand(2, 3, 8, 8))
+        output = model(tokens, sample_posterior=True)
+        loss = output["reconstruction"].square().mean()
+        loss = loss + 1e-6 * output["kl_per_dim"].mean()
+        loss.backward()
+        self.assertTrue(torch.isfinite(loss))
+        self.assertIsNotNone(model.ring_decoder.output[-1].weight.grad)
+        self.assertIsNotNone(
+            model.ring_decoder.coordinate_blocks[0].adaln.net[-1].weight.grad
+        )
+
     def test_tcn_full_streaming_parity(self):
         torch.manual_seed(7)
         model = CausalTCN(width=16, depth=4, kernel_size=3).eval()

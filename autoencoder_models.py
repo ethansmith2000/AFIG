@@ -339,7 +339,13 @@ class CausalTCN(nn.Module):
 
 
 class PositionFeatures(nn.Module):
-    def __init__(self, metadata: Dict[str, torch.Tensor], width: int):
+    def __init__(
+        self,
+        metadata: Dict[str, torch.Tensor],
+        width: int,
+        *,
+        project: bool = True,
+    ):
         super().__init__()
         radius = metadata["radius"].float()
         kx = metadata["kx_signed"].float()
@@ -362,13 +368,20 @@ class PositionFeatures(nn.Module):
             dim=-1,
         )
         self.register_buffer("features", features, persistent=True)
-        self.proj = nn.Sequential(
-            nn.Linear(features.shape[-1], width),
-            nn.SiLU(),
-            nn.Linear(width, width),
+        self.width = width
+        self.proj = (
+            nn.Sequential(
+                nn.Linear(features.shape[-1], width),
+                nn.SiLU(),
+                nn.Linear(width, width),
+            )
+            if project
+            else None
         )
 
     def forward(self) -> torch.Tensor:
+        if self.proj is None:
+            return self.features.new_zeros(self.features.shape[0], self.width)
         return self.proj(self.features)
 
     @property
@@ -377,9 +390,17 @@ class PositionFeatures(nn.Module):
 
 
 class QKRMSAttention(nn.Module):
-    """Multi-head attention with per-head Q/K RMSNorm and unnormalized values."""
+    """Multi-head attention with per-head Q/K normalization and raw values."""
 
-    def __init__(self, query_width: int, context_width: int, width: int, heads: int):
+    def __init__(
+        self,
+        query_width: int,
+        context_width: int,
+        width: int,
+        heads: int,
+        *,
+        affine_free_layer_norm: bool = False,
+    ):
         super().__init__()
         if width <= 0 or heads <= 0 or width % heads:
             raise ValueError("Attention width must be positive and divisible by heads")
@@ -389,8 +410,16 @@ class QKRMSAttention(nn.Module):
         self.query = nn.Linear(query_width, width)
         self.key = nn.Linear(context_width, width)
         self.value = nn.Linear(context_width, width)
-        self.query_norm = nn.RMSNorm(self.head_dim)
-        self.key_norm = nn.RMSNorm(self.head_dim)
+        if affine_free_layer_norm:
+            self.query_norm = nn.LayerNorm(
+                self.head_dim, elementwise_affine=False
+            )
+            self.key_norm = nn.LayerNorm(
+                self.head_dim, elementwise_affine=False
+            )
+        else:
+            self.query_norm = nn.RMSNorm(self.head_dim)
+            self.key_norm = nn.RMSNorm(self.head_dim)
         self.output = nn.Linear(width, query_width)
 
     def forward(
@@ -427,6 +456,54 @@ class QKRMSAttention(nn.Module):
         return self.output(attended)
 
 
+class MetadataConditioner(nn.Module):
+    """Encode the complete physical/group metadata once for all AdaLN blocks."""
+
+    def __init__(self, condition_dim: int, width: int, expansion: int = 4):
+        super().__init__()
+        hidden = expansion * width
+        self.net = nn.Sequential(
+            nn.Linear(condition_dim, hidden),
+            nn.SiLU(),
+            nn.Linear(hidden, width),
+        )
+
+    def forward(self, condition: torch.Tensor) -> torch.Tensor:
+        return self.net(condition)
+
+
+class AdaLNZeroModulation(nn.Module):
+    """Canonical affine-free AdaLN-Zero modulation for attention and MLP."""
+
+    def __init__(self, width: int, condition_dim: int):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(condition_dim, 6 * width),
+        )
+        nn.init.zeros_(self.net[-1].weight)
+        nn.init.zeros_(self.net[-1].bias)
+
+    def forward(
+        self, condition: torch.Tensor
+    ) -> tuple[torch.Tensor, ...]:
+        return self.net(condition).chunk(6, dim=-1)
+
+
+def _clean_norm(width: int, enabled: bool) -> nn.Module:
+    if enabled:
+        return nn.LayerNorm(width, elementwise_affine=False)
+    return nn.RMSNorm(width)
+
+
+def _modulate(
+    value: torch.Tensor,
+    shift: torch.Tensor,
+    scale: torch.Tensor,
+) -> torch.Tensor:
+    return value * (1.0 + scale) + shift
+
+
 class BlockCausalTransformerBlock(nn.Module):
     def __init__(
         self,
@@ -437,14 +514,34 @@ class BlockCausalTransformerBlock(nn.Module):
         conditioning_rank: int,
     ):
         super().__init__()
-        self.attention_norm = nn.RMSNorm(width)
-        self.attention_condition = ConditionalAdapter(
-            width, condition_dim, conditioning, conditioning_rank
+        self.clean_adaln = conditioning == "adaln_zero"
+        self.attention_norm = _clean_norm(width, self.clean_adaln)
+        self.attention_condition = (
+            None
+            if self.clean_adaln
+            else ConditionalAdapter(
+                width, condition_dim, conditioning, conditioning_rank
+            )
         )
-        self.attention = QKRMSAttention(width, width, width, heads)
-        self.ffn_norm = nn.RMSNorm(width)
-        self.ffn_condition = ConditionalAdapter(
-            width, condition_dim, conditioning, conditioning_rank
+        self.attention = QKRMSAttention(
+            width,
+            width,
+            width,
+            heads,
+            affine_free_layer_norm=self.clean_adaln,
+        )
+        self.ffn_norm = _clean_norm(width, self.clean_adaln)
+        self.ffn_condition = (
+            None
+            if self.clean_adaln
+            else ConditionalAdapter(
+                width, condition_dim, conditioning, conditioning_rank
+            )
+        )
+        self.adaln = (
+            AdaLNZeroModulation(width, condition_dim)
+            if self.clean_adaln
+            else None
         )
         self.ffn = nn.Sequential(
             nn.Linear(width, 4 * width),
@@ -458,6 +555,24 @@ class BlockCausalTransformerBlock(nn.Module):
         condition: torch.Tensor,
         mask: torch.Tensor,
     ) -> torch.Tensor:
+        if self.clean_adaln:
+            assert self.adaln is not None
+            (
+                shift_attention,
+                scale_attention,
+                gate_attention,
+                shift_ffn,
+                scale_ffn,
+                gate_ffn,
+            ) = self.adaln(condition)
+            hidden = _modulate(
+                self.attention_norm(states), shift_attention, scale_attention
+            )
+            states = states + gate_attention * self.attention(hidden, hidden, mask)
+            hidden = _modulate(self.ffn_norm(states), shift_ffn, scale_ffn)
+            return states + gate_ffn * self.ffn(hidden)
+        assert self.attention_condition is not None
+        assert self.ffn_condition is not None
         hidden = self.attention_condition(self.attention_norm(states), condition)
         states = states + self.attention(hidden, hidden, mask)
         hidden = self.ffn_condition(self.ffn_norm(states), condition)
@@ -474,12 +589,28 @@ class CausalCrossAttentionBlock(nn.Module):
         conditioning_rank: int,
     ):
         super().__init__()
-        self.query_norm = nn.RMSNorm(width)
-        self.context_norm = nn.RMSNorm(width)
-        self.attention = QKRMSAttention(width, width, width, heads)
-        self.ffn_norm = nn.RMSNorm(width)
-        self.condition = ConditionalAdapter(
-            width, condition_dim, conditioning, conditioning_rank
+        self.clean_adaln = conditioning == "adaln_zero"
+        self.query_norm = _clean_norm(width, self.clean_adaln)
+        self.context_norm = _clean_norm(width, self.clean_adaln)
+        self.attention = QKRMSAttention(
+            width,
+            width,
+            width,
+            heads,
+            affine_free_layer_norm=self.clean_adaln,
+        )
+        self.ffn_norm = _clean_norm(width, self.clean_adaln)
+        self.condition = (
+            None
+            if self.clean_adaln
+            else ConditionalAdapter(
+                width, condition_dim, conditioning, conditioning_rank
+            )
+        )
+        self.adaln = (
+            AdaLNZeroModulation(width, condition_dim)
+            if self.clean_adaln
+            else None
         )
         self.ffn = nn.Sequential(
             nn.Linear(width, 4 * width),
@@ -494,6 +625,25 @@ class CausalCrossAttentionBlock(nn.Module):
         condition: torch.Tensor,
         mask: torch.Tensor,
     ) -> torch.Tensor:
+        if self.clean_adaln:
+            assert self.adaln is not None
+            (
+                shift_attention,
+                scale_attention,
+                gate_attention,
+                shift_ffn,
+                scale_ffn,
+                gate_ffn,
+            ) = self.adaln(condition)
+            hidden = _modulate(
+                self.query_norm(queries), shift_attention, scale_attention
+            )
+            queries = queries + gate_attention * self.attention(
+                hidden, self.context_norm(context), mask
+            )
+            hidden = _modulate(self.ffn_norm(queries), shift_ffn, scale_ffn)
+            return queries + gate_ffn * self.ffn(hidden)
+        assert self.condition is not None
         queries = queries + self.attention(
             self.query_norm(queries), self.context_norm(context), mask
         )
@@ -715,6 +865,8 @@ class SequentialRingEncoder(nn.Module):
         self.layout = layout
         self.width = width
         self.variational = variational
+        self.clean_adaln = conditioning == "adaln_zero"
+        self.pool_query_residual = not self.clean_adaln
         self.input = nn.Linear(token_dim, width)
         self.blocks = nn.ModuleList(
             [
@@ -731,12 +883,22 @@ class SequentialRingEncoder(nn.Module):
         self.queries = nn.Parameter(
             torch.randn(layout.num_latents, width) / math.sqrt(width)
         )
-        self.query_condition = ConditionalAdapter(
-            width, condition_dim, conditioning, conditioning_rank
+        self.query_condition = (
+            None
+            if self.clean_adaln
+            else ConditionalAdapter(
+                width, condition_dim, conditioning, conditioning_rank
+            )
         )
-        self.pool_norm = nn.RMSNorm(width)
-        self.pool_attention = QKRMSAttention(width, width, width, heads)
-        self.pool_ffn_norm = nn.RMSNorm(width)
+        self.pool_norm = _clean_norm(width, self.clean_adaln)
+        self.pool_attention = QKRMSAttention(
+            width,
+            width,
+            width,
+            heads,
+            affine_free_layer_norm=self.clean_adaln,
+        )
+        self.pool_ffn_norm = _clean_norm(width, self.clean_adaln)
         self.pool_ffn = nn.Sequential(
             nn.Linear(width, 4 * width),
             nn.SiLU(),
@@ -744,7 +906,7 @@ class SequentialRingEncoder(nn.Module):
         )
         posterior_dim = latent_dim * (2 if variational else 1)
         self.output = nn.Sequential(
-            nn.RMSNorm(width),
+            _clean_norm(width, self.clean_adaln),
             nn.Linear(width, posterior_dim),
         )
         token_sector = (
@@ -773,16 +935,18 @@ class SequentialRingEncoder(nn.Module):
             batch * self.layout.num_latents, self.layout.max_members, self.width
         )
         queries = self.queries[None].expand(batch, -1, -1)
-        queries = self.query_condition(queries, latent_condition)
+        if self.query_condition is not None:
+            queries = self.query_condition(queries, latent_condition)
         flat_queries = queries.reshape(batch * self.layout.num_latents, 1, self.width)
         flat_mask = self.layout.gather_mask[:, None, :].expand(
             -1, batch, -1
         ).transpose(0, 1).reshape(
             batch * self.layout.num_latents, 1, self.layout.max_members
         )
-        pooled = flat_queries + self.pool_attention(
+        attended = self.pool_attention(
             self.pool_norm(flat_queries), self.pool_norm(gathered), flat_mask
         )
+        pooled = attended if not self.pool_query_residual else flat_queries + attended
         pooled = pooled + self.pool_ffn(self.pool_ffn_norm(pooled))
         posterior = self.output(pooled.squeeze(1)).reshape(
             batch, self.layout.num_latents, -1
@@ -814,6 +978,7 @@ class SequentialRingDecoder(nn.Module):
     ):
         super().__init__()
         self.layout = layout
+        self.clean_adaln = conditioning == "adaln_zero"
         self.input = nn.Linear(latent_dim, width)
         self.latent_blocks = nn.ModuleList(
             [
@@ -839,7 +1004,10 @@ class SequentialRingDecoder(nn.Module):
                 for _ in range(layers)
             ]
         )
-        self.output = nn.Sequential(nn.RMSNorm(width), nn.Linear(width, token_dim))
+        self.output = nn.Sequential(
+            _clean_norm(width, self.clean_adaln),
+            nn.Linear(width, token_dim),
+        )
         latent_ids = torch.arange(layout.num_latents)
         latent_group = (
             layout.latent_parent if ring_block_causal else latent_ids
@@ -902,6 +1070,9 @@ class CausalFrequencyAutoencoder(nn.Module):
             raise ValueError(
                 "The sequential ring codec requires sector-local Perceiver pooling"
             )
+        self.clean_ring_v2 = config.group_conditioning == "adaln_zero"
+        if self.clean_ring_v2 and config.mode != "causal_ring":
+            raise ValueError("adaln_zero conditioning is specific to causal_ring")
         self.config = config
         self.layout = GroupLayout(
             seq_len=component_mask.shape[0],
@@ -930,7 +1101,11 @@ class CausalFrequencyAutoencoder(nn.Module):
             if config.mode == "causal_ring"
             else config.model_width
         )
-        self.position = PositionFeatures(metadata, codec_width)
+        self.position = PositionFeatures(
+            metadata,
+            codec_width,
+            project=not self.clean_ring_v2,
+        )
         base_condition = self.position.features
         condition_dim = self.position.condition_dim + 2
         latent_members = base_condition[self.layout.gather_indices]
@@ -965,6 +1140,12 @@ class CausalFrequencyAutoencoder(nn.Module):
         self.register_buffer("token_condition", token_condition, persistent=True)
         self.register_buffer("latent_condition", latent_condition, persistent=True)
         self.register_buffer("parent_condition", parent_condition, persistent=True)
+        self.metadata_conditioner = (
+            MetadataConditioner(condition_dim, codec_width)
+            if self.clean_ring_v2
+            else None
+        )
+        block_condition_dim = codec_width if self.clean_ring_v2 else condition_dim
         if config.mode == "causal_ring":
             self.ring_encoder = SequentialRingEncoder(
                 self.layout,
@@ -974,7 +1155,7 @@ class CausalFrequencyAutoencoder(nn.Module):
                 config.ring_transformer_layers,
                 config.perceiver_heads,
                 config.variational,
-                condition_dim,
+                block_condition_dim,
                 config.group_conditioning,
                 config.conditioning_rank,
                 config.ring_block_causal,
@@ -986,7 +1167,7 @@ class CausalFrequencyAutoencoder(nn.Module):
                 component_mask.shape[-1],
                 config.ring_transformer_layers,
                 config.perceiver_heads,
-                condition_dim,
+                block_condition_dim,
                 config.group_conditioning,
                 config.conditioning_rank,
                 config.ring_block_causal,
@@ -1046,8 +1227,13 @@ class CausalFrequencyAutoencoder(nn.Module):
 
     def encode(self, tokens: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         masked = tokens * self.component_mask[None].to(tokens.dtype)
-        token_condition = self.token_condition[None].expand(tokens.shape[0], -1, -1)
-        latent_condition = self.latent_condition[None].expand(tokens.shape[0], -1, -1)
+        token_condition = self.token_condition
+        latent_condition = self.latent_condition
+        if self.metadata_conditioner is not None:
+            token_condition = self.metadata_conditioner(token_condition)
+            latent_condition = self.metadata_conditioner(latent_condition)
+        token_condition = token_condition[None].expand(tokens.shape[0], -1, -1)
+        latent_condition = latent_condition[None].expand(tokens.shape[0], -1, -1)
         if self.config.mode == "causal_ring":
             assert self.ring_encoder is not None
             return self.ring_encoder(
@@ -1075,10 +1261,15 @@ class CausalFrequencyAutoencoder(nn.Module):
     def decode(self, latents: torch.Tensor) -> torch.Tensor:
         if self.config.mode == "causal_ring":
             assert self.ring_decoder is not None
-            token_condition = self.token_condition[None].expand(
+            token_condition = self.token_condition
+            latent_condition = self.latent_condition
+            if self.metadata_conditioner is not None:
+                token_condition = self.metadata_conditioner(token_condition)
+                latent_condition = self.metadata_conditioner(latent_condition)
+            token_condition = token_condition[None].expand(
                 latents.shape[0], -1, -1
             )
-            latent_condition = self.latent_condition[None].expand(
+            latent_condition = latent_condition[None].expand(
                 latents.shape[0], -1, -1
             )
             reconstruction = self.ring_decoder(

@@ -21,9 +21,15 @@ from diffusion_decoder import DiffusionDecoder, DiffusionDecoderConfig
 from factorized_polar_decoder import (
     FactorizedPolarConfig,
     FactorizedPolarDecoder,
+    cartesian_to_polar_coordinates,
     polar_to_cartesian,
 )
 from frequency import FrequencyCodec, FrequencyCodecConfig, TOKEN_DIM
+from frequency_grouping import (
+    build_radial_sector_layout,
+    pack_radial_sectors,
+    unpack_radial_sectors,
+)
 
 
 @dataclass(frozen=True)
@@ -69,6 +75,9 @@ class PolarHistoryConfig:
     enabled: bool = False
     mode: str = "log_amp_gated_phase"
     fusion: str = "add"  # add | replace
+    amplitude_transform: str = "match_decoder"
+    amplitude_transform_parameter: float = 1.0
+    log_epsilon: float = 1e-4
 
     def fingerprint(self) -> Dict[str, Any]:
         return asdict(self)
@@ -94,9 +103,8 @@ class GenerationConfig:
     cfg_enabled: bool = False
     cfg_scale: float = 1.0
     # TODO(cfg): class-condition dropout in the Transformer for CFG.
-    grouping: str = "coefficient"
-    # TODO(grouping): FixedChunkGrouping — joint denoise over K coefficients
-    # TODO(grouping): RadialBandGrouping — block-AR over integer-radius bands
+    grouping: str = "coefficient"  # coefficient | radial_sector
+    group_size: int = 1
 
     def fingerprint(self) -> Dict[str, Any]:
         return asdict(self)
@@ -313,23 +321,115 @@ class ContinuousFFTDecoder(nn.Module):
         codec: Optional[FrequencyCodec] = None,
         factorized_amplitude_mean: Optional[torch.Tensor] = None,
         factorized_amplitude_std: Optional[torch.Tensor] = None,
+        factorized_amplitude_source_rms: Optional[torch.Tensor] = None,
+        history_amplitude_mean: Optional[torch.Tensor] = None,
+        history_amplitude_std: Optional[torch.Tensor] = None,
     ):
         super().__init__()
         self.config = config or ContinuousModelConfig()
+        if self.config.generation.grouping not in ("coefficient", "radial_sector"):
+            raise ValueError("generation.grouping must be coefficient or radial_sector")
+        if self.config.generation.group_size <= 0:
+            raise ValueError("generation.group_size must be positive")
+        if (
+            self.config.generation.grouping == "coefficient"
+            and self.config.generation.group_size != 1
+        ):
+            raise ValueError("coefficient grouping requires group_size=1")
+        if (
+            self.config.generation.grouping == "radial_sector"
+            and not self.config.factorized_polar.enabled
+        ):
+            raise ValueError("radial_sector grouping currently requires factorized_polar")
+        coefficients_per_token = (
+            1
+            if self.config.generation.grouping == "coefficient"
+            else int(self.config.generation.group_size)
+        )
         # The Transformer hidden state is the decoder's sole condition. Absolute
         # frequency identity enters once through the learned prediction slot.
         expected_target_condition_dim = 0
+        expected_target_dim = TOKEN_DIM * coefficients_per_token
         if (
             self.config.diffusion.z_channels != self.config.transformer.width
             or self.config.diffusion.target_condition_dim
             != expected_target_condition_dim
+            or self.config.diffusion.target_dim != expected_target_dim
         ):
             diff_fp = dict(self.config.diffusion.fingerprint())
             diff_fp["z_channels"] = self.config.transformer.width
             diff_fp["target_condition_dim"] = expected_target_condition_dim
+            diff_fp["target_dim"] = expected_target_dim
             self.config.diffusion = DiffusionDecoderConfig(**diff_fp)
 
         self.codec = codec if codec is not None else FrequencyCodec(self.config.codec)
+        if self.config.generation.grouping == "coefficient":
+            group_indices = torch.arange(self.codec.seq_len_int)[:, None]
+            group_mask = torch.ones_like(group_indices, dtype=torch.bool)
+            group_radius = self.codec.radius_bin.clone().long()
+        else:
+            layout = build_radial_sector_layout(
+                self.codec.radius_bin,
+                coefficients_per_token,
+            )
+            group_indices = layout.indices
+            group_mask = layout.mask
+            group_radius = layout.radius
+        self.coefficients_per_token = coefficients_per_token
+        self.sequence_length = int(group_indices.shape[0])
+        self.register_buffer("group_indices", group_indices, persistent=True)
+        self.register_buffer("group_mask", group_mask, persistent=True)
+        self.register_buffer("group_radius", group_radius, persistent=True)
+        decoder_amplitude_mean = (
+            torch.zeros(3, dtype=torch.float32)
+            if factorized_amplitude_mean is None
+            else factorized_amplitude_mean.detach().float().reshape(3)
+        )
+        decoder_amplitude_std = (
+            torch.ones(3, dtype=torch.float32)
+            if factorized_amplitude_std is None
+            else factorized_amplitude_std.detach().float().reshape(3)
+        )
+        decoder_amplitude_source_rms = (
+            torch.ones(self.codec.seq_len_int, 3, dtype=torch.float32)
+            if factorized_amplitude_source_rms is None
+            else factorized_amplitude_source_rms.detach().float().reshape(
+                self.codec.seq_len_int, 3
+            )
+        )
+        polar_amplitude_mean = (
+            decoder_amplitude_mean
+            if history_amplitude_mean is None
+            else history_amplitude_mean.detach().float().reshape(3)
+        )
+        polar_amplitude_std = (
+            decoder_amplitude_std
+            if history_amplitude_std is None
+            else history_amplitude_std.detach().float().reshape(3)
+        )
+        if (
+            not bool(torch.isfinite(decoder_amplitude_mean).all())
+            or not bool(torch.isfinite(decoder_amplitude_std).all())
+            or bool((decoder_amplitude_std <= 0).any())
+            or not bool(torch.isfinite(polar_amplitude_mean).all())
+            or not bool(torch.isfinite(polar_amplitude_std).all())
+            or bool((polar_amplitude_std <= 0).any())
+        ):
+            raise ValueError(
+                "polar amplitude-coordinate statistics must be finite with std > 0"
+            )
+        # Keep history-coordinate statistics at model scope.  The trunk may use
+        # polar history even when the decoder remains Cartesian.
+        self.register_buffer(
+            "polar_history_amplitude_coordinate_mean",
+            polar_amplitude_mean,
+            persistent=True,
+        )
+        self.register_buffer(
+            "polar_history_amplitude_coordinate_std",
+            polar_amplitude_std,
+            persistent=True,
+        )
         if self.config.diffusion.loss_metric == "orbit_covariance_power":
             if self.config.codec.normalization != "orbit_whiten":
                 raise ValueError(
@@ -408,25 +508,52 @@ class ContinuousFFTDecoder(nn.Module):
         supported_polar_modes = (
             "log_amp_gated_phase",
             "standardized_log_amp_gated_phase",
+            "physical_standardized_log_amp_phase",
         )
         if self.config.polar_history.enabled and self.config.polar_history.mode not in supported_polar_modes:
             raise ValueError(
                 f"Unsupported polar_history.mode={self.config.polar_history.mode}. "
                 f"Supported: {supported_polar_modes}."
             )
+        if self.config.polar_history.amplitude_transform not in (
+            "match_decoder",
+            "log_eps",
+            "log1p",
+            "inverse_softplus",
+            "power",
+            "raw",
+        ):
+            raise ValueError("Unsupported polar-history amplitude transform")
+        if self.config.polar_history.amplitude_transform_parameter <= 0.0:
+            raise ValueError("polar-history amplitude transform parameter must be positive")
+        if self.config.polar_history.log_epsilon <= 0.0:
+            raise ValueError("polar-history log epsilon must be positive")
+        if (
+            self.config.polar_history.mode
+            == "physical_standardized_log_amp_phase"
+            and self.config.factorized_polar.coordinate_mode
+            != "physical_standardized"
+        ):
+            raise ValueError(
+                "physical standardized polar history requires the matching "
+                "factorized coordinate mode"
+            )
         self.width = tcfg.width
-        token_input_dim = (
+        coefficient_input_dim = (
             9
             if self.config.polar_history.enabled
             and self.config.polar_history.fusion == "replace"
             else TOKEN_DIM
         )
+        token_input_dim = coefficient_input_dim * self.coefficients_per_token
         self.token_proj = nn.Linear(token_input_dim, tcfg.width)
         self.polar_proj: Optional[nn.Linear]
         if self.config.polar_history.enabled and self.config.polar_history.fusion == "add":
             # Optional zero-initialized modules must not perturb shared-weight RNG.
             with torch.random.fork_rng(devices=[]):
-                self.polar_proj = nn.Linear(9, tcfg.width)
+                self.polar_proj = nn.Linear(
+                    9 * self.coefficients_per_token, tcfg.width
+                )
             # Zero-init so enabling polar is a soft residual at start.
             nn.init.zeros_(self.polar_proj.weight)
             nn.init.zeros_(self.polar_proj.bias)
@@ -434,18 +561,25 @@ class ContinuousFFTDecoder(nn.Module):
             self.polar_proj = None
         self.bos = nn.Parameter(torch.zeros(1, 1, tcfg.width))
         nn.init.normal_(self.bos, std=0.02)
-        if self.codec.seq_len > tcfg.max_seq_len:
+        if self.sequence_length > tcfg.max_seq_len:
             raise ValueError("transformer.max_seq_len is shorter than the codec sequence")
-        self.slot_embed = nn.Embedding(self.codec.seq_len, tcfg.width)
+        self.slot_embed = nn.Embedding(self.sequence_length, tcfg.width)
         nn.init.normal_(self.slot_embed.weight, std=0.02)
-        signed_coordinates = torch.stack(
+        coefficient_coordinates = torch.stack(
             [self.codec.ky_signed, self.codec.kx_signed],
             dim=-1,
         )
+        if self.coefficients_per_token == 1:
+            signed_coordinates = coefficient_coordinates
+        else:
+            coordinate_mask = self.group_mask[..., None].to(coefficient_coordinates.dtype)
+            signed_coordinates = (
+                coefficient_coordinates[self.group_indices] * coordinate_mask
+            ).sum(1) / coordinate_mask.sum(1).clamp_min(1)
         if tcfg.attention_rope == "frequency_2d":
             rope_coordinates = signed_coordinates.round().to(torch.int64)
         elif tcfg.attention_rope == "sequence":
-            rope_coordinates = torch.arange(self.codec.seq_len, dtype=torch.int64)
+            rope_coordinates = torch.arange(self.sequence_length, dtype=torch.int64)
         else:
             rope_coordinates = torch.empty(0, dtype=torch.int64)
         self.register_buffer(
@@ -485,8 +619,18 @@ class ContinuousFFTDecoder(nn.Module):
         if self.config.factorized_polar.enabled:
             if self.config.codec.value_transform != "identity":
                 raise ValueError("factorized_polar initially requires identity values")
-            if self.config.codec.normalization != "global_ecs":
-                raise ValueError("factorized_polar initially requires global_ecs")
+            expected_normalization = (
+                "global_standardize"
+                if self.config.factorized_polar.coordinate_mode
+                == "physical_standardized"
+                else "global_ecs"
+            )
+            if self.config.codec.normalization != expected_normalization:
+                raise ValueError(
+                    "factorized_polar coordinate mode "
+                f"{self.config.factorized_polar.coordinate_mode} requires "
+                f"normalization={expected_normalization}"
+            )
             if self.config.codec.coordinate_packing != "isometric":
                 raise ValueError("factorized_polar initially requires isometric packing")
             self.diffusion = None
@@ -494,13 +638,62 @@ class ContinuousFFTDecoder(nn.Module):
                 self.config.diffusion,
                 self.config.factorized_polar,
                 condition_width=tcfg.width,
-                amplitude_coordinate_mean=factorized_amplitude_mean,
-                amplitude_coordinate_std=factorized_amplitude_std,
+                amplitude_coordinate_mean=decoder_amplitude_mean,
+                amplitude_coordinate_std=decoder_amplitude_std,
+                amplitude_source_rms=decoder_amplitude_source_rms,
+                coefficients_per_token=self.coefficients_per_token,
             )
         else:
             self.diffusion = DiffusionDecoder(self.config.diffusion)
             self.factorized_decoder = None
         self.gradient_checkpointing = tcfg.gradient_checkpointing
+
+    def _load_from_state_dict(
+        self,
+        state_dict,
+        prefix,
+        local_metadata,
+        strict,
+        missing_keys,
+        unexpected_keys,
+        error_msgs,
+    ):
+        # Polar-v3 checkpoints written before trunk/decoder decoupling stored
+        # these moments only inside the factorized decoder.  Promote them to the
+        # model-level history buffers when loading so their trunk features remain
+        # exactly unchanged.
+        defaults = {
+            "polar_history_amplitude_coordinate_mean": (
+                "factorized_decoder.amplitude_coordinate_mean"
+            ),
+            "polar_history_amplitude_coordinate_std": (
+                "factorized_decoder.amplitude_coordinate_std"
+            ),
+        }
+        for root_suffix, decoder_suffix in defaults.items():
+            root_key = prefix + root_suffix
+            if root_key not in state_dict:
+                decoder_key = prefix + decoder_suffix
+                state_dict[root_key] = state_dict.get(
+                    decoder_key, getattr(self, root_suffix)
+                )
+        # Generation groups are deterministic products of the codec ordering
+        # and generation config. Checkpoints written before grouping support do
+        # not contain these buffers, so reconstruct them without weakening
+        # strict loading for learned parameters.
+        for suffix in ("group_indices", "group_mask", "group_radius"):
+            key = prefix + suffix
+            if key not in state_dict:
+                state_dict[key] = getattr(self, suffix)
+        super()._load_from_state_dict(
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+        )
 
         # Register codec buffers as part of this module tree for checkpointing.
         # The codec is already an nn.Module; assign directly.
@@ -552,21 +745,56 @@ class ContinuousFFTDecoder(nn.Module):
     ) -> torch.Tensor:
         if self.config.polar_history.mode == "log_amp_gated_phase":
             return self.codec.polar_history_features(tokens, positions=positions)
-        if self.factorized_decoder is None:
-            raise ValueError(
-                "standardized polar history requires the factorized-polar decoder"
+        if self.config.polar_history.mode == "physical_standardized_log_amp_phase":
+            scale = self.factorized_amplitude_scale(positions)[None]
+            history_transform = self.config.polar_history.amplitude_transform
+            if history_transform == "match_decoder":
+                history_transform = self.config.factorized_polar.amplitude_transform
+                history_parameter = (
+                    self.config.factorized_polar.amplitude_transform_parameter
+                )
+                history_log_epsilon = self.config.factorized_polar.log_epsilon
+            else:
+                history_parameter = (
+                    self.config.polar_history.amplitude_transform_parameter
+                )
+                history_log_epsilon = self.config.polar_history.log_epsilon
+            coordinate, phase, _ = cartesian_to_polar_coordinates(
+                tokens,
+                scale,
+                history_log_epsilon,
+                self.polar_history_amplitude_coordinate_mean,
+                self.polar_history_amplitude_coordinate_std,
+                history_transform,
+                history_parameter,
+            )
+            cosine = torch.cos(phase)
+            sine = torch.sin(phase)
+            return torch.stack(
+                [
+                    coordinate[..., 0],
+                    cosine[..., 0],
+                    sine[..., 0],
+                    coordinate[..., 1],
+                    cosine[..., 1],
+                    sine[..., 1],
+                    coordinate[..., 2],
+                    cosine[..., 2],
+                    sine[..., 2],
+                ],
+                dim=-1,
             )
         return self.codec.polar_history_features(
             tokens,
             positions=positions,
             log_epsilon=self.config.factorized_polar.log_epsilon,
             amplitude_coordinate_mean=(
-                self.factorized_decoder.amplitude_coordinate_mean
+                self.polar_history_amplitude_coordinate_mean
                 if self.config.factorized_polar.amplitude_standardization != "none"
                 else None
             ),
             amplitude_coordinate_std=(
-                self.factorized_decoder.amplitude_coordinate_std
+                self.polar_history_amplitude_coordinate_std
                 if self.config.factorized_polar.amplitude_standardization != "none"
                 else None
             ),
@@ -588,6 +816,86 @@ class ContinuousFFTDecoder(nn.Module):
             scale_policy=self.config.history_features.scale_policy,
         )
 
+    def pack_groups(self, tokens: torch.Tensor) -> torch.Tensor:
+        """Pack coefficient tokens into the configured atomic prediction units."""
+        return pack_radial_sectors(tokens, self.group_indices, self.group_mask)
+
+    def unpack_groups(self, groups: torch.Tensor) -> torch.Tensor:
+        """Restore grouped coefficients to the codec's exact sequence order."""
+        return unpack_radial_sectors(
+            groups,
+            self.group_indices,
+            self.group_mask,
+            self.codec.seq_len_int,
+        )
+
+    def _group_history_features(
+        self,
+        groups: torch.Tensor,
+        group_positions: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Represent all K completed coefficients without ordering them internally."""
+        if groups.ndim != 4 or groups.shape[2:] != (
+            self.coefficients_per_token,
+            TOKEN_DIM,
+        ):
+            raise ValueError("groups must have shape [B,G,K,6]")
+        batch, length = groups.shape[:2]
+        if group_positions is None:
+            group_positions = torch.arange(length, device=groups.device)
+        group_indices = self.group_indices[group_positions]
+        group_mask = self.group_mask[group_positions]
+        positions = group_indices.reshape(-1).to(groups.device)
+        flat = groups.reshape(batch, length * self.coefficients_per_token, TOKEN_DIM)
+        mask = group_mask.reshape(1, -1, 1).to(
+            device=groups.device, dtype=groups.dtype
+        )
+        if (
+            self.config.polar_history.enabled
+            and self.config.polar_history.fusion == "replace"
+        ):
+            features = self._polar_history_features(flat, positions)
+        else:
+            features = self._history_cartesian_features(flat, positions)
+        features = features * mask
+        return features.reshape(batch, length, -1)
+
+    def embed_groups(
+        self,
+        groups: torch.Tensor,
+        include_bos: bool = True,
+        group_positions: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Embed completed groups shifted onto their next prediction slots."""
+        batch, length = groups.shape[:2]
+        if group_positions is None:
+            group_positions = torch.arange(length, device=groups.device)
+        features = self._group_history_features(groups, group_positions)
+        x = self.token_proj(features.to(dtype=self.token_proj.weight.dtype))
+        if self.polar_proj is not None:
+            selected_indices = self.group_indices[group_positions]
+            selected_mask = self.group_mask[group_positions]
+            flat_positions = selected_indices.reshape(-1).to(groups.device)
+            flat = groups.reshape(
+                batch, length * self.coefficients_per_token, TOKEN_DIM
+            )
+            polar = self._polar_history_features(flat, flat_positions)
+            polar = polar * selected_mask.reshape(1, -1, 1).to(
+                device=groups.device, dtype=polar.dtype
+            )
+            x = x + self.polar_proj(polar.reshape(batch, length, -1).to(x.dtype))
+        prediction_slots = group_positions + 1
+        if prediction_slots.numel() and int(prediction_slots.max()) >= self.sequence_length:
+            raise ValueError("Grouped history extends beyond the final prediction slot")
+        x = x + self.slot_embed(prediction_slots)[None].to(x.dtype)
+        if include_bos:
+            bos = self.bos.to(dtype=x.dtype).expand(batch, -1, -1)
+            bos = bos + self.slot_embed(
+                torch.zeros(1, device=groups.device, dtype=torch.long)
+            )[None].to(x.dtype)
+            x = torch.cat([bos, x], dim=1)
+        return x
+
     def prediction_slot_condition(
         self,
         positions: torch.Tensor,
@@ -606,6 +914,13 @@ class ContinuousFFTDecoder(nn.Module):
 
     def factorized_amplitude_scale(self, positions: torch.Tensor) -> torch.Tensor:
         """Per-position RGB RMS amplitude in packed physical coordinates."""
+        if self.config.factorized_polar.coordinate_mode == "physical_standardized":
+            return torch.ones(
+                positions.numel(),
+                3,
+                device=positions.device,
+                dtype=self.codec.global_scale.dtype,
+            )
         if self.codec.uses_orbit_statistics:
             rms_per_active_component = self.codec.orbit_uncentered_rms()[positions, :3]
             imag_active = self.codec.component_mask[positions, 3:]
@@ -613,6 +928,16 @@ class ContinuousFFTDecoder(nn.Module):
         # global_ecs deliberately fits no per-orbit normalization. Its radial
         # moment table still gives a coarse, shared scale for log coordinates.
         return self.codec.channel_amplitude_scale()[self.codec.radius_bin[positions]]
+
+    def factorized_cartesian_target(
+        self,
+        tokens: torch.Tensor,
+        positions: torch.Tensor,
+    ) -> torch.Tensor:
+        """Return the Cartesian coordinate used by the factorized decoder."""
+        if self.config.factorized_polar.coordinate_mode == "physical_standardized":
+            return tokens
+        return self.codec.normalized_to_raw_at(tokens, positions)
 
     def _apply_phase_auxiliary(
         self,
@@ -865,17 +1190,17 @@ class ContinuousFFTDecoder(nn.Module):
                 "CFG is disabled/stubbed. Set generation.cfg_enabled=False. "
                 "TODO(cfg): class-condition dropout for CFG."
             )
-        if self.config.generation.grouping != "coefficient":
-            raise NotImplementedError(
-                f"grouping={self.config.generation.grouping} is stubbed. "
-                "Only 'coefficient' is implemented. "
-                "TODO(grouping): FixedChunkGrouping / RadialBandGrouping."
-            )
-
         b, l, d = tokens.shape
         if l != self.codec.seq_len or d != TOKEN_DIM:
             raise ValueError(
                 f"Expected tokens [B,{self.codec.seq_len},{TOKEN_DIM}], got {tuple(tokens.shape)}"
+            )
+        if self.config.generation.grouping == "radial_sector":
+            return self._forward_grouped(
+                tokens,
+                corrupt=corrupt,
+                training_progress=training_progress,
+                history_override=history_override,
             )
 
         history = (
@@ -903,7 +1228,7 @@ class ContinuousFFTDecoder(nn.Module):
         z = h
         positions = torch.arange(l, device=tokens.device)
         if self.factorized_decoder is not None:
-            raw_target = self.codec.normalized_to_raw_at(tokens, positions)
+            raw_target = self.factorized_cartesian_target(tokens, positions)
             slot_condition = self.prediction_slot_condition(
                 positions, batch_size=b, dtype=z.dtype
             )
@@ -950,6 +1275,68 @@ class ContinuousFFTDecoder(nn.Module):
         loss_out["corruption_strength"] = corr_strength.detach()
         return loss_out
 
+    def _forward_grouped(
+        self,
+        tokens: torch.Tensor,
+        *,
+        corrupt: bool,
+        training_progress: float,
+        history_override: Optional[torch.Tensor],
+    ) -> Dict[str, torch.Tensor]:
+        """Teacher-forced block AR over radial sectors of K coefficients."""
+        if self.factorized_decoder is None:
+            raise RuntimeError("radial-sector grouping requires factorized decoder")
+        if corrupt and self.training and self.config.corruption.history_corruption != "none":
+            raise NotImplementedError("grouped history corruption is not implemented")
+        batch = tokens.shape[0]
+        grouped = self.pack_groups(tokens)
+        history = grouped[:, :-1] if history_override is None else history_override
+        if history.shape != grouped[:, :-1].shape:
+            raise ValueError(
+                "grouped history_override must have shape "
+                f"{tuple(grouped[:, :-1].shape)}, got {tuple(history.shape)}"
+            )
+        hidden, _ = self.forward_backbone(
+            self.embed_groups(history, include_bos=True), use_cache=False
+        )
+        group_positions = torch.arange(self.sequence_length, device=tokens.device)
+        slot_condition = self.prediction_slot_condition(
+            group_positions, batch_size=batch, dtype=hidden.dtype
+        )
+        coefficient_positions = self.group_indices.to(tokens.device)
+        flat_positions = coefficient_positions.reshape(-1)
+        raw_flat = self.factorized_cartesian_target(
+            grouped.reshape(
+                batch,
+                self.sequence_length * self.coefficients_per_token,
+                TOKEN_DIM,
+            ),
+            flat_positions,
+        )
+        raw_target = raw_flat.reshape_as(grouped) * self.group_mask.to(
+            device=tokens.device, dtype=raw_flat.dtype
+        )[None, :, :, None]
+        amplitude_scale = self.factorized_amplitude_scale(flat_positions).reshape(
+            self.sequence_length, self.coefficients_per_token, 3
+        )
+        self_conjugate = self.codec.is_self_conjugate[flat_positions].reshape(
+            self.sequence_length, self.coefficients_per_token
+        ) & self.group_mask
+        loss_out = self.factorized_decoder.compute_loss(
+            raw_target=raw_target,
+            z=hidden,
+            slot_condition=slot_condition,
+            amplitude_scale=amplitude_scale,
+            is_self_conjugate=self_conjugate,
+            active_coefficient_mask=self.group_mask,
+            coefficient_positions=coefficient_positions,
+            radius_bin=self.group_radius,
+        )
+        loss_out["corruption_strength"] = torch.zeros(
+            batch, device=tokens.device, dtype=tokens.dtype
+        )
+        return loss_out
+
     @torch.no_grad()
     def predict_x0_diagnostics(
         self,
@@ -975,7 +1362,7 @@ class ContinuousFFTDecoder(nn.Module):
         )
         positions = torch.arange(length, device=tokens.device)
         if self.factorized_decoder is not None:
-            raw_target = self.codec.normalized_to_raw_at(tokens, positions)
+            raw_target = self.factorized_cartesian_target(tokens, positions)
             slot_condition = self.prediction_slot_condition(
                 positions, batch_size=batch, dtype=hidden.dtype
             )
@@ -984,6 +1371,7 @@ class ContinuousFFTDecoder(nn.Module):
                 z=hidden,
                 slot_condition=slot_condition,
                 amplitude_scale=self.factorized_amplitude_scale(positions),
+                is_self_conjugate=self.codec.is_self_conjugate[positions],
                 timesteps=timesteps,
                 noise=noise,
             )
@@ -1007,7 +1395,14 @@ class ContinuousFFTDecoder(nn.Module):
                     if self.config.factorized_polar.amplitude_standardization != "none"
                     else None
                 ),
+                self.config.factorized_polar.amplitude_transform,
+                self.config.factorized_polar.amplitude_transform_parameter,
             ).reshape(batch, length, 6)
+            if (
+                self.config.factorized_polar.coordinate_mode
+                == "physical_standardized"
+            ):
+                return raw_prediction * self.codec.component_mask[positions][None]
             return self.codec.raw_to_normalized_at(raw_prediction, positions)
 
         assert self.diffusion is not None
@@ -1064,6 +1459,28 @@ class ContinuousFFTDecoder(nn.Module):
         return h[:, -1, :], new_caches  # type: ignore
 
     @torch.no_grad()
+    def forward_group_step(
+        self,
+        group: torch.Tensor,
+        group_position: int,
+        kv_caches: List[Tuple[torch.Tensor, torch.Tensor]],
+    ) -> Tuple[torch.Tensor, List[Tuple[torch.Tensor, torch.Tensor]]]:
+        """Consume one completed radial sector and condition the next sector."""
+        expected = (self.coefficients_per_token, TOKEN_DIM)
+        if group.ndim != 3 or group.shape[1:] != expected:
+            raise ValueError(f"group must have shape [B,{expected[0]},{expected[1]}]")
+        positions = torch.tensor([group_position], device=group.device)
+        x = self.embed_groups(
+            group[:, None],
+            include_bos=False,
+            group_positions=positions,
+        )
+        h, new_caches = self.forward_backbone(
+            x, kv_caches=kv_caches, use_cache=True
+        )
+        return h[:, -1], new_caches  # type: ignore
+
+    @torch.no_grad()
     def sample_token(
         self,
         z: torch.Tensor,
@@ -1086,6 +1503,10 @@ class ContinuousFFTDecoder(nn.Module):
                 generator=generator,
                 steps=steps,
                 temperature=temperature,
+                is_self_conjugate=(
+                    self.codec.is_self_conjugate[positions].expand(z.shape[0])
+                ),
+                positions=positions.expand(z.shape[0]),
             )
             scale = self.factorized_amplitude_scale(positions).expand(z.shape[0], -1)
             is_self = self.codec.is_self_conjugate[positions].expand(z.shape[0])
@@ -1105,7 +1526,15 @@ class ContinuousFFTDecoder(nn.Module):
                     if self.config.factorized_polar.amplitude_standardization != "none"
                     else None
                 ),
+                self.config.factorized_polar.amplitude_transform,
+                self.config.factorized_polar.amplitude_transform_parameter,
             )
+            if (
+                self.config.factorized_polar.coordinate_mode
+                == "physical_standardized"
+            ):
+                mask = self.codec.component_mask[positions].to(raw)[0]
+                return raw * mask
             return self.codec.raw_to_normalized_at(raw[:, None], positions)[:, 0]
 
         assert self.diffusion is not None
@@ -1126,6 +1555,59 @@ class ContinuousFFTDecoder(nn.Module):
         )
 
     @torch.no_grad()
+    def sample_group(
+        self,
+        z: torch.Tensor,
+        group_position: int,
+        generator: Optional[torch.Generator],
+        steps: int,
+        temperature: float,
+    ) -> torch.Tensor:
+        """Jointly sample all active coefficients in one radial sector."""
+        if self.factorized_decoder is None:
+            raise RuntimeError("grouped sampling requires factorized decoder")
+        device = z.device
+        group_slot = torch.tensor([group_position], device=device)
+        slot = self.prediction_slot_condition(
+            group_slot, batch_size=z.shape[0], dtype=z.dtype
+        )[:, 0]
+        positions = self.group_indices[group_position].to(device)
+        active = self.group_mask[group_position].to(device)
+        self_conjugate = self.codec.is_self_conjugate[positions] & active
+        log_amp, phase = self.factorized_decoder.sample_coordinates(
+            z=z,
+            slot_condition=slot,
+            generator=generator,
+            steps=steps,
+            temperature=temperature,
+            is_self_conjugate=self_conjugate[None].expand(z.shape[0], -1),
+            positions=positions[None].expand(z.shape[0], -1),
+            active_coefficient_mask=active[None].expand(z.shape[0], -1),
+        )
+        scale = self.factorized_amplitude_scale(positions)[None].expand(
+            z.shape[0], -1, -1
+        )
+        raw = polar_to_cartesian(
+            log_amp.reshape(-1, 3),
+            phase.reshape(-1, 3),
+            scale.reshape(-1, 3),
+            self_conjugate[None].expand(z.shape[0], -1).reshape(-1),
+            self.config.factorized_polar.log_epsilon,
+            self.factorized_decoder.amplitude_coordinate_mean
+            if self.config.factorized_polar.amplitude_standardization != "none"
+            else None,
+            self.factorized_decoder.amplitude_coordinate_std
+            if self.config.factorized_polar.amplitude_standardization != "none"
+            else None,
+            self.config.factorized_polar.amplitude_transform,
+            self.config.factorized_polar.amplitude_transform_parameter,
+        ).reshape(z.shape[0], self.coefficients_per_token, TOKEN_DIM)
+        if self.config.factorized_polar.coordinate_mode != "physical_standardized":
+            raw = self.codec.raw_to_normalized_at(raw, positions)
+        component_mask = self.codec.component_mask[positions] * active[:, None]
+        return raw * component_mask.to(raw)[None]
+
+    @torch.no_grad()
     def generate(
         self,
         batch_size: int = 1,
@@ -1141,16 +1623,22 @@ class ContinuousFFTDecoder(nn.Module):
             raise NotImplementedError(
                 "CFG is disabled/stubbed. TODO(cfg): class-condition dropout."
             )
-        if self.config.generation.grouping != "coefficient":
-            raise NotImplementedError(
-                "Only grouping='coefficient' is implemented. TODO(grouping)."
-            )
         self.codec.assert_fitted()
         device = next(self.parameters()).device
         dtype = next(self.parameters()).dtype
         steps = num_inference_steps or self.config.generation.num_inference_steps
         temp = self.config.generation.temperature if temperature is None else temperature
         eta_v = self.config.generation.eta if eta is None else eta
+        if self.config.generation.grouping == "radial_sector":
+            return self._generate_grouped(
+                batch_size=batch_size,
+                generator=generator,
+                steps=steps,
+                temperature=temp,
+                return_tokens=return_tokens,
+                progress=progress,
+                max_groups=max_tokens,
+            )
         n_tokens = self.codec.seq_len if max_tokens is None else min(max_tokens, self.codec.seq_len)
 
         z, caches = self.init_cache(batch_size, device, dtype)
@@ -1205,6 +1693,80 @@ class ContinuousFFTDecoder(nn.Module):
         }
         if return_tokens:
             out["tokens"] = token_seq
+        return out
+
+    @torch.no_grad()
+    def _generate_grouped(
+        self,
+        *,
+        batch_size: int,
+        generator: Optional[torch.Generator],
+        steps: int,
+        temperature: float,
+        return_tokens: bool,
+        progress: bool,
+        max_groups: Optional[int],
+    ) -> Dict[str, Any]:
+        """Cached autoregressive rollout over 134 four-coefficient sectors."""
+        import time
+
+        device = next(self.parameters()).device
+        dtype = next(self.parameters()).dtype
+        group_count = (
+            self.sequence_length
+            if max_groups is None
+            else min(int(max_groups), self.sequence_length)
+        )
+        z, caches = self.init_cache(batch_size, device, dtype)
+        generated: list[torch.Tensor] = []
+        iterator = range(group_count)
+        if progress:
+            from tqdm import tqdm
+
+            iterator = tqdm(iterator, desc="generate-groups")
+        t_backbone = 0.0
+        t_denoise = 0.0
+        for group_position in iterator:
+            start = time.perf_counter()
+            group = self.sample_group(
+                z,
+                group_position,
+                generator,
+                steps,
+                temperature,
+            )
+            t_denoise += time.perf_counter() - start
+            generated.append(group)
+            if group_position + 1 < group_count:
+                start = time.perf_counter()
+                z, caches = self.forward_group_step(
+                    group, group_position, caches
+                )
+                t_backbone += time.perf_counter() - start
+
+        groups = torch.stack(generated, dim=1)
+        if group_count < self.sequence_length:
+            padding = torch.zeros(
+                batch_size,
+                self.sequence_length - group_count,
+                self.coefficients_per_token,
+                TOKEN_DIM,
+                device=device,
+                dtype=groups.dtype,
+            )
+            groups = torch.cat([groups, padding], dim=1)
+        token_seq = self.unpack_groups(groups)
+        images = self.codec.decode(token_seq.float())
+        out: Dict[str, Any] = {
+            "images": images,
+            "backbone_seconds": t_backbone,
+            "denoise_seconds": t_denoise,
+            "num_groups_sampled": group_count,
+            "num_tokens_sampled": int(self.group_mask[:group_count].sum()),
+        }
+        if return_tokens:
+            out["tokens"] = token_seq
+            out["groups"] = groups
         return out
 
     @torch.no_grad()

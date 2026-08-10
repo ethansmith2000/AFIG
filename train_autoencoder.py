@@ -107,7 +107,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--max_ring_latents", type=int, default=4)
     parser.add_argument(
         "--group_conditioning",
-        choices=["none", "film", "low_rank", "film_low_rank"],
+        choices=["none", "film", "low_rank", "film_low_rank", "adaln_zero"],
         default="film_low_rank",
     )
     parser.add_argument("--conditioning_rank", type=int, default=16)
@@ -181,6 +181,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         parser.error("--resolution must be a positive even integer")
     if args.mode == "spatial_downsample" and args.resolution % args.spatial_downsample:
         parser.error("--resolution must be divisible by --spatial_downsample")
+    if args.group_conditioning == "adaln_zero" and args.mode != "causal_ring":
+        parser.error("--group_conditioning adaln_zero requires --mode causal_ring")
     if args.kl_weight > 0 and not args.variational:
         parser.error("--kl_weight > 0 requires --variational")
     for name in (

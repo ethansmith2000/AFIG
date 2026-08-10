@@ -238,10 +238,8 @@ class TestContinuousModel(unittest.TestCase):
     def test_grouping_rejected(self):
         codec = _fitted_codec()
         cfg = _tiny_cfg(generation=GenerationConfig(grouping="chunk"))
-        model = ContinuousFFTDecoder(cfg, codec=codec)
-        tokens = torch.randn(1, codec.seq_len, 6) * codec.component_mask[None, :, :]
-        with self.assertRaises(NotImplementedError):
-            model(tokens, corrupt=False)
+        with self.assertRaises(ValueError):
+            ContinuousFFTDecoder(cfg, codec=codec)
 
     def test_gaussian_corruption(self):
         codec = _fitted_codec()

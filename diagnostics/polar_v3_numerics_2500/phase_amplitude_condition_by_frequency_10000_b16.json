@@ -1,0 +1,1483 @@
+{
+  "checkpoint": "/workspace/AFIG/continuous_runs/ar_fft_polar_v3_physical_ampv_s1_10000/checkpoint_10000.pt",
+  "checkpoint_step": 10000,
+  "held_out_examples": 16,
+  "definition": "Completed amplitude is shuffled only between held-out images at the same absolute frequency; learned slot, h, phase state, and time stay fixed.",
+  "overall": {
+    "amplitude_same_frequency_shuffled": {
+      "tokens": 8224,
+      "baseline_output_rms": 1.2408119440078735,
+      "output_delta_rms": 0.308144748210907,
+      "delta_over_baseline_rms": 0.24834121697409423,
+      "output_correlation": 0.9696333408355713,
+      "baseline_phase_velocity_mse": 2.109002113342285,
+      "variant_phase_velocity_mse": 2.236473798751831,
+      "phase_velocity_mse_ratio": 1.0604417058679625
+    },
+    "amplitude_global_mean": {
+      "tokens": 8224,
+      "baseline_output_rms": 1.2408119440078735,
+      "output_delta_rms": 0.36131149530410767,
+      "delta_over_baseline_rms": 0.29118956909542365,
+      "output_correlation": 0.9578546285629272,
+      "baseline_phase_velocity_mse": 2.109002113342285,
+      "variant_phase_velocity_mse": 2.249655246734619,
+      "phase_velocity_mse_ratio": 1.0666917934802023
+    },
+    "trunk_same_frequency_shuffled": {
+      "tokens": 8224,
+      "baseline_output_rms": 1.2408119440078735,
+      "output_delta_rms": 0.7710014581680298,
+      "delta_over_baseline_rms": 0.6213685014005131,
+      "output_correlation": 0.8095538020133972,
+      "baseline_phase_velocity_mse": 2.109002113342285,
+      "variant_phase_velocity_mse": 2.547837495803833,
+      "phase_velocity_mse_ratio": 1.2080772606557963
+    }
+  },
+  "by_radius": [
+    {
+      "radius": 0,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 16,
+        "baseline_output_rms": 1.497810959815979,
+        "output_delta_rms": 0.3381195366382599,
+        "delta_over_baseline_rms": 0.22574246397542802,
+        "output_correlation": 0.9744718670845032,
+        "baseline_phase_velocity_mse": 4.167285919189453,
+        "variant_phase_velocity_mse": 4.349632263183594,
+        "phase_velocity_mse_ratio": 1.0437566194233219
+      },
+      "amplitude_global_mean": {
+        "tokens": 16,
+        "baseline_output_rms": 1.497810959815979,
+        "output_delta_rms": 1.052017331123352,
+        "delta_over_baseline_rms": 0.7023698980361333,
+        "output_correlation": 0.7506209015846252,
+        "baseline_phase_velocity_mse": 4.167285919189453,
+        "variant_phase_velocity_mse": 3.341742515563965,
+        "phase_velocity_mse_ratio": 0.8018990250167288
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 16,
+        "baseline_output_rms": 1.497810959815979,
+        "output_delta_rms": 0.0,
+        "delta_over_baseline_rms": 0.0,
+        "output_correlation": 0.9999998807907104,
+        "baseline_phase_velocity_mse": 4.167285919189453,
+        "variant_phase_velocity_mse": 4.167285919189453,
+        "phase_velocity_mse_ratio": 1.0
+      }
+    },
+    {
+      "radius": 1,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 64,
+        "baseline_output_rms": 1.379581332206726,
+        "output_delta_rms": 0.2654446065425873,
+        "delta_over_baseline_rms": 0.19240953783999973,
+        "output_correlation": 0.9821643829345703,
+        "baseline_phase_velocity_mse": 2.225375175476074,
+        "variant_phase_velocity_mse": 2.2581026554107666,
+        "phase_velocity_mse_ratio": 1.0147064999625022
+      },
+      "amplitude_global_mean": {
+        "tokens": 64,
+        "baseline_output_rms": 1.379581332206726,
+        "output_delta_rms": 0.9786161184310913,
+        "delta_over_baseline_rms": 0.7093573213735315,
+        "output_correlation": 0.7895663976669312,
+        "baseline_phase_velocity_mse": 2.225375175476074,
+        "variant_phase_velocity_mse": 2.6254286766052246,
+        "phase_velocity_mse_ratio": 1.1797690140241486
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 64,
+        "baseline_output_rms": 1.379581332206726,
+        "output_delta_rms": 0.8670790195465088,
+        "delta_over_baseline_rms": 0.6285088086539719,
+        "output_correlation": 0.8074500560760498,
+        "baseline_phase_velocity_mse": 2.225375175476074,
+        "variant_phase_velocity_mse": 2.356776475906372,
+        "phase_velocity_mse_ratio": 1.0590468078723791
+      }
+    },
+    {
+      "radius": 2,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 128,
+        "baseline_output_rms": 1.3323217630386353,
+        "output_delta_rms": 0.2852584719657898,
+        "delta_over_baseline_rms": 0.21410629164774647,
+        "output_correlation": 0.9769588112831116,
+        "baseline_phase_velocity_mse": 1.7128654718399048,
+        "variant_phase_velocity_mse": 1.8885360956192017,
+        "phase_velocity_mse_ratio": 1.1025594984938292
+      },
+      "amplitude_global_mean": {
+        "tokens": 128,
+        "baseline_output_rms": 1.3323217630386353,
+        "output_delta_rms": 0.7667260766029358,
+        "delta_over_baseline_rms": 0.5754811621888233,
+        "output_correlation": 0.870303213596344,
+        "baseline_phase_velocity_mse": 1.7128654718399048,
+        "variant_phase_velocity_mse": 2.1549553871154785,
+        "phase_velocity_mse_ratio": 1.2580996129256403
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 128,
+        "baseline_output_rms": 1.3323217630386353,
+        "output_delta_rms": 1.0708181858062744,
+        "delta_over_baseline_rms": 0.8037234063970043,
+        "output_correlation": 0.6819998025894165,
+        "baseline_phase_velocity_mse": 1.7128654718399048,
+        "variant_phase_velocity_mse": 2.385639190673828,
+        "phase_velocity_mse_ratio": 1.3927767416032104
+      }
+    },
+    {
+      "radius": 3,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 160,
+        "baseline_output_rms": 1.268961787223816,
+        "output_delta_rms": 0.31108739972114563,
+        "delta_over_baseline_rms": 0.24515111712050072,
+        "output_correlation": 0.9706622958183289,
+        "baseline_phase_velocity_mse": 2.1483404636383057,
+        "variant_phase_velocity_mse": 2.3471949100494385,
+        "phase_velocity_mse_ratio": 1.0925618866175264
+      },
+      "amplitude_global_mean": {
+        "tokens": 160,
+        "baseline_output_rms": 1.268961787223816,
+        "output_delta_rms": 0.623408317565918,
+        "delta_over_baseline_rms": 0.4912743030109566,
+        "output_correlation": 0.9066196084022522,
+        "baseline_phase_velocity_mse": 2.1483404636383057,
+        "variant_phase_velocity_mse": 2.190103769302368,
+        "phase_velocity_mse_ratio": 1.019439798472787
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 160,
+        "baseline_output_rms": 1.268961787223816,
+        "output_delta_rms": 1.0260624885559082,
+        "delta_over_baseline_rms": 0.8085842291600339,
+        "output_correlation": 0.6839919090270996,
+        "baseline_phase_velocity_mse": 2.1483404636383057,
+        "variant_phase_velocity_mse": 2.7766611576080322,
+        "phase_velocity_mse_ratio": 1.2924679326225783
+      }
+    },
+    {
+      "radius": 4,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 192,
+        "baseline_output_rms": 1.3130593299865723,
+        "output_delta_rms": 0.33473747968673706,
+        "delta_over_baseline_rms": 0.25492944000493883,
+        "output_correlation": 0.9682749509811401,
+        "baseline_phase_velocity_mse": 1.960782766342163,
+        "variant_phase_velocity_mse": 2.08524227142334,
+        "phase_velocity_mse_ratio": 1.0634743976832046
+      },
+      "amplitude_global_mean": {
+        "tokens": 192,
+        "baseline_output_rms": 1.3130593299865723,
+        "output_delta_rms": 0.5813691020011902,
+        "delta_over_baseline_rms": 0.44275920266842433,
+        "output_correlation": 0.9324539303779602,
+        "baseline_phase_velocity_mse": 1.960782766342163,
+        "variant_phase_velocity_mse": 2.1830875873565674,
+        "phase_velocity_mse_ratio": 1.113375548189417
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 192,
+        "baseline_output_rms": 1.3130593299865723,
+        "output_delta_rms": 1.0490719079971313,
+        "delta_over_baseline_rms": 0.7989524037789362,
+        "output_correlation": 0.6856608390808105,
+        "baseline_phase_velocity_mse": 1.960782766342163,
+        "variant_phase_velocity_mse": 2.921154022216797,
+        "phase_velocity_mse_ratio": 1.4897897270212166
+      }
+    },
+    {
+      "radius": 5,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 320,
+        "baseline_output_rms": 1.2498235702514648,
+        "output_delta_rms": 0.3367346525192261,
+        "delta_over_baseline_rms": 0.26942574978920825,
+        "output_correlation": 0.9641702771186829,
+        "baseline_phase_velocity_mse": 2.0458245277404785,
+        "variant_phase_velocity_mse": 2.240211009979248,
+        "phase_velocity_mse_ratio": 1.0950162047638858
+      },
+      "amplitude_global_mean": {
+        "tokens": 320,
+        "baseline_output_rms": 1.2498235702514648,
+        "output_delta_rms": 0.4631776511669159,
+        "delta_over_baseline_rms": 0.37059442803893067,
+        "output_correlation": 0.9494636654853821,
+        "baseline_phase_velocity_mse": 2.0458245277404785,
+        "variant_phase_velocity_mse": 2.159740924835205,
+        "phase_velocity_mse_ratio": 1.0556823889586182
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 320,
+        "baseline_output_rms": 1.2498235702514648,
+        "output_delta_rms": 0.9196261763572693,
+        "delta_over_baseline_rms": 0.7358047953698299,
+        "output_correlation": 0.7308053970336914,
+        "baseline_phase_velocity_mse": 2.0458245277404785,
+        "variant_phase_velocity_mse": 2.814542055130005,
+        "phase_velocity_mse_ratio": 1.375749492180808
+      }
+    },
+    {
+      "radius": 6,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 288,
+        "baseline_output_rms": 1.270207405090332,
+        "output_delta_rms": 0.3455108106136322,
+        "delta_over_baseline_rms": 0.27201133391996,
+        "output_correlation": 0.9635719060897827,
+        "baseline_phase_velocity_mse": 2.281871795654297,
+        "variant_phase_velocity_mse": 2.3530256748199463,
+        "phase_velocity_mse_ratio": 1.031182242271962
+      },
+      "amplitude_global_mean": {
+        "tokens": 288,
+        "baseline_output_rms": 1.270207405090332,
+        "output_delta_rms": 0.419271856546402,
+        "delta_over_baseline_rms": 0.3300814141581745,
+        "output_correlation": 0.9530599117279053,
+        "baseline_phase_velocity_mse": 2.281871795654297,
+        "variant_phase_velocity_mse": 2.321272611618042,
+        "phase_velocity_mse_ratio": 1.0172668841600925
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 288,
+        "baseline_output_rms": 1.270207405090332,
+        "output_delta_rms": 0.8665221929550171,
+        "delta_over_baseline_rms": 0.6821895302156529,
+        "output_correlation": 0.7677610516548157,
+        "baseline_phase_velocity_mse": 2.281871795654297,
+        "variant_phase_velocity_mse": 2.65169358253479,
+        "phase_velocity_mse_ratio": 1.162069485053805
+      }
+    },
+    {
+      "radius": 7,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 384,
+        "baseline_output_rms": 1.2230314016342163,
+        "output_delta_rms": 0.34018415212631226,
+        "delta_over_baseline_rms": 0.2781483383597164,
+        "output_correlation": 0.9621462821960449,
+        "baseline_phase_velocity_mse": 2.0175180435180664,
+        "variant_phase_velocity_mse": 2.193981170654297,
+        "phase_velocity_mse_ratio": 1.087465451772873
+      },
+      "amplitude_global_mean": {
+        "tokens": 384,
+        "baseline_output_rms": 1.2230314016342163,
+        "output_delta_rms": 0.3308998942375183,
+        "delta_over_baseline_rms": 0.2705571531486186,
+        "output_correlation": 0.9694483876228333,
+        "baseline_phase_velocity_mse": 2.0175180435180664,
+        "variant_phase_velocity_mse": 2.0826330184936523,
+        "phase_velocity_mse_ratio": 1.0322747918834179
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 384,
+        "baseline_output_rms": 1.2230314016342163,
+        "output_delta_rms": 0.8324378728866577,
+        "delta_over_baseline_rms": 0.6806349140131259,
+        "output_correlation": 0.7771405577659607,
+        "baseline_phase_velocity_mse": 2.0175180435180664,
+        "variant_phase_velocity_mse": 2.5587363243103027,
+        "phase_velocity_mse_ratio": 1.268259450036185
+      }
+    },
+    {
+      "radius": 8,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 448,
+        "baseline_output_rms": 1.2034116983413696,
+        "output_delta_rms": 0.3572451174259186,
+        "delta_over_baseline_rms": 0.29686026645602664,
+        "output_correlation": 0.9566112160682678,
+        "baseline_phase_velocity_mse": 2.3247034549713135,
+        "variant_phase_velocity_mse": 2.4883577823638916,
+        "phase_velocity_mse_ratio": 1.070397937011109
+      },
+      "amplitude_global_mean": {
+        "tokens": 448,
+        "baseline_output_rms": 1.2034116983413696,
+        "output_delta_rms": 0.32556360960006714,
+        "delta_over_baseline_rms": 0.27053385807100166,
+        "output_correlation": 0.9654358625411987,
+        "baseline_phase_velocity_mse": 2.3247034549713135,
+        "variant_phase_velocity_mse": 2.416482925415039,
+        "phase_velocity_mse_ratio": 1.0394800765867396
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 448,
+        "baseline_output_rms": 1.2034116983413696,
+        "output_delta_rms": 0.8199384212493896,
+        "delta_over_baseline_rms": 0.681344898324895,
+        "output_correlation": 0.7761302590370178,
+        "baseline_phase_velocity_mse": 2.3247034549713135,
+        "variant_phase_velocity_mse": 2.8380823135375977,
+        "phase_velocity_mse_ratio": 1.220836278050191
+      }
+    },
+    {
+      "radius": 9,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 448,
+        "baseline_output_rms": 1.2581502199172974,
+        "output_delta_rms": 0.32794344425201416,
+        "delta_over_baseline_rms": 0.260655237395715,
+        "output_correlation": 0.9666048884391785,
+        "baseline_phase_velocity_mse": 1.9539076089859009,
+        "variant_phase_velocity_mse": 2.058391809463501,
+        "phase_velocity_mse_ratio": 1.0534744836434864
+      },
+      "amplitude_global_mean": {
+        "tokens": 448,
+        "baseline_output_rms": 1.2581502199172974,
+        "output_delta_rms": 0.27084508538246155,
+        "delta_over_baseline_rms": 0.21527245403197176,
+        "output_correlation": 0.977561891078949,
+        "baseline_phase_velocity_mse": 1.9539076089859009,
+        "variant_phase_velocity_mse": 1.9816561937332153,
+        "phase_velocity_mse_ratio": 1.014201584875201
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 448,
+        "baseline_output_rms": 1.2581502199172974,
+        "output_delta_rms": 0.7961554527282715,
+        "delta_over_baseline_rms": 0.6327984052497369,
+        "output_correlation": 0.8041306138038635,
+        "baseline_phase_velocity_mse": 1.9539076089859009,
+        "variant_phase_velocity_mse": 2.5023043155670166,
+        "phase_velocity_mse_ratio": 1.2806666518207273
+      }
+    },
+    {
+      "radius": 10,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 544,
+        "baseline_output_rms": 1.2125790119171143,
+        "output_delta_rms": 0.3055422008037567,
+        "delta_over_baseline_rms": 0.2519771477164921,
+        "output_correlation": 0.9684432148933411,
+        "baseline_phase_velocity_mse": 2.0192267894744873,
+        "variant_phase_velocity_mse": 2.135540723800659,
+        "phase_velocity_mse_ratio": 1.0576032048170494
+      },
+      "amplitude_global_mean": {
+        "tokens": 544,
+        "baseline_output_rms": 1.2125790119171143,
+        "output_delta_rms": 0.22776810824871063,
+        "delta_over_baseline_rms": 0.1878377458377778,
+        "output_correlation": 0.9823012948036194,
+        "baseline_phase_velocity_mse": 2.0192267894744873,
+        "variant_phase_velocity_mse": 2.077090263366699,
+        "phase_velocity_mse_ratio": 1.028656253073619
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 544,
+        "baseline_output_rms": 1.2125790119171143,
+        "output_delta_rms": 0.7946932911872864,
+        "delta_over_baseline_rms": 0.6553744402444,
+        "output_correlation": 0.7878271341323853,
+        "baseline_phase_velocity_mse": 2.0192267894744873,
+        "variant_phase_velocity_mse": 2.6849353313446045,
+        "phase_velocity_mse_ratio": 1.329684880044292
+      }
+    },
+    {
+      "radius": 11,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 512,
+        "baseline_output_rms": 1.246214747428894,
+        "output_delta_rms": 0.36512717604637146,
+        "delta_over_baseline_rms": 0.29298897064063567,
+        "output_correlation": 0.9575984477996826,
+        "baseline_phase_velocity_mse": 2.1697256565093994,
+        "variant_phase_velocity_mse": 2.3821985721588135,
+        "phase_velocity_mse_ratio": 1.097926166385125
+      },
+      "amplitude_global_mean": {
+        "tokens": 512,
+        "baseline_output_rms": 1.246214747428894,
+        "output_delta_rms": 0.25890007615089417,
+        "delta_over_baseline_rms": 0.2077491673766815,
+        "output_correlation": 0.9785152077674866,
+        "baseline_phase_velocity_mse": 2.1697256565093994,
+        "variant_phase_velocity_mse": 2.319586992263794,
+        "phase_velocity_mse_ratio": 1.069069255509237
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 512,
+        "baseline_output_rms": 1.246214747428894,
+        "output_delta_rms": 0.836975634098053,
+        "delta_over_baseline_rms": 0.6716142910560515,
+        "output_correlation": 0.7733990550041199,
+        "baseline_phase_velocity_mse": 2.1697256565093994,
+        "variant_phase_velocity_mse": 2.8354814052581787,
+        "phase_velocity_mse_ratio": 1.3068386764711215
+      }
+    },
+    {
+      "radius": 12,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 640,
+        "baseline_output_rms": 1.255513310432434,
+        "output_delta_rms": 0.2988456189632416,
+        "delta_over_baseline_rms": 0.23802664334981105,
+        "output_correlation": 0.971980631351471,
+        "baseline_phase_velocity_mse": 2.175633668899536,
+        "variant_phase_velocity_mse": 2.272367000579834,
+        "phase_velocity_mse_ratio": 1.0444621413352309
+      },
+      "amplitude_global_mean": {
+        "tokens": 640,
+        "baseline_output_rms": 1.255513310432434,
+        "output_delta_rms": 0.2376164197921753,
+        "delta_over_baseline_rms": 0.18925838365690725,
+        "output_correlation": 0.9829180240631104,
+        "baseline_phase_velocity_mse": 2.175633668899536,
+        "variant_phase_velocity_mse": 2.2305104732513428,
+        "phase_velocity_mse_ratio": 1.0252233660180319
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 640,
+        "baseline_output_rms": 1.255513310432434,
+        "output_delta_rms": 0.6919639110565186,
+        "delta_over_baseline_rms": 0.5511402430438486,
+        "output_correlation": 0.8501737713813782,
+        "baseline_phase_velocity_mse": 2.175633668899536,
+        "variant_phase_velocity_mse": 2.535966396331787,
+        "phase_velocity_mse_ratio": 1.165621966870237
+      }
+    },
+    {
+      "radius": 13,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 736,
+        "baseline_output_rms": 1.2474479675292969,
+        "output_delta_rms": 0.28512921929359436,
+        "delta_over_baseline_rms": 0.22857002994547584,
+        "output_correlation": 0.9742282032966614,
+        "baseline_phase_velocity_mse": 2.0131866931915283,
+        "variant_phase_velocity_mse": 2.1610193252563477,
+        "phase_velocity_mse_ratio": 1.0734321524003612
+      },
+      "amplitude_global_mean": {
+        "tokens": 736,
+        "baseline_output_rms": 1.2474479675292969,
+        "output_delta_rms": 0.23274606466293335,
+        "delta_over_baseline_rms": 0.18657777375990411,
+        "output_correlation": 0.9843030571937561,
+        "baseline_phase_velocity_mse": 2.0131866931915283,
+        "variant_phase_velocity_mse": 2.1516036987304688,
+        "phase_velocity_mse_ratio": 1.0687551760634313
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 736,
+        "baseline_output_rms": 1.2474479675292969,
+        "output_delta_rms": 0.7217980027198792,
+        "delta_over_baseline_rms": 0.5786197272415913,
+        "output_correlation": 0.8336644172668457,
+        "baseline_phase_velocity_mse": 2.0131866931915283,
+        "variant_phase_velocity_mse": 2.3286056518554688,
+        "phase_velocity_mse_ratio": 1.1566764571466062
+      }
+    },
+    {
+      "radius": 14,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 704,
+        "baseline_output_rms": 1.2618224620819092,
+        "output_delta_rms": 0.3325548768043518,
+        "delta_over_baseline_rms": 0.2635512417932885,
+        "output_correlation": 0.9656765460968018,
+        "baseline_phase_velocity_mse": 2.1075568199157715,
+        "variant_phase_velocity_mse": 2.264573335647583,
+        "phase_velocity_mse_ratio": 1.0745016761816588
+      },
+      "amplitude_global_mean": {
+        "tokens": 704,
+        "baseline_output_rms": 1.2618224620819092,
+        "output_delta_rms": 0.32140710949897766,
+        "delta_over_baseline_rms": 0.2547165858568414,
+        "output_correlation": 0.9735376834869385,
+        "baseline_phase_velocity_mse": 2.1075568199157715,
+        "variant_phase_velocity_mse": 2.296645402908325,
+        "phase_velocity_mse_ratio": 1.089719328658532
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 704,
+        "baseline_output_rms": 1.2618224620819092,
+        "output_delta_rms": 0.7161832451820374,
+        "delta_over_baseline_rms": 0.5675784563229208,
+        "output_correlation": 0.8398367166519165,
+        "baseline_phase_velocity_mse": 2.1075568199157715,
+        "variant_phase_velocity_mse": 2.4610419273376465,
+        "phase_velocity_mse_ratio": 1.1677226939181655
+      }
+    },
+    {
+      "radius": 15,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 768,
+        "baseline_output_rms": 1.2126359939575195,
+        "output_delta_rms": 0.28032341599464417,
+        "delta_over_baseline_rms": 0.23116864202569953,
+        "output_correlation": 0.9741135835647583,
+        "baseline_phase_velocity_mse": 2.1317296028137207,
+        "variant_phase_velocity_mse": 2.225459098815918,
+        "phase_velocity_mse_ratio": 1.0439687547043872
+      },
+      "amplitude_global_mean": {
+        "tokens": 768,
+        "baseline_output_rms": 1.2126359939575195,
+        "output_delta_rms": 0.30522915720939636,
+        "delta_over_baseline_rms": 0.2517071559234032,
+        "output_correlation": 0.976581871509552,
+        "baseline_phase_velocity_mse": 2.1317296028137207,
+        "variant_phase_velocity_mse": 2.3057050704956055,
+        "phase_velocity_mse_ratio": 1.0816123524541998
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 768,
+        "baseline_output_rms": 1.2126359939575195,
+        "output_delta_rms": 0.7695758938789368,
+        "delta_over_baseline_rms": 0.6346305880030608,
+        "output_correlation": 0.7990214228630066,
+        "baseline_phase_velocity_mse": 2.1317296028137207,
+        "variant_phase_velocity_mse": 2.5579235553741455,
+        "phase_velocity_mse_ratio": 1.1999287114078077
+      }
+    },
+    {
+      "radius": 16,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 608,
+        "baseline_output_rms": 1.2225093841552734,
+        "output_delta_rms": 0.30939385294914246,
+        "delta_over_baseline_rms": 0.2530809635976142,
+        "output_correlation": 0.9686276912689209,
+        "baseline_phase_velocity_mse": 2.0064425468444824,
+        "variant_phase_velocity_mse": 2.117177724838257,
+        "phase_velocity_mse_ratio": 1.0551898075366906
+      },
+      "amplitude_global_mean": {
+        "tokens": 608,
+        "baseline_output_rms": 1.2225093841552734,
+        "output_delta_rms": 0.33549579977989197,
+        "delta_over_baseline_rms": 0.2744320854532434,
+        "output_correlation": 0.97242671251297,
+        "baseline_phase_velocity_mse": 2.0064425468444824,
+        "variant_phase_velocity_mse": 2.1581382751464844,
+        "phase_velocity_mse_ratio": 1.0756043219580709
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 608,
+        "baseline_output_rms": 1.2225093841552734,
+        "output_delta_rms": 0.777664065361023,
+        "delta_over_baseline_rms": 0.6361211418416811,
+        "output_correlation": 0.8014031052589417,
+        "baseline_phase_velocity_mse": 2.0064425468444824,
+        "variant_phase_velocity_mse": 2.4730427265167236,
+        "phase_velocity_mse_ratio": 1.2325509795463916
+      }
+    },
+    {
+      "radius": 17,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 480,
+        "baseline_output_rms": 1.2038397789001465,
+        "output_delta_rms": 0.2744980454444885,
+        "delta_over_baseline_rms": 0.22801875320590898,
+        "output_correlation": 0.9744544625282288,
+        "baseline_phase_velocity_mse": 2.2669503688812256,
+        "variant_phase_velocity_mse": 2.3581957817077637,
+        "phase_velocity_mse_ratio": 1.040250291351358
+      },
+      "amplitude_global_mean": {
+        "tokens": 480,
+        "baseline_output_rms": 1.2038397789001465,
+        "output_delta_rms": 0.3823908269405365,
+        "delta_over_baseline_rms": 0.31764262457741416,
+        "output_correlation": 0.967865526676178,
+        "baseline_phase_velocity_mse": 2.2669503688812256,
+        "variant_phase_velocity_mse": 2.5038700103759766,
+        "phase_velocity_mse_ratio": 1.1045102904531934
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 480,
+        "baseline_output_rms": 1.2038397789001465,
+        "output_delta_rms": 0.6175459027290344,
+        "delta_over_baseline_rms": 0.5129801436643316,
+        "output_correlation": 0.8713597059249878,
+        "baseline_phase_velocity_mse": 2.2669503688812256,
+        "variant_phase_velocity_mse": 2.314500331878662,
+        "phase_velocity_mse_ratio": 1.0209752995258132
+      }
+    },
+    {
+      "radius": 18,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 288,
+        "baseline_output_rms": 1.1662694215774536,
+        "output_delta_rms": 0.24954591691493988,
+        "delta_over_baseline_rms": 0.21396935587783236,
+        "output_correlation": 0.9775734543800354,
+        "baseline_phase_velocity_mse": 2.3951756954193115,
+        "variant_phase_velocity_mse": 2.499462366104126,
+        "phase_velocity_mse_ratio": 1.0435403009826205
+      },
+      "amplitude_global_mean": {
+        "tokens": 288,
+        "baseline_output_rms": 1.1662694215774536,
+        "output_delta_rms": 0.3946535289287567,
+        "delta_over_baseline_rms": 0.3383896736270104,
+        "output_correlation": 0.9638310074806213,
+        "baseline_phase_velocity_mse": 2.3951756954193115,
+        "variant_phase_velocity_mse": 2.68589186668396,
+        "phase_velocity_mse_ratio": 1.121375718624998
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 288,
+        "baseline_output_rms": 1.1662694215774536,
+        "output_delta_rms": 0.5261824131011963,
+        "delta_over_baseline_rms": 0.4511671174483003,
+        "output_correlation": 0.9023742079734802,
+        "baseline_phase_velocity_mse": 2.3951756954193115,
+        "variant_phase_velocity_mse": 2.506520986557007,
+        "phase_velocity_mse_ratio": 1.0464873167136086
+      }
+    },
+    {
+      "radius": 19,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 256,
+        "baseline_output_rms": 1.250526785850525,
+        "output_delta_rms": 0.176438570022583,
+        "delta_over_baseline_rms": 0.1410913960572074,
+        "output_correlation": 0.9904778599739075,
+        "baseline_phase_velocity_mse": 1.8713494539260864,
+        "variant_phase_velocity_mse": 1.912518858909607,
+        "phase_velocity_mse_ratio": 1.0219998487707078
+      },
+      "amplitude_global_mean": {
+        "tokens": 256,
+        "baseline_output_rms": 1.250526785850525,
+        "output_delta_rms": 0.37878385186195374,
+        "delta_over_baseline_rms": 0.3028994309820643,
+        "output_correlation": 0.9716776013374329,
+        "baseline_phase_velocity_mse": 1.8713494539260864,
+        "variant_phase_velocity_mse": 2.0536646842956543,
+        "phase_velocity_mse_ratio": 1.097424470874251
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 256,
+        "baseline_output_rms": 1.250526785850525,
+        "output_delta_rms": 0.5049716830253601,
+        "delta_over_baseline_rms": 0.4038071704972813,
+        "output_correlation": 0.9186463356018066,
+        "baseline_phase_velocity_mse": 1.8713494539260864,
+        "variant_phase_velocity_mse": 2.072922468185425,
+        "phase_velocity_mse_ratio": 1.1077153248082225
+      }
+    },
+    {
+      "radius": 20,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 128,
+        "baseline_output_rms": 1.2709962129592896,
+        "output_delta_rms": 0.2218552529811859,
+        "delta_over_baseline_rms": 0.1745522533577305,
+        "output_correlation": 0.9847251772880554,
+        "baseline_phase_velocity_mse": 2.177626609802246,
+        "variant_phase_velocity_mse": 2.2506635189056396,
+        "phase_velocity_mse_ratio": 1.033539684340111
+      },
+      "amplitude_global_mean": {
+        "tokens": 128,
+        "baseline_output_rms": 1.2709962129592896,
+        "output_delta_rms": 0.4813022315502167,
+        "delta_over_baseline_rms": 0.3786810901895527,
+        "output_correlation": 0.9557718634605408,
+        "baseline_phase_velocity_mse": 2.177626609802246,
+        "variant_phase_velocity_mse": 2.4663045406341553,
+        "phase_velocity_mse_ratio": 1.1325653946055172
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 128,
+        "baseline_output_rms": 1.2709962129592896,
+        "output_delta_rms": 0.5289716720581055,
+        "delta_over_baseline_rms": 0.4161866626073485,
+        "output_correlation": 0.9169221520423889,
+        "baseline_phase_velocity_mse": 2.177626609802246,
+        "variant_phase_velocity_mse": 2.4330453872680664,
+        "phase_velocity_mse_ratio": 1.117292274220058
+      }
+    },
+    {
+      "radius": 21,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 96,
+        "baseline_output_rms": 1.3318121433258057,
+        "output_delta_rms": 0.22465355694293976,
+        "delta_over_baseline_rms": 0.16868261644013408,
+        "output_correlation": 0.9857268333435059,
+        "baseline_phase_velocity_mse": 2.1336755752563477,
+        "variant_phase_velocity_mse": 2.1985487937927246,
+        "phase_velocity_mse_ratio": 1.0304044435286666
+      },
+      "amplitude_global_mean": {
+        "tokens": 96,
+        "baseline_output_rms": 1.3318121433258057,
+        "output_delta_rms": 0.3947482705116272,
+        "delta_over_baseline_rms": 0.29639936269529765,
+        "output_correlation": 0.9745753407478333,
+        "baseline_phase_velocity_mse": 2.1336755752563477,
+        "variant_phase_velocity_mse": 2.3960254192352295,
+        "phase_velocity_mse_ratio": 1.122956763915415
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 96,
+        "baseline_output_rms": 1.3318121433258057,
+        "output_delta_rms": 0.5325700640678406,
+        "delta_over_baseline_rms": 0.399883772449998,
+        "output_correlation": 0.9224454164505005,
+        "baseline_phase_velocity_mse": 2.1336755752563477,
+        "variant_phase_velocity_mse": 2.2155959606170654,
+        "phase_velocity_mse_ratio": 1.0383940212423697
+      }
+    },
+    {
+      "radius": 22,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 16,
+        "baseline_output_rms": 1.0748991966247559,
+        "output_delta_rms": 0.252430260181427,
+        "delta_over_baseline_rms": 0.23484086784516378,
+        "output_correlation": 0.9720287919044495,
+        "baseline_phase_velocity_mse": 1.727303385734558,
+        "variant_phase_velocity_mse": 1.8496742248535156,
+        "phase_velocity_mse_ratio": 1.0708450178061324
+      },
+      "amplitude_global_mean": {
+        "tokens": 16,
+        "baseline_output_rms": 1.0748991966247559,
+        "output_delta_rms": 0.4311533570289612,
+        "delta_over_baseline_rms": 0.4011105026246248,
+        "output_correlation": 0.9736838340759277,
+        "baseline_phase_velocity_mse": 1.727303385734558,
+        "variant_phase_velocity_mse": 1.8278852701187134,
+        "phase_velocity_mse_ratio": 1.0582305837033843
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 16,
+        "baseline_output_rms": 1.0748991966247559,
+        "output_delta_rms": 0.7524367570877075,
+        "delta_over_baseline_rms": 0.7000068094295738,
+        "output_correlation": 0.753259539604187,
+        "baseline_phase_velocity_mse": 1.727303385734558,
+        "variant_phase_velocity_mse": 3.030080795288086,
+        "phase_velocity_mse_ratio": 1.754226165659662
+      }
+    }
+  ],
+  "by_position_decile": [
+    {
+      "decile": 0,
+      "position_start": 0,
+      "position_end_exclusive": 51,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 816,
+        "baseline_output_rms": 1.2950598001480103,
+        "output_delta_rms": 0.3243016302585602,
+        "delta_over_baseline_rms": 0.250414405745199,
+        "output_correlation": 0.9692362546920776,
+        "baseline_phase_velocity_mse": 2.0663063526153564,
+        "variant_phase_velocity_mse": 2.2353909015655518,
+        "phase_velocity_mse_ratio": 1.081829370914038
+      },
+      "amplitude_global_mean": {
+        "tokens": 816,
+        "baseline_output_rms": 1.2950598001480103,
+        "output_delta_rms": 0.644453763961792,
+        "delta_over_baseline_rms": 0.4976247150040009,
+        "output_correlation": 0.9018111228942871,
+        "baseline_phase_velocity_mse": 2.0663063526153564,
+        "variant_phase_velocity_mse": 2.2442710399627686,
+        "phase_velocity_mse_ratio": 1.0861269613395708
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 816,
+        "baseline_output_rms": 1.2950598001480103,
+        "output_delta_rms": 0.9919400215148926,
+        "delta_over_baseline_rms": 0.7659414811590364,
+        "output_correlation": 0.7106136679649353,
+        "baseline_phase_velocity_mse": 2.0663063526153564,
+        "variant_phase_velocity_mse": 2.8065271377563477,
+        "phase_velocity_mse_ratio": 1.3582338041036761
+      }
+    },
+    {
+      "decile": 1,
+      "position_start": 51,
+      "position_end_exclusive": 102,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 816,
+        "baseline_output_rms": 1.2545424699783325,
+        "output_delta_rms": 0.3413667380809784,
+        "delta_over_baseline_rms": 0.27210456899627655,
+        "output_correlation": 0.9635280966758728,
+        "baseline_phase_velocity_mse": 2.137634515762329,
+        "variant_phase_velocity_mse": 2.27884840965271,
+        "phase_velocity_mse_ratio": 1.0660608223010568
+      },
+      "amplitude_global_mean": {
+        "tokens": 816,
+        "baseline_output_rms": 1.2545424699783325,
+        "output_delta_rms": 0.37680789828300476,
+        "delta_over_baseline_rms": 0.3003548363647766,
+        "output_correlation": 0.9617939591407776,
+        "baseline_phase_velocity_mse": 2.137634515762329,
+        "variant_phase_velocity_mse": 2.204392671585083,
+        "phase_velocity_mse_ratio": 1.0312299204239535
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 816,
+        "baseline_output_rms": 1.2545424699783325,
+        "output_delta_rms": 0.8522261381149292,
+        "delta_over_baseline_rms": 0.6793123058876183,
+        "output_correlation": 0.7730840444564819,
+        "baseline_phase_velocity_mse": 2.137634515762329,
+        "variant_phase_velocity_mse": 2.578458547592163,
+        "phase_velocity_mse_ratio": 1.2062204874497109
+      }
+    },
+    {
+      "decile": 2,
+      "position_start": 102,
+      "position_end_exclusive": 154,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 832,
+        "baseline_output_rms": 1.22372567653656,
+        "output_delta_rms": 0.33927395939826965,
+        "delta_over_baseline_rms": 0.2772467440239524,
+        "output_correlation": 0.9620720148086548,
+        "baseline_phase_velocity_mse": 2.0922396183013916,
+        "variant_phase_velocity_mse": 2.2193658351898193,
+        "phase_velocity_mse_ratio": 1.0607608305360534
+      },
+      "amplitude_global_mean": {
+        "tokens": 832,
+        "baseline_output_rms": 1.22372567653656,
+        "output_delta_rms": 0.28858697414398193,
+        "delta_over_baseline_rms": 0.23582652523950706,
+        "output_correlation": 0.9732064604759216,
+        "baseline_phase_velocity_mse": 2.0922396183013916,
+        "variant_phase_velocity_mse": 2.146421194076538,
+        "phase_velocity_mse_ratio": 1.0258964486195583
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 832,
+        "baseline_output_rms": 1.22372567653656,
+        "output_delta_rms": 0.7975268363952637,
+        "delta_over_baseline_rms": 0.6517202766002734,
+        "output_correlation": 0.7946117520332336,
+        "baseline_phase_velocity_mse": 2.0922396183013916,
+        "variant_phase_velocity_mse": 2.653610944747925,
+        "phase_velocity_mse_ratio": 1.2683112018031133
+      }
+    },
+    {
+      "decile": 3,
+      "position_start": 154,
+      "position_end_exclusive": 205,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 816,
+        "baseline_output_rms": 1.2280181646347046,
+        "output_delta_rms": 0.34397000074386597,
+        "delta_over_baseline_rms": 0.28010172051989624,
+        "output_correlation": 0.9612953066825867,
+        "baseline_phase_velocity_mse": 2.0981383323669434,
+        "variant_phase_velocity_mse": 2.2728378772735596,
+        "phase_velocity_mse_ratio": 1.0832640737798898
+      },
+      "amplitude_global_mean": {
+        "tokens": 816,
+        "baseline_output_rms": 1.2280181646347046,
+        "output_delta_rms": 0.2529390752315521,
+        "delta_over_baseline_rms": 0.20597339885993726,
+        "output_correlation": 0.9785568714141846,
+        "baseline_phase_velocity_mse": 2.0981383323669434,
+        "variant_phase_velocity_mse": 2.2018256187438965,
+        "phase_velocity_mse_ratio": 1.0494187083746676
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 816,
+        "baseline_output_rms": 1.2280181646347046,
+        "output_delta_rms": 0.8608339428901672,
+        "delta_over_baseline_rms": 0.7009944703433905,
+        "output_correlation": 0.7550961971282959,
+        "baseline_phase_velocity_mse": 2.0981383323669434,
+        "variant_phase_velocity_mse": 2.810408592224121,
+        "phase_velocity_mse_ratio": 1.339477263662427
+      }
+    },
+    {
+      "decile": 4,
+      "position_start": 205,
+      "position_end_exclusive": 257,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 832,
+        "baseline_output_rms": 1.2443406581878662,
+        "output_delta_rms": 0.2961643636226654,
+        "delta_over_baseline_rms": 0.23800907064627277,
+        "output_correlation": 0.9718733429908752,
+        "baseline_phase_velocity_mse": 2.1738831996917725,
+        "variant_phase_velocity_mse": 2.278963804244995,
+        "phase_velocity_mse_ratio": 1.0483377416818538
+      },
+      "amplitude_global_mean": {
+        "tokens": 832,
+        "baseline_output_rms": 1.2443406581878662,
+        "output_delta_rms": 0.23035182058811188,
+        "delta_over_baseline_rms": 0.18511958045602506,
+        "output_correlation": 0.9835273623466492,
+        "baseline_phase_velocity_mse": 2.1738831996917725,
+        "variant_phase_velocity_mse": 2.2489700317382812,
+        "phase_velocity_mse_ratio": 1.0345404169171348
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 832,
+        "baseline_output_rms": 1.2443406581878662,
+        "output_delta_rms": 0.6801104545593262,
+        "delta_over_baseline_rms": 0.5465629127234107,
+        "output_correlation": 0.8526580333709717,
+        "baseline_phase_velocity_mse": 2.1738831996917725,
+        "variant_phase_velocity_mse": 2.5702059268951416,
+        "phase_velocity_mse_ratio": 1.1823109573042205
+      }
+    },
+    {
+      "decile": 5,
+      "position_start": 257,
+      "position_end_exclusive": 308,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 816,
+        "baseline_output_rms": 1.2652602195739746,
+        "output_delta_rms": 0.3073965013027191,
+        "delta_over_baseline_rms": 0.2429512099939588,
+        "output_correlation": 0.9708619713783264,
+        "baseline_phase_velocity_mse": 2.002708911895752,
+        "variant_phase_velocity_mse": 2.1433346271514893,
+        "phase_velocity_mse_ratio": 1.0702177507776813
+      },
+      "amplitude_global_mean": {
+        "tokens": 816,
+        "baseline_output_rms": 1.2652602195739746,
+        "output_delta_rms": 0.23858840763568878,
+        "delta_over_baseline_rms": 0.18856864694285877,
+        "output_correlation": 0.9837561249732971,
+        "baseline_phase_velocity_mse": 2.002708911895752,
+        "variant_phase_velocity_mse": 2.1264090538024902,
+        "phase_velocity_mse_ratio": 1.0617664110705158
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 816,
+        "baseline_output_rms": 1.2652602195739746,
+        "output_delta_rms": 0.7743403911590576,
+        "delta_over_baseline_rms": 0.6120008984553277,
+        "output_correlation": 0.8136816620826721,
+        "baseline_phase_velocity_mse": 2.002708911895752,
+        "variant_phase_velocity_mse": 2.367501735687256,
+        "phase_velocity_mse_ratio": 1.1821496981536839
+      }
+    },
+    {
+      "decile": 6,
+      "position_start": 308,
+      "position_end_exclusive": 359,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 816,
+        "baseline_output_rms": 1.269901156425476,
+        "output_delta_rms": 0.3072296977043152,
+        "delta_over_baseline_rms": 0.2419319772643619,
+        "output_correlation": 0.9711301922798157,
+        "baseline_phase_velocity_mse": 2.09293270111084,
+        "variant_phase_velocity_mse": 2.235142230987549,
+        "phase_velocity_mse_ratio": 1.067947492913284
+      },
+      "amplitude_global_mean": {
+        "tokens": 816,
+        "baseline_output_rms": 1.269901156425476,
+        "output_delta_rms": 0.31235742568969727,
+        "delta_over_baseline_rms": 0.24596987262293898,
+        "output_correlation": 0.9755891561508179,
+        "baseline_phase_velocity_mse": 2.09293270111084,
+        "variant_phase_velocity_mse": 2.27467942237854,
+        "phase_velocity_mse_ratio": 1.086838301666956
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 816,
+        "baseline_output_rms": 1.269901156425476,
+        "output_delta_rms": 0.7307726740837097,
+        "delta_over_baseline_rms": 0.5754563419256127,
+        "output_correlation": 0.8338960409164429,
+        "baseline_phase_velocity_mse": 2.09293270111084,
+        "variant_phase_velocity_mse": 2.4638254642486572,
+        "phase_velocity_mse_ratio": 1.177211987246873
+      }
+    },
+    {
+      "decile": 7,
+      "position_start": 359,
+      "position_end_exclusive": 411,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 832,
+        "baseline_output_rms": 1.2031108140945435,
+        "output_delta_rms": 0.31036585569381714,
+        "delta_over_baseline_rms": 0.25796946719940944,
+        "output_correlation": 0.9677979350090027,
+        "baseline_phase_velocity_mse": 2.1127142906188965,
+        "variant_phase_velocity_mse": 2.2325611114501953,
+        "phase_velocity_mse_ratio": 1.0567264685828348
+      },
+      "amplitude_global_mean": {
+        "tokens": 832,
+        "baseline_output_rms": 1.2031108140945435,
+        "output_delta_rms": 0.32684528827667236,
+        "delta_over_baseline_rms": 0.27166681942149684,
+        "output_correlation": 0.9732434153556824,
+        "baseline_phase_velocity_mse": 2.1127142906188965,
+        "variant_phase_velocity_mse": 2.2968220710754395,
+        "phase_velocity_mse_ratio": 1.08714277234458
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 832,
+        "baseline_output_rms": 1.2031108140945435,
+        "output_delta_rms": 0.7897430658340454,
+        "delta_over_baseline_rms": 0.6564175606952739,
+        "output_correlation": 0.78746497631073,
+        "baseline_phase_velocity_mse": 2.1127142906188965,
+        "variant_phase_velocity_mse": 2.5972073078155518,
+        "phase_velocity_mse_ratio": 1.2293225446279952
+      }
+    },
+    {
+      "decile": 8,
+      "position_start": 411,
+      "position_end_exclusive": 462,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 816,
+        "baseline_output_rms": 1.1864087581634521,
+        "output_delta_rms": 0.2733156383037567,
+        "delta_over_baseline_rms": 0.23037223589519548,
+        "output_correlation": 0.9739004969596863,
+        "baseline_phase_velocity_mse": 2.179408311843872,
+        "variant_phase_velocity_mse": 2.2634260654449463,
+        "phase_velocity_mse_ratio": 1.0385507172494868
+      },
+      "amplitude_global_mean": {
+        "tokens": 816,
+        "baseline_output_rms": 1.1864087581634521,
+        "output_delta_rms": 0.3585079312324524,
+        "delta_over_baseline_rms": 0.30217910038646273,
+        "output_correlation": 0.9699392318725586,
+        "baseline_phase_velocity_mse": 2.179408311843872,
+        "variant_phase_velocity_mse": 2.3747472763061523,
+        "phase_velocity_mse_ratio": 1.0896293564637345
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 816,
+        "baseline_output_rms": 1.1864087581634521,
+        "output_delta_rms": 0.5994575023651123,
+        "delta_over_baseline_rms": 0.5052706314247596,
+        "output_correlation": 0.8757391571998596,
+        "baseline_phase_velocity_mse": 2.179408311843872,
+        "variant_phase_velocity_mse": 2.3180623054504395,
+        "phase_velocity_mse_ratio": 1.0636200168885563
+      }
+    },
+    {
+      "decile": 9,
+      "position_start": 462,
+      "position_end_exclusive": 514,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 832,
+        "baseline_output_rms": 1.2350451946258545,
+        "output_delta_rms": 0.21779365837574005,
+        "delta_over_baseline_rms": 0.17634468707982676,
+        "output_correlation": 0.9846736788749695,
+        "baseline_phase_velocity_mse": 2.1325762271881104,
+        "variant_phase_velocity_mse": 2.205061197280884,
+        "phase_velocity_mse_ratio": 1.0339893923455894
+      },
+      "amplitude_global_mean": {
+        "tokens": 832,
+        "baseline_output_rms": 1.2350451946258545,
+        "output_delta_rms": 0.4003906548023224,
+        "delta_over_baseline_rms": 0.3241910956332388,
+        "output_correlation": 0.9674320816993713,
+        "baseline_phase_velocity_mse": 2.1325762271881104,
+        "variant_phase_velocity_mse": 2.3766376972198486,
+        "phase_velocity_mse_ratio": 1.1144444296622136
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 832,
+        "baseline_output_rms": 1.2350451946258545,
+        "output_delta_rms": 0.5339940190315247,
+        "delta_over_baseline_rms": 0.4323679986409673,
+        "output_correlation": 0.9085454940795898,
+        "baseline_phase_velocity_mse": 2.1325762271881104,
+        "variant_phase_velocity_mse": 2.313678026199341,
+        "phase_velocity_mse_ratio": 1.084921606413113
+      }
+    }
+  ],
+  "by_phase_time_decile": [
+    {
+      "decile": 0,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 836,
+        "baseline_output_rms": 0.919198215007782,
+        "output_delta_rms": 0.191565603017807,
+        "delta_over_baseline_rms": 0.20840510772334908,
+        "output_correlation": 0.9781976342201233,
+        "baseline_phase_velocity_mse": 3.2304279804229736,
+        "variant_phase_velocity_mse": 3.25175142288208,
+        "phase_velocity_mse_ratio": 1.0066008103534054
+      },
+      "amplitude_global_mean": {
+        "tokens": 836,
+        "baseline_output_rms": 0.919198215007782,
+        "output_delta_rms": 0.24008366465568542,
+        "delta_over_baseline_rms": 0.2611881319348002,
+        "output_correlation": 0.9653069972991943,
+        "baseline_phase_velocity_mse": 3.2304279804229736,
+        "variant_phase_velocity_mse": 3.249152183532715,
+        "phase_velocity_mse_ratio": 1.0057961989009547
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 836,
+        "baseline_output_rms": 0.919198215007782,
+        "output_delta_rms": 1.2290623188018799,
+        "delta_over_baseline_rms": 1.3371025952128013,
+        "output_correlation": 0.1127423495054245,
+        "baseline_phase_velocity_mse": 3.2304279804229736,
+        "variant_phase_velocity_mse": 4.017284870147705,
+        "phase_velocity_mse_ratio": 1.2435766698695152
+      }
+    },
+    {
+      "decile": 1,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 804,
+        "baseline_output_rms": 1.0008211135864258,
+        "output_delta_rms": 0.19596818089485168,
+        "delta_over_baseline_rms": 0.19580740077775036,
+        "output_correlation": 0.9811059236526489,
+        "baseline_phase_velocity_mse": 2.9510202407836914,
+        "variant_phase_velocity_mse": 2.991258144378662,
+        "phase_velocity_mse_ratio": 1.013635251645812
+      },
+      "amplitude_global_mean": {
+        "tokens": 804,
+        "baseline_output_rms": 1.0008211135864258,
+        "output_delta_rms": 0.2500688433647156,
+        "delta_over_baseline_rms": 0.2498636769048547,
+        "output_correlation": 0.9684142470359802,
+        "baseline_phase_velocity_mse": 2.9510202407836914,
+        "variant_phase_velocity_mse": 2.985574245452881,
+        "phase_velocity_mse_ratio": 1.0117091723708453
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 804,
+        "baseline_output_rms": 1.0008211135864258,
+        "output_delta_rms": 1.1280081272125244,
+        "delta_over_baseline_rms": 1.1270826643238232,
+        "output_correlation": 0.3655601739883423,
+        "baseline_phase_velocity_mse": 2.9510202407836914,
+        "variant_phase_velocity_mse": 3.80403208732605,
+        "phase_velocity_mse_ratio": 1.2890565895664028
+      }
+    },
+    {
+      "decile": 2,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 842,
+        "baseline_output_rms": 1.1247791051864624,
+        "output_delta_rms": 0.23491330444812775,
+        "delta_over_baseline_rms": 0.2088528346276352,
+        "output_correlation": 0.9781914949417114,
+        "baseline_phase_velocity_mse": 2.566843032836914,
+        "variant_phase_velocity_mse": 2.6293840408325195,
+        "phase_velocity_mse_ratio": 1.0243649522762146
+      },
+      "amplitude_global_mean": {
+        "tokens": 842,
+        "baseline_output_rms": 1.1247791051864624,
+        "output_delta_rms": 0.3038397431373596,
+        "delta_over_baseline_rms": 0.27013281251076404,
+        "output_correlation": 0.9628664255142212,
+        "baseline_phase_velocity_mse": 2.566843032836914,
+        "variant_phase_velocity_mse": 2.649463176727295,
+        "phase_velocity_mse_ratio": 1.032187454719063
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 842,
+        "baseline_output_rms": 1.1247791051864624,
+        "output_delta_rms": 1.0022175312042236,
+        "delta_over_baseline_rms": 0.8910349832984131,
+        "output_correlation": 0.6020639538764954,
+        "baseline_phase_velocity_mse": 2.566843032836914,
+        "variant_phase_velocity_mse": 3.177046298980713,
+        "phase_velocity_mse_ratio": 1.2377251971926748
+      }
+    },
+    {
+      "decile": 3,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 811,
+        "baseline_output_rms": 1.2883338928222656,
+        "output_delta_rms": 0.2853270173072815,
+        "delta_over_baseline_rms": 0.22146977495269876,
+        "output_correlation": 0.9754291772842407,
+        "baseline_phase_velocity_mse": 2.051929235458374,
+        "variant_phase_velocity_mse": 2.199622631072998,
+        "phase_velocity_mse_ratio": 1.071977821195004
+      },
+      "amplitude_global_mean": {
+        "tokens": 811,
+        "baseline_output_rms": 1.2883338928222656,
+        "output_delta_rms": 0.31211504340171814,
+        "delta_over_baseline_rms": 0.24226254167542616,
+        "output_correlation": 0.970554530620575,
+        "baseline_phase_velocity_mse": 2.051929235458374,
+        "variant_phase_velocity_mse": 2.1601834297180176,
+        "phase_velocity_mse_ratio": 1.0527572746608198
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 811,
+        "baseline_output_rms": 1.2883338928222656,
+        "output_delta_rms": 0.7617078423500061,
+        "delta_over_baseline_rms": 0.5912348084558922,
+        "output_correlation": 0.8252161145210266,
+        "baseline_phase_velocity_mse": 2.051929235458374,
+        "variant_phase_velocity_mse": 2.524564266204834,
+        "phase_velocity_mse_ratio": 1.2303369056686204
+      }
+    },
+    {
+      "decile": 4,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 842,
+        "baseline_output_rms": 1.422427773475647,
+        "output_delta_rms": 0.27736884355545044,
+        "delta_over_baseline_rms": 0.19499678558561218,
+        "output_correlation": 0.9810413122177124,
+        "baseline_phase_velocity_mse": 1.4903807640075684,
+        "variant_phase_velocity_mse": 1.618636131286621,
+        "phase_velocity_mse_ratio": 1.086055436554468
+      },
+      "amplitude_global_mean": {
+        "tokens": 842,
+        "baseline_output_rms": 1.422427773475647,
+        "output_delta_rms": 0.34058356285095215,
+        "delta_over_baseline_rms": 0.2394382120497756,
+        "output_correlation": 0.9711374640464783,
+        "baseline_phase_velocity_mse": 1.4903807640075684,
+        "variant_phase_velocity_mse": 1.658944010734558,
+        "phase_velocity_mse_ratio": 1.1131007932991102
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 842,
+        "baseline_output_rms": 1.422427773475647,
+        "output_delta_rms": 0.5987694263458252,
+        "delta_over_baseline_rms": 0.42094891390003963,
+        "output_correlation": 0.9114997982978821,
+        "baseline_phase_velocity_mse": 1.4903807640075684,
+        "variant_phase_velocity_mse": 1.9172121286392212,
+        "phase_velocity_mse_ratio": 1.2863908169909024
+      }
+    },
+    {
+      "decile": 5,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 806,
+        "baseline_output_rms": 1.4642423391342163,
+        "output_delta_rms": 0.3456153869628906,
+        "delta_over_baseline_rms": 0.23603701226618512,
+        "output_correlation": 0.9729370474815369,
+        "baseline_phase_velocity_mse": 1.3969237804412842,
+        "variant_phase_velocity_mse": 1.5783054828643799,
+        "phase_velocity_mse_ratio": 1.129843664316315
+      },
+      "amplitude_global_mean": {
+        "tokens": 806,
+        "baseline_output_rms": 1.4642423391342163,
+        "output_delta_rms": 0.42931854724884033,
+        "delta_over_baseline_rms": 0.29320183945964146,
+        "output_correlation": 0.9569140672683716,
+        "baseline_phase_velocity_mse": 1.3969237804412842,
+        "variant_phase_velocity_mse": 1.5913370847702026,
+        "phase_velocity_mse_ratio": 1.1391724495287094
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 806,
+        "baseline_output_rms": 1.4642423391342163,
+        "output_delta_rms": 0.484150230884552,
+        "delta_over_baseline_rms": 0.33064897656956327,
+        "output_correlation": 0.9462060928344727,
+        "baseline_phase_velocity_mse": 1.3969237804412842,
+        "variant_phase_velocity_mse": 1.6671522855758667,
+        "phase_velocity_mse_ratio": 1.1934454183672198
+      }
+    },
+    {
+      "decile": 6,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 869,
+        "baseline_output_rms": 1.4366024732589722,
+        "output_delta_rms": 0.34630656242370605,
+        "delta_over_baseline_rms": 0.24105942240103492,
+        "output_correlation": 0.9710656404495239,
+        "baseline_phase_velocity_mse": 1.394343614578247,
+        "variant_phase_velocity_mse": 1.5446709394454956,
+        "phase_velocity_mse_ratio": 1.1078122517975733
+      },
+      "amplitude_global_mean": {
+        "tokens": 869,
+        "baseline_output_rms": 1.4366024732589722,
+        "output_delta_rms": 0.3980642259120941,
+        "delta_over_baseline_rms": 0.27708724808824425,
+        "output_correlation": 0.9624654054641724,
+        "baseline_phase_velocity_mse": 1.394343614578247,
+        "variant_phase_velocity_mse": 1.5752874612808228,
+        "phase_velocity_mse_ratio": 1.1297699109536257
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 869,
+        "baseline_output_rms": 1.4366024732589722,
+        "output_delta_rms": 0.4991040527820587,
+        "delta_over_baseline_rms": 0.34741973654676195,
+        "output_correlation": 0.9410512447357178,
+        "baseline_phase_velocity_mse": 1.394343614578247,
+        "variant_phase_velocity_mse": 1.6432104110717773,
+        "phase_velocity_mse_ratio": 1.1784831184304638
+      }
+    },
+    {
+      "decile": 7,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 821,
+        "baseline_output_rms": 1.3671079874038696,
+        "output_delta_rms": 0.3381718099117279,
+        "delta_over_baseline_rms": 0.2473629098999811,
+        "output_correlation": 0.9703317880630493,
+        "baseline_phase_velocity_mse": 1.641633152961731,
+        "variant_phase_velocity_mse": 1.8027395009994507,
+        "phase_velocity_mse_ratio": 1.0981378499496441
+      },
+      "amplitude_global_mean": {
+        "tokens": 821,
+        "baseline_output_rms": 1.3671079874038696,
+        "output_delta_rms": 0.4090510904788971,
+        "delta_over_baseline_rms": 0.2992090560861127,
+        "output_correlation": 0.9560862183570862,
+        "baseline_phase_velocity_mse": 1.641633152961731,
+        "variant_phase_velocity_mse": 1.8639166355133057,
+        "phase_velocity_mse_ratio": 1.1354038703169127
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 821,
+        "baseline_output_rms": 1.3671079874038696,
+        "output_delta_rms": 0.47191134095191956,
+        "delta_over_baseline_rms": 0.34518951341077053,
+        "output_correlation": 0.9413926005363464,
+        "baseline_phase_velocity_mse": 1.641633152961731,
+        "variant_phase_velocity_mse": 1.8645639419555664,
+        "phase_velocity_mse_ratio": 1.13579817670692
+      }
+    },
+    {
+      "decile": 8,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 811,
+        "baseline_output_rms": 1.2794212102890015,
+        "output_delta_rms": 0.4218127727508545,
+        "delta_over_baseline_rms": 0.3296903078975637,
+        "output_correlation": 0.9478815197944641,
+        "baseline_phase_velocity_mse": 1.8039056062698364,
+        "variant_phase_velocity_mse": 2.037602186203003,
+        "phase_velocity_mse_ratio": 1.1295503374017504
+      },
+      "amplitude_global_mean": {
+        "tokens": 811,
+        "baseline_output_rms": 1.2794212102890015,
+        "output_delta_rms": 0.46252554655075073,
+        "delta_over_baseline_rms": 0.3615115513414643,
+        "output_correlation": 0.9368492364883423,
+        "baseline_phase_velocity_mse": 1.8039056062698364,
+        "variant_phase_velocity_mse": 2.009814500808716,
+        "phase_velocity_mse_ratio": 1.114146158104505
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 811,
+        "baseline_output_rms": 1.2794212102890015,
+        "output_delta_rms": 0.5084263682365417,
+        "delta_over_baseline_rms": 0.39738779078212727,
+        "output_correlation": 0.9241586327552795,
+        "baseline_phase_velocity_mse": 1.8039056062698364,
+        "variant_phase_velocity_mse": 2.0823590755462646,
+        "phase_velocity_mse_ratio": 1.1543614412575731
+      }
+    },
+    {
+      "decile": 9,
+      "amplitude_same_frequency_shuffled": {
+        "tokens": 782,
+        "baseline_output_rms": 0.9128533005714417,
+        "output_delta_rms": 0.3636094331741333,
+        "delta_over_baseline_rms": 0.3983218694028006,
+        "output_correlation": 0.9254055023193359,
+        "baseline_phase_velocity_mse": 2.6119234561920166,
+        "variant_phase_velocity_mse": 2.7642195224761963,
+        "phase_velocity_mse_ratio": 1.058308012787716
+      },
+      "amplitude_global_mean": {
+        "tokens": 782,
+        "baseline_output_rms": 0.9128533005714417,
+        "output_delta_rms": 0.3975875973701477,
+        "delta_over_baseline_rms": 0.43554380218733924,
+        "output_correlation": 0.9162968993186951,
+        "baseline_phase_velocity_mse": 2.6119234561920166,
+        "variant_phase_velocity_mse": 2.8044841289520264,
+        "phase_velocity_mse_ratio": 1.073723704384794
+      },
+      "trunk_same_frequency_shuffled": {
+        "tokens": 782,
+        "baseline_output_rms": 0.9128533005714417,
+        "output_delta_rms": 0.4887443482875824,
+        "delta_over_baseline_rms": 0.5354029480767949,
+        "output_correlation": 0.8648605346679688,
+        "baseline_phase_velocity_mse": 2.6119234561920166,
+        "variant_phase_velocity_mse": 2.824119806289673,
+        "phase_velocity_mse_ratio": 1.0812414121840392
+      }
+    }
+  ]
+}

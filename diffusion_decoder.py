@@ -18,7 +18,7 @@ class DiffusionDecoderConfig:
     target_dim: int = 6
     z_channels: int = 512
     target_condition_dim: int = 0
-    condition_fusion: str = "add"  # add | concat_mlp
+    condition_fusion: str = "add"  # add | concat_mlp | joint_mlp
     width: int = 512
     depth: int = 3
     objective: str = "ddpm"  # ddpm | flow
@@ -148,7 +148,7 @@ class SimpleMLPAdaLN(nn.Module):
         self.in_channels = in_channels
         self.time_embed = TimestepEmbedder(model_channels)
         self.condition_fusion = condition_fusion
-        if condition_fusion == "add":
+        if condition_fusion in ("add", "joint_mlp"):
             self.cond_embed = nn.Linear(z_channels, model_channels)
             self.target_condition_embed = (
                 nn.Linear(target_condition_dim, model_channels)
@@ -168,6 +168,7 @@ class SimpleMLPAdaLN(nn.Module):
             )
         else:
             raise ValueError(f"Unknown condition_fusion={condition_fusion}")
+        self.joint_condition_mlp: Optional[nn.Sequential] = None
         self.input_proj = nn.Linear(in_channels, model_channels)
         self.input_timestep_conditioning = input_timestep_conditioning
         self.input_projection_init = input_projection_init
@@ -184,6 +185,21 @@ class SimpleMLPAdaLN(nn.Module):
         self.res_blocks = nn.ModuleList([ResBlock(model_channels) for _ in range(num_res_blocks)])
         self.final_layer = FinalLayer(model_channels, out_channels)
         self.initialize_weights()
+        if condition_fusion == "joint_mlp":
+            stream_count = 2 + int(target_condition_dim > 0)
+            # Construct this optional branch without changing initialization of
+            # the shared additive path under a fixed seed. Its zero-output
+            # initialization makes the initial function exactly additive.
+            with torch.random.fork_rng(devices=[]):
+                self.joint_condition_mlp = nn.Sequential(
+                    nn.Linear(stream_count * model_channels, model_channels),
+                    nn.SiLU(),
+                    nn.Linear(model_channels, model_channels),
+                )
+                nn.init.xavier_uniform_(self.joint_condition_mlp[0].weight)
+                nn.init.zeros_(self.joint_condition_mlp[0].bias)
+                nn.init.zeros_(self.joint_condition_mlp[2].weight)
+                nn.init.zeros_(self.joint_condition_mlp[2].bias)
 
     def initialize_weights(self) -> None:
         def _basic_init(module: nn.Module) -> None:
@@ -238,17 +254,24 @@ class SimpleMLPAdaLN(nn.Module):
             y = time + self.condition_mlp(torch.cat([c, target_condition], dim=-1))
         else:
             assert self.cond_embed is not None
-            y = time + self.cond_embed(c)
+            trunk_condition = self.cond_embed(c)
+            condition_streams = [time, trunk_condition]
+            y = time + trunk_condition
         if self.target_condition_embed is not None:
             if target_condition is None:
                 raise ValueError(
                     "target_condition is required when target_condition_dim > 0"
                 )
-            y = y + self.target_condition_embed(target_condition)
+            direct_condition = self.target_condition_embed(target_condition)
+            y = y + direct_condition
+            if self.condition_mlp is None:
+                condition_streams.append(direct_condition)
         elif self.condition_mlp is None and target_condition is not None:
             raise ValueError(
                 "target_condition was provided but target_condition_dim is 0"
             )
+        if self.joint_condition_mlp is not None:
+            y = y + self.joint_condition_mlp(torch.cat(condition_streams, dim=-1))
         for block in self.res_blocks:
             x = block(x, y)
         return self.final_layer(x, y)

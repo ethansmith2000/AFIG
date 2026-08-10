@@ -12,7 +12,11 @@ import torch.nn as nn
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from diffusion_decoder import DiffusionDecoder, DiffusionDecoderConfig  # noqa: E402
+from diffusion_decoder import (  # noqa: E402
+    DiffusionDecoder,
+    DiffusionDecoderConfig,
+    SimpleMLPAdaLN,
+)
 from diffusers.training_utils import compute_snr  # noqa: E402
 
 
@@ -536,6 +540,54 @@ class TestDiffusionDecoder(unittest.TestCase):
             self.assertGreater(gradient.abs().sum().item(), 0.0)
             sample = decoder.sample(z, num_inference_steps=2)
             self.assertEqual(tuple(sample.shape), (4, 6))
+
+    def test_joint_condition_fusion_starts_as_exact_additive_residual(self):
+        common = dict(
+            in_channels=6,
+            model_channels=32,
+            out_channels=6,
+            z_channels=16,
+            target_condition_dim=7,
+            num_res_blocks=2,
+            input_timestep_conditioning="none",
+            input_projection_init="xavier",
+        )
+        torch.manual_seed(123)
+        additive = SimpleMLPAdaLN(**common, condition_fusion="add")
+        torch.manual_seed(123)
+        joint = SimpleMLPAdaLN(**common, condition_fusion="joint_mlp")
+
+        joint_state = joint.state_dict()
+        for name, value in additive.state_dict().items():
+            self.assertTrue(torch.equal(value, joint_state[name]), name)
+        self.assertIsNotNone(joint.joint_condition_mlp)
+        self.assertEqual(
+            joint.joint_condition_mlp[2].weight.abs().max().item(), 0.0
+        )
+
+        # Make the otherwise zero-initialized output path observable. The joint
+        # residual still emits exactly zero, so both models must remain equal.
+        final_linear = torch.randn_like(additive.final_layer.linear.weight) * 0.02
+        final_modulation = (
+            torch.randn_like(additive.final_layer.adaLN_modulation[-1].weight) * 0.02
+        )
+        for model in (additive, joint):
+            model.final_layer.linear.weight.data.copy_(final_linear)
+            model.final_layer.adaLN_modulation[-1].weight.data.copy_(
+                final_modulation
+            )
+
+        x = torch.randn(5, 6)
+        t = torch.arange(5)
+        h = torch.randn(5, 16)
+        direct = torch.randn(5, 7)
+        additive_output = additive(x, t, h, direct)
+        joint_output = joint(x, t, h, direct)
+        self.assertTrue(torch.equal(additive_output, joint_output))
+
+        nn.init.normal_(joint.joint_condition_mlp[2].weight, std=0.02)
+        mixed_output = joint(x, t, h, direct)
+        self.assertGreater((mixed_output - additive_output).abs().max().item(), 0.0)
 
 
 if __name__ == "__main__":

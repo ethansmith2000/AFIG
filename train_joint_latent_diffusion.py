@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import json
 import os
 import time
@@ -25,7 +26,7 @@ from model_joint_latent_diffusion import (
     JointLatentDiffusionModel,
     joint_config_from_dict,
 )
-from model_latent_continuous import LATENT_SEQUENCE_LENGTH
+from model_latent_continuous import LATENT_SEQUENCE_LENGTH, LATENT_TOKEN_DIM
 from train_autoencoder import make_dataset, reconstruction_metrics
 from train_latent_continuous import (
     build_lr_scheduler,
@@ -33,6 +34,7 @@ from train_latent_continuous import (
     log_metrics,
     log_preview_images,
 )
+from train_continuous import ModelEMA
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -49,10 +51,19 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--dataloader_num_workers", type=int, default=4)
     parser.add_argument("--max_train_steps", type=int, default=30000)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--adam_beta1", type=float, default=0.9)
+    parser.add_argument("--adam_beta2", type=float, default=0.95)
     parser.add_argument("--lr_scheduler", default="linear_floor")
     parser.add_argument("--lr_warmup_steps", type=int, default=2000)
     parser.add_argument("--lr_end_ratio", type=float, default=0.25)
     parser.add_argument("--weight_decay", type=float, default=0.1)
+    parser.add_argument(
+        "--weight_decay_mode",
+        choices=["all", "matrix_only"],
+        default="all",
+        help="matrix_only decays projection matrices, excluding biases, vectors, "
+        "normalization parameters, and learned absolute-position tables",
+    )
     parser.add_argument(
         "--augment_brightness",
         type=float,
@@ -68,6 +79,14 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--num_layers", type=int, default=12)
     parser.add_argument("--num_heads", type=int, default=12)
     parser.add_argument("--ff_mult", type=int, default=4)
+    parser.add_argument(
+        "--qk_norm", action=argparse.BooleanOptionalAction, default=False
+    )
+    parser.add_argument(
+        "--block_conditioning",
+        choices=["legacy_film", "adaln_zero"],
+        default="legacy_film",
+    )
     parser.add_argument("--num_train_timesteps", type=int, default=1000)
     parser.add_argument("--num_inference_steps", type=int, default=50)
     parser.add_argument("--flow_solver", choices=["euler", "heun"], default="heun")
@@ -94,6 +113,8 @@ def parse_args(argv=None) -> argparse.Namespace:
         help="0 = uniform, 1 = full inverse-available-gain weighting",
     )
     parser.add_argument("--gradient_checkpointing", action="store_true")
+    parser.add_argument("--use_ema", action="store_true")
+    parser.add_argument("--ema_decay", type=float, default=0.9999)
     parser.add_argument("--logging_steps", type=int, default=25)
     parser.add_argument("--preview_steps", type=int, default=2500)
     parser.add_argument("--preview_images", type=int, default=8)
@@ -109,17 +130,23 @@ def parse_args(argv=None) -> argparse.Namespace:
 
 
 def build_model_config(
-    args: argparse.Namespace, metadata_dim: int
+    args: argparse.Namespace,
+    metadata_dim: int,
+    sequence_length: int = LATENT_SEQUENCE_LENGTH,
+    token_dim: int = LATENT_TOKEN_DIM,
 ) -> JointLatentDiffusionConfig:
     return JointLatentDiffusionConfig(
+        sequence_length=sequence_length,
+        token_dim=token_dim,
         metadata_dim=metadata_dim,
         transformer=CausalTransformerConfig(
             width=args.width,
             num_layers=args.num_layers,
             num_heads=args.num_heads,
             ff_mult=args.ff_mult,
-            max_seq_len=LATENT_SEQUENCE_LENGTH,
+            max_seq_len=sequence_length,
             gradient_checkpointing=args.gradient_checkpointing,
+            qk_norm=args.qk_norm,
         ),
         num_train_timesteps=args.num_train_timesteps,
         num_inference_steps=args.num_inference_steps,
@@ -127,6 +154,7 @@ def build_model_config(
         position_embedding_input=args.position_embedding_input,
         position_embedding_film=args.position_embedding_film,
         rope=args.rope,
+        block_conditioning=args.block_conditioning,
         timestep_sampling=(
             "snr_interpolate" if args.timestep_weighting == "snr_interpolate" else "uniform"
         ),
@@ -145,6 +173,8 @@ def save_checkpoint(
     global_step: int,
     optimizer=None,
     scheduler=None,
+    ema: Optional[ModelEMA] = None,
+    optimizer_config: Optional[Dict[str, Any]] = None,
 ) -> None:
     payload: Dict[str, Any] = {
         "version": 1,
@@ -153,6 +183,8 @@ def save_checkpoint(
         "model_config": model.config.fingerprint(),
         "model": model.state_dict(),
         "latent_contract": adapter.checkpoint_contract(),
+        "ema": None if ema is None else ema.state_dict(),
+        "optimizer_config": optimizer_config,
     }
     if optimizer is not None:
         payload["optimizer"] = optimizer.state_dict()
@@ -167,6 +199,8 @@ def load_checkpoint(
     model: Optional[JointLatentDiffusionModel] = None,
     optimizer=None,
     scheduler=None,
+    ema: Optional[ModelEMA] = None,
+    use_ema_weights: bool = False,
 ) -> tuple[JointLatentDiffusionModel, int]:
     payload = torch.load(path, map_location="cpu", weights_only=False)
     if payload.get("model_type") != "joint_latent_diffusion":
@@ -177,12 +211,99 @@ def load_checkpoint(
         model = JointLatentDiffusionModel(config)
     elif model.config.fingerprint() != config.fingerprint():
         raise ValueError("Joint model configuration does not match checkpoint")
-    model.load_state_dict(payload["model"])
+    model_state = payload["model"]
+    if use_ema_weights:
+        if payload.get("ema") is None:
+            raise ValueError("Checkpoint does not contain EMA weights")
+        model_state = dict(model_state)
+        model_state.update(payload["ema"])
+    model.load_state_dict(model_state)
     if optimizer is not None and "optimizer" in payload:
         optimizer.load_state_dict(payload["optimizer"])
     if scheduler is not None and "scheduler" in payload:
         scheduler.load_state_dict(payload["scheduler"])
+    if ema is not None and payload.get("ema") is not None:
+        ema.load_state_dict(payload["ema"])
     return model, int(payload["global_step"])
+
+
+@contextmanager
+def ema_weights(model: JointLatentDiffusionModel, ema: Optional[ModelEMA]):
+    """Temporarily evaluate with EMA weights while retaining resumable raw weights."""
+
+    if ema is None:
+        yield
+        return
+    state = model.state_dict()
+    backup = {
+        key: value.detach().clone()
+        for key, value in state.items()
+        if key in ema.shadow
+    }
+    ema.copy_to(model)
+    try:
+        yield
+    finally:
+        current = model.state_dict()
+        for key, value in backup.items():
+            current[key].copy_(value)
+
+
+def build_optimizer_parameters(
+    model: JointLatentDiffusionModel,
+    weight_decay: float,
+    mode: str,
+) -> tuple[list[Dict[str, Any]], Dict[str, Any]]:
+    """Partition AdamW decay without weakening learned identity parameters."""
+
+    named = [
+        (name, parameter)
+        for name, parameter in model.named_parameters()
+        if parameter.requires_grad
+    ]
+    if mode == "all":
+        return [
+            {
+                "params": [parameter for _, parameter in named],
+                "weight_decay": weight_decay,
+            }
+        ], {
+            "mode": mode,
+            "decay_parameter_count": sum(parameter.numel() for _, parameter in named),
+            "no_decay_parameter_count": 0,
+        }
+    if mode != "matrix_only":
+        raise ValueError(f"Unknown weight_decay_mode: {mode}")
+
+    absolute_position_names = {
+        "position_embedding_input",
+        "position_embedding_film",
+    }
+    decay = []
+    no_decay = []
+    decay_names = []
+    no_decay_names = []
+    for name, parameter in named:
+        if parameter.ndim < 2 or name in absolute_position_names:
+            no_decay.append(parameter)
+            no_decay_names.append(name)
+        else:
+            decay.append(parameter)
+            decay_names.append(name)
+    if len(decay) + len(no_decay) != len(named):
+        raise RuntimeError("Optimizer parameter partition is incomplete")
+    return [
+        {"params": decay, "weight_decay": weight_decay},
+        {"params": no_decay, "weight_decay": 0.0},
+    ], {
+        "mode": mode,
+        "decay_parameter_count": sum(parameter.numel() for parameter in decay),
+        "no_decay_parameter_count": sum(parameter.numel() for parameter in no_decay),
+        "decay_tensor_count": len(decay),
+        "no_decay_tensor_count": len(no_decay),
+        "decay_names": decay_names,
+        "no_decay_names": no_decay_names,
+    }
 
 
 @torch.no_grad()
@@ -193,6 +314,7 @@ def generate_preview(
     step: int,
     count: int,
     inference_steps: int,
+    variant: str = "joint",
 ) -> tuple[Dict[str, float], Dict[str, str]]:
     generator = torch.Generator(device=adapter.latent_mean.device).manual_seed(
         10000 + step
@@ -206,14 +328,15 @@ def generate_preview(
     )
     images = adapter.decode_latents(latents)
     elapsed = time.perf_counter() - started
-    path = os.path.join(output_dir, f"preview_{step:07d}_joint.png")
+    path = os.path.join(output_dir, f"preview_{step:07d}_{variant}.png")
     torchvision.utils.save_image(images, path, nrow=max(int(count**0.5), 1))
-    logs = generated_spectrum_metrics(images, "preview/joint")
-    logs["preview/joint_latent_rms"] = float(
+    metric_prefix = f"preview/{variant}"
+    logs = generated_spectrum_metrics(images, metric_prefix)
+    logs[f"{metric_prefix}_latent_rms"] = float(
         latents.float().square().mean().sqrt().item()
     )
-    logs["timing/generation_ms_per_image"] = 1000.0 * elapsed / count
-    return logs, {"preview/joint": path}
+    logs[f"timing/{variant}_generation_ms_per_image"] = 1000.0 * elapsed / count
+    return logs, {metric_prefix: path}
 
 
 def main(argv=None) -> None:
@@ -252,7 +375,12 @@ def main(argv=None) -> None:
         args.latent_interface,
         sample_posterior=False,
     )
-    config = build_model_config(args, adapter.position_features.shape[-1])
+    config = build_model_config(
+        args,
+        adapter.position_features.shape[-1],
+        sequence_length=adapter.sequence_length,
+        token_dim=adapter.token_dim,
+    )
     model = JointLatentDiffusionModel(config)
     dataset = make_dataset(
         SimpleNamespace(
@@ -273,12 +401,37 @@ def main(argv=None) -> None:
         drop_last=True,
         persistent_workers=args.dataloader_num_workers > 0,
     )
+    optimizer_parameters, decay_partition = build_optimizer_parameters(
+        model, args.weight_decay, args.weight_decay_mode
+    )
+    optimizer_config = {
+        "name": "AdamW",
+        "learning_rate": args.learning_rate,
+        "betas": [args.adam_beta1, args.adam_beta2],
+        "epsilon": 1e-8,
+        "weight_decay": args.weight_decay,
+        "weight_decay_partition": decay_partition,
+        "lr_scheduler": args.lr_scheduler,
+        "lr_warmup_steps": args.lr_warmup_steps,
+        "lr_end_ratio": args.lr_end_ratio,
+        "max_grad_norm": args.max_grad_norm,
+    }
+    if accelerator.is_main_process:
+        print(
+            "optimizer: "
+            f"AdamW lr={args.learning_rate:g} "
+            f"betas=({args.adam_beta1:g},{args.adam_beta2:g}) "
+            f"weight_decay={args.weight_decay:g} mode={args.weight_decay_mode} "
+            f"decay/no_decay params={decay_partition['decay_parameter_count']}/"
+            f"{decay_partition['no_decay_parameter_count']} "
+            f"scheduler={args.lr_scheduler} warmup={args.lr_warmup_steps}"
+        )
     # Fused AdamW requires all params on CUDA, so fall back on CPU/smoke runs.
     optimizer = torch.optim.AdamW(
-        model.parameters(),
+        optimizer_parameters,
         lr=args.learning_rate,
-        betas=(0.9, 0.95),
-        weight_decay=args.weight_decay,
+        betas=(args.adam_beta1, args.adam_beta2),
+        weight_decay=0.0,
         fused=torch.cuda.is_available(),
     )
     scheduler = build_lr_scheduler(args, optimizer)
@@ -287,6 +440,11 @@ def main(argv=None) -> None:
     )
     adapter.to(accelerator.device)
     metadata = adapter.position_features
+    ema = (
+        ModelEMA(accelerator.unwrap_model(model), args.ema_decay)
+        if args.use_ema
+        else None
+    )
     global_step = 0
     if args.resume_from_checkpoint:
         _, global_step = load_checkpoint(
@@ -295,6 +453,7 @@ def main(argv=None) -> None:
             accelerator.unwrap_model(model),
             optimizer,
             scheduler,
+            ema,
         )
     if accelerator.is_main_process and args.report_to != "none":
         accelerator.init_trackers(
@@ -333,6 +492,8 @@ def main(argv=None) -> None:
         optimizer.step()
         scheduler.step()
         global_step += 1
+        if ema is not None:
+            ema.update(accelerator.unwrap_model(model))
         progress.update(1)
 
         if global_step % args.logging_steps == 0:
@@ -350,7 +511,7 @@ def main(argv=None) -> None:
                 "train/learning_rate": float(scheduler.get_last_lr()[0]),
                 "timing/steps_per_second": args.logging_steps / elapsed,
             }
-            for position in range(LATENT_SEQUENCE_LENGTH):
+            for position in range(config.sequence_length):
                 logs[f"position_loss/{position:02d}"] = float(
                     per_position[position].item()
                 )
@@ -364,14 +525,38 @@ def main(argv=None) -> None:
         ):
             unwrapped = accelerator.unwrap_model(model)
             unwrapped.eval()
-            logs, image_paths = generate_preview(
-                unwrapped,
-                adapter,
-                args.output_dir,
-                global_step,
-                args.preview_images,
-                args.num_inference_steps,
-            )
+            if ema is None:
+                logs, image_paths = generate_preview(
+                    unwrapped,
+                    adapter,
+                    args.output_dir,
+                    global_step,
+                    args.preview_images,
+                    args.num_inference_steps,
+                )
+            else:
+                logs, image_paths = generate_preview(
+                    unwrapped,
+                    adapter,
+                    args.output_dir,
+                    global_step,
+                    args.preview_images,
+                    args.num_inference_steps,
+                    variant="joint_raw",
+                )
+                with ema_weights(unwrapped, ema):
+                    ema_logs, ema_paths = generate_preview(
+                        unwrapped,
+                        adapter,
+                        args.output_dir,
+                        global_step,
+                        args.preview_images,
+                        args.num_inference_steps,
+                        variant="joint_ema",
+                    )
+                logs.update(ema_logs)
+                image_paths.update(ema_paths)
+            logs["preview/uses_ema"] = float(ema is not None)
             with torch.no_grad():
                 reconstruction = adapter.decode_latents(
                     latents[: args.preview_images]
@@ -401,6 +586,8 @@ def main(argv=None) -> None:
                 global_step,
                 optimizer,
                 scheduler,
+                ema,
+                optimizer_config,
             )
 
     accelerator.wait_for_everyone()
@@ -412,6 +599,8 @@ def main(argv=None) -> None:
             global_step,
             optimizer,
             scheduler,
+            ema,
+            optimizer_config,
         )
         Path(args.output_dir, "summary.json").write_text(
             json.dumps(
@@ -419,6 +608,8 @@ def main(argv=None) -> None:
                     "global_step": global_step,
                     "model_type": "joint_latent_diffusion",
                     "model_config": config.fingerprint(),
+                    "ema_decay": args.ema_decay if ema is not None else None,
+                    "optimizer_config": optimizer_config,
                 },
                 indent=2,
             )
