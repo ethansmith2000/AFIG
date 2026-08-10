@@ -43,7 +43,9 @@ latent distribution without imposing an ordering regularizer prematurely.
 
 The initial optimizer uses a 1,000-step linear warmup to `2e-4`. The first run
 showed a clear late-step instability after its best 5k checkpoint, so the
-canonical continuation restores that checkpoint and fine-tunes at `5e-5`.
+canonical continuation restores that checkpoint and fine-tunes at `5e-5`. The
+held-out curve reached a second plateau around 9--10k, after which the run steps
+down again to `2e-5` for its reconstruction-ceiling phase.
 
 ## Gate B: progressive prefixes
 

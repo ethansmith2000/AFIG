@@ -11,5 +11,5 @@ fi
 
 exec /workspace/AFIG/scripts/run_progressive_tokenizer_full.sh \
   --resume "${checkpoint}" \
-  --learning_rate 5e-5 \
+  --learning_rate "${LEARNING_RATE:-2e-5}" \
   "$@"
