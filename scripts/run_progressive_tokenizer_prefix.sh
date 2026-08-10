@@ -12,4 +12,5 @@ exec gpu-claim run \
     --objective progressive \
     --learning_rate 1e-4 \
     --warmup_steps 1000 \
+    --keep_numbered_checkpoints \
     "$@"

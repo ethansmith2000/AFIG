@@ -67,6 +67,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--eval_every", type=int, default=1000)
     parser.add_argument("--eval_examples", type=int, default=2048)
     parser.add_argument("--checkpoint_every", type=int, default=2500)
+    parser.add_argument(
+        "--keep_numbered_checkpoints",
+        action="store_true",
+        help="Retain every periodic optimizer checkpoint in addition to the latest one.",
+    )
     parser.add_argument("--preview_examples", type=int, default=16)
     parser.add_argument("--resume", default=None)
     parser.add_argument(
@@ -475,6 +480,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             model.train()
 
         if args.checkpoint_every > 0 and completed_step % args.checkpoint_every == 0:
+            latest_checkpoint = output_dir / "checkpoint_latest.pt"
             atomic_torch_save(
                 {
                     "model_config": model_config.fingerprint(),
@@ -482,8 +488,13 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                     "optimizer": optimizer.state_dict(),
                     "step": completed_step,
                 },
-                output_dir / "checkpoint_latest.pt",
+                latest_checkpoint,
             )
+            if args.keep_numbered_checkpoints:
+                numbered_checkpoint = output_dir / f"checkpoint_{completed_step:06d}.pt"
+                if numbered_checkpoint.exists():
+                    numbered_checkpoint.unlink()
+                os.link(latest_checkpoint, numbered_checkpoint)
 
     prefixes = sorted(
         set(
