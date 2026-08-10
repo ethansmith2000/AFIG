@@ -68,3 +68,18 @@ Once the autoencoder passes reconstruction:
    `p(z_1, ..., z_32) = product_i p(z_i | z_<i)`.
 5. Keep the token distribution head modular between rectified flow and a
    conditional normalizing flow.
+
+The joint positive control uses the frozen 12.5k progressive-tokenizer
+checkpoint. CIFAR is encoded once into a fixed latent cache, then standardized
+with one tensor-wide population mean and standard deviation. The prior is a
+12-block, width-512 bidirectional Transformer rectified flow with learned
+absolute slot identity, fp32 1-D RoPE, QKNorm, and canonical AdaLN-Zero. It uses
+uniform flow times, an unweighted velocity loss, Heun sampling, and no EMA.
+
+```bash
+python cache_progressive_latents.py \
+  --tokenizer_checkpoint tokenizer_runs/n32-d64-prefix-s1/checkpoint_012500.pt \
+  --output tokenizer_runs/n32-d64-prefix-s1/latents_012500.pt
+
+scripts/run_progressive_joint_flow.sh
+```

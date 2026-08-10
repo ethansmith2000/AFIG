@@ -109,3 +109,27 @@ Final evaluation reports reconstruction at prefix lengths 1, 2, 4, 8, 16, and
 
 If the representation passes, fixed-total-coordinate comparisons of `16 x 128`,
 `32 x 64`, and `64 x 32` separate token-sequence depth from per-token width.
+
+## Gate C: joint generative positive control
+
+Generative modeling begins with all 32 tokens noised and denoised jointly. This
+removes autoregressive exposure bias and the capacity of a small per-token head
+as confounds. The frozen 12.5k Gate-B encoder produces a fixed CIFAR latent
+cache. Its train split has tensor-wide mean `0.0645`, standard deviation
+`0.7649`, and range `[-4.19, 4.47]`; slot standard deviations span only
+`0.672--0.833`. The baseline therefore uses one population mean and scale for
+the complete tensor, not coordinate or slot whitening.
+
+The model is a 12-layer, width-512 bidirectional DiT-style rectified flow over
+the `32 x 64` tensor. It combines learned absolute slot embeddings with fp32
+1-D RoPE in attention, uses QKNorm and canonical AdaLN-Zero, and predicts the
+velocity of the straight path
+
+```text
+z_t = (1 - t) epsilon + t z,
+v_target = z - epsilon.
+```
+
+Training samples `t` uniformly and applies ordinary unweighted MSE. Sampling
+uses 50-step Heun integration. EMA, CFG, per-coordinate whitening, timestep
+weighting, and class conditioning are absent from the first control.
