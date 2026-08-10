@@ -1,1 +1,0 @@
-At fixed resolution, directly learning every exported query is cleaner: a table shaped [number_of_latents, 256], so no query is reused between rings or sectors. Dynamic query generation can be a later extension; your proposed 1–2 layer metadata MLP followed by RMSNorm is appropriate.
