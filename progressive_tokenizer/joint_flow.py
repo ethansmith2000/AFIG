@@ -106,7 +106,9 @@ class QKNormAttention(nn.Module):
             torch.full((num_heads,), math.log(math.sqrt(self.head_dim)))
         )
 
-    def forward(self, values: torch.Tensor, rope: Rotary1D) -> torch.Tensor:
+    def forward(
+        self, values: torch.Tensor, rope: Rotary1D, *, causal: bool = False
+    ) -> torch.Tensor:
         batch, length, width = values.shape
         qkv = self.qkv(values).reshape(
             batch, length, 3, self.num_heads, self.head_dim
@@ -119,7 +121,12 @@ class QKNormAttention(nn.Module):
         scale = self.logit_scale.exp().clamp(max=100.0).to(value.dtype)
         query = query * scale[None, :, None, None]
         attended = F.scaled_dot_product_attention(
-            query, key, value, dropout_p=0.0, scale=1.0
+            query,
+            key,
+            value,
+            dropout_p=0.0,
+            is_causal=causal,
+            scale=1.0,
         )
         return self.output(attended.transpose(1, 2).reshape(batch, length, width))
 
