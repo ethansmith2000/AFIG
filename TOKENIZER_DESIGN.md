@@ -62,6 +62,31 @@ random shorter-prefix loss. Token order is fixed; no token permutation is used.
 The expectation is a compute-efficient estimate of training every possible
 prefix.
 
+Gate B trains the same architecture jointly from scratch. A 100-step CIFAR
+pilot initialized from Gate A showed severe interference: while prefix quality
+began improving, complete-sequence PSNR fell from 41.18 to 29.69 dB even though
+the warmup had reached only `5e-6`. The ordered objective must therefore shape
+the encoder and decoder together instead of attempting to rewrite a converged,
+distributed code.
+
+## Gate A result
+
+The selected 25k checkpoint reconstructs the complete CIFAR-10 test set at
+41.18 dB PSNR (pixel MSE `7.63e-5`). It outperforms the old 53-by-64 ring codec's
+38.27 dB while using 2,048 instead of 3,392 latent scalars. A chronological 30k
+checkpoint reached 40.75 dB and is retained separately.
+
+The unconstrained clean latent has global mean `0.071`, standard deviation
+`0.935`, covariance effective rank `21.7 / 64`, and coordinate standard
+deviations spanning `0.503--1.330`. Slot RMS lies in `0.884--1.056`. Thus the
+classic final-normalization-plus-projection interface naturally learned a
+well-scaled code without a hard spherical constraint or injected noise.
+
+As expected, the complete-sequence objective did not spontaneously order the
+registers: prefix PSNR is 10.62, 10.68, 11.60, 12.79, 17.13, and 41.18 dB at
+lengths 1, 2, 4, 8, 16, and 32. Gate B directly tests whether asymmetric prefix
+reconstruction can turn the same high-quality code into successive refinement.
+
 ## Deferred constraints
 
 Latent AWGN, explicit power constraints, semantic teacher losses, and soft

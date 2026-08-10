@@ -69,11 +69,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--checkpoint_every", type=int, default=2500)
     parser.add_argument("--preview_examples", type=int, default=16)
     parser.add_argument("--resume", default=None)
+    parser.add_argument(
+        "--init_from",
+        default=None,
+        help="Load model weights but start a fresh optimizer and step count.",
+    )
     parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args(argv)
 
     if args.prefix_loss_weight < 0:
         parser.error("--prefix_loss_weight must be non-negative")
+    if args.resume and args.init_from:
+        parser.error("--resume and --init_from are mutually exclusive")
     if args.smoke:
         args.dataset = "synthetic"
         args.image_size = 8
@@ -222,12 +229,20 @@ def save_preview(
     images: torch.Tensor,
     path: Path,
     args: argparse.Namespace,
+    prefixes: Optional[Sequence[int]] = None,
 ) -> None:
     model.eval()
     with torch.no_grad(), autocast_context(args, images.device):
-        reconstruction = model(images)["reconstruction"]
+        latents = model.encode(images)
+        requested = list(prefixes) if prefixes is not None else [args.num_latents]
+        reconstructions = [
+            model.decode(latents, prefix_lengths=prefix) for prefix in requested
+        ]
     count = min(args.preview_examples, images.shape[0])
-    panel = torch.cat((images[:count], reconstruction[:count]), dim=0)
+    panel = torch.cat(
+        [images[:count]] + [reconstruction[:count] for reconstruction in reconstructions],
+        dim=0,
+    )
     save_image(panel.float().add(1).div(2).clamp(0, 1), path, nrow=count)
 
 
@@ -329,6 +344,11 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         eps=1e-8,
     )
     start_step = 0
+    if args.init_from:
+        payload = torch.load(args.init_from, map_location="cpu", weights_only=False)
+        if payload["model_config"] != model_config.fingerprint():
+            raise ValueError("initial checkpoint model configuration does not match")
+        model.load_state_dict(payload["model"])
     if args.resume:
         payload = torch.load(args.resume, map_location="cpu", weights_only=False)
         if payload["model_config"] != model_config.fingerprint():
@@ -418,13 +438,26 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             rolling_start = time.monotonic()
 
         if args.eval_every > 0 and completed_step % args.eval_every == 0:
+            evaluation_prefixes = (
+                tuple(
+                    sorted(
+                        set(
+                            prefix
+                            for prefix in (1, 2, 4, 8, 16, args.num_latents)
+                            if prefix <= args.num_latents
+                        )
+                    )
+                )
+                if args.objective == "progressive"
+                else (args.num_latents,)
+            )
             metrics = evaluate(
                 model,
                 test_loader,
                 device,
                 args,
                 max_examples=args.eval_examples,
-                prefixes=(args.num_latents,),
+                prefixes=evaluation_prefixes,
                 collect_latent_stats=False,
             )
             metrics["step"] = completed_step
@@ -436,6 +469,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 fixed_images,
                 output_dir / f"reconstruction_{completed_step:06d}.png",
                 args,
+                prefixes=evaluation_prefixes,
             )
             print(json.dumps({"evaluation": metrics}, sort_keys=True), flush=True)
             model.train()
@@ -482,6 +516,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         fixed_images,
         output_dir / "reconstruction_final.png",
         args,
+        prefixes=prefixes,
     )
     atomic_torch_save(
         {
