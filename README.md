@@ -1,449 +1,70 @@
-# AFIG (Autoregressive Fourier Image Generation)
+# Progressive Continuous Image Tokens
 
-Continuous-token rewrite of the original quantized Fourier AR project, plus the
-legacy discrete baseline.
+This branch studies deterministic whole-image tokenization followed by
+probabilistic continuous-token generation. The direct Fourier-generation era is
+preserved in Git history through commit `336eea7`; explicit Fourier coefficients
+are no longer the primary generative representation.
 
-Blog post for the original idea:
-https://www.ethansmith2000.com/post/mimicking-diffusion-models-by-sequencing-frequency-coefficients
+The first gate is deliberately conventional:
 
-## Layout
+```text
+CIFAR image
+  -> 64 spatial patch features
+  -> 32 learned Perceiver registers
+  -> 32 x 64 continuous latent sequence
+  -> spatial-query Transformer decoder
+  -> reconstructed image
+```
 
-| Path | Role |
-| --- | --- |
-| `frequency.py` | Canonical 514-orbit Hermitian Fourier codec + radial/per-orbit normalization |
-| `diffusion_decoder.py` | AdaLN MLP diffusion loss head + DDIM sampler |
-| `model_continuous.py` | Causal Transformer + KV cache + continuous generation |
-| `train_continuous.py` | Accelerate training entrypoint |
-| `model.py` / `train_quantized.py` / `utils.py` | Legacy quantized path (kept) |
-| `tests/` | Unit tests + CPU smoke |
+Encoding and decoding are deterministic. There is initially no KL term,
+quantization, posterior sampling, latent noise, or hard latent normalization.
 
-## Continuous representation
+## Canonical configuration
 
-- Orthonormal `fft2(..., norm="ortho")` on CIFAR-10 `3×32×32` images.
-- **514** conjugacy-orbit representatives (not the old 544 half-plane cells).
-- Each token is **6D Cartesian**: RGB real + RGB imag.
-- Four self-conjugate frequencies keep imag components masked to zero.
-- Default order: exact Euclidean radius, then angle (`--ordering radial`).
-  Legacy L∞ square spiral remains available (`--ordering square_spiral`).
-- Legacy normalization bins use integer radius `floor(sqrt(kx²+ky²))`.
-- Exact-position modes fit all 514 orbit representatives independently:
-  symmetric ZCA (`orbit_whiten`) or RGB-complex diagonal standardization
-  (`orbit_standardize`), whose RGB scales are shared across real/imaginary parts.
-- `--centering all|self_conjugate_std|self_conjugate_rms` either centers every
-  complex orbit, or centers only the four real-only self-conjugate orbits. The
-  RMS variant gives ordinary complex coefficients unit paired second moment
-  without moving their physical phase origin.
-- New ablations separate that legacy combined switch into
-  `--diffusion_mean_policy legacy|per_orbit|pooled_ordinary|self_only` and
-  `--diffusion_scale_policy legacy|centered_std|uncentered_rms`.
-  `pooled_ordinary` subtracts one RGB-complex offset after scaling across all
-  ordinary orbits, while DC and the other self-conjugates remain per-orbit
-  centered. The fitted orbit moments are reusable across these policies.
-- `--learned_output_gain` adds zero-initialized per-orbit RGB log gains on top of
-  fixed `orbit_standardize` statistics.
-- Optional value transform: `--value_transform identity|asinh`.
+- CIFAR-10 at `32 x 32`.
+- `4 x 4` patches: 64 encoder patch tokens.
+- Encoder and decoder width 512, 8 layers, 8 heads.
+- QKNorm and float32 2-D RoPE tables for spatial self-attention.
+- Two Perceiver pooling blocks and 32 unique learned pooling queries.
+- Final affine-free LayerNorm plus projection to 64 dimensions per register.
+- 64 spatial decoder queries cross-attend to the latent sequence.
+- AdamW `lr=2e-4`, betas `(0.9, 0.995)`, matrix-only weight decay `0.05`.
 
-Sequence length is **514** autoregressive coefficient steps (plus a learned BOS).
-
-## Diffusion objective
-
-Configured in `DiffusionDecoderConfig` / CLI:
-
-- `--objective ddpm|flow` (default `ddpm`)
-- `--prediction_type epsilon|v_prediction|x0`
-- `--loss_space native|v`; `v` enables JiT-style x-output / v-loss
-- `--loss_weighting none|min_snr|logit_normal`
-- Min-SNR γ via `--min_snr_gamma`; x₀ uses normalized
-  `min(SNR, γ) / γ`.
-- `--rescale_betas_zero_snr --timestep_spacing trailing` makes DDPM/DDIM
-  sampling begin from the zero-terminal-SNR endpoint instead of skipping the
-  noisiest training timesteps.
-- Flow uses `z_t = t·x₀ + (1-t)·ε`. Direct velocity predicts `x₀-ε`;
-  x₀/v mode converts `(x̂₀-z_t)/(1-t)` with `--flow_t_eps 0.05`.
-- Logit-normal flow loss weighting uses `--logit_normal_mean` and
-  `--logit_normal_std` (defaults `0, 1`), with uniform flow-time sampling.
-  This is equivalent in expectation to sampling flow time from the same
-  logit-normal distribution; JiT's reference parameters are `-0.8, 0.8`.
-- Flow sampling supports `--flow_solver euler|heun` (default `heun`).
-- `--radial_power_weighting`: multiply per-token whitened MSE by normalized
-  tempered radial power `(tr(Σ_b) / d_b)^α` (mean 1 across orbits). The default
-  `--radial_power_exponent 0.5` weights by expected amplitude; `1.0` restores
-  the much more concentrated expected-power objective. Independent of Min-SNR.
-- `--loss_metric orbit_scale_power --orbit_scale_exponent α`: for
-  `orbit_standardize`, apply fixed diagonal weights
-  `m_i·s_(i,c)^(2α)` to normalized errors. This preserves shared real/imaginary
-  channel scaling without covariance matrices; α=0.2 gives tempered natural
-  spectral emphasis.
-- Cosine (`squaredcos_cap_v2`) schedule, 1000 train steps
-- DDIM sampling, default 20 steps, `eta=0`
-- Diffusion batch multiplier `--diffusion_batch_mul` (default 4): reuse each
-  `(token, condition)` with independent `(t, ε)` draws
-
-Flow matching supports direct velocity or x₀ outputs with Euler/Heun sampling.
-
-## Polar history conditioning
-
-Diffusion targets stay **6D Cartesian**. Optionally enrich AR history embeddings
-with deterministic physical-space polar features
-(`--history_polar_features log_amp_gated_phase`):
-
-- Denormalize each completed history token, then per RGB channel form
-  `[log1p(a), g·cos θ, g·sin θ]` with `a = amp / expected_rms` and `g = a/(1+a)`.
-- Projected by a zero-initialized `Linear(9, width)` and added to the Cartesian
-  token embedding. Does **not** change the diffusion state manifold.
-- `--history_cartesian_features centered|phase_preserving|policy` independently
-  chooses the Transformer history coordinates. `policy` reconstructs completed
-  physical coefficients and uses explicit `--history_mean_policy` and
-  `--history_scale_policy`, so Transformer features need not match diffusion
-  coordinates.
-
-## Frequency position conditioning
-
-`--frequency_conditioning` enables the positional path used by the larger
-exploratory model:
-
-- normalized `(kx, ky, radius)` receive log-spaced sinusoidal features, combined
-  with `(cos(angle), sin(angle), is_self_conjugate)` and a learned orbit residual;
-- the known target orbit directly conditions the diffusion decoder's AdaLN;
-- each Transformer attention/MLP pre-norm receives target-position FiLM whose
-  scale/shift projection is zero-initialized.
-
-2D RoPE remains deferred as a separate relative-geometry ablation.
-
-The three routes can be ablated independently:
-
-- `--[no-]position-input-addition`
-- `--[no-]transformer-position-film`
-- `--[no-]diffusion-target-conditioning`
-- `--[no-]decoder-target-position-conditioning` (alias)
-- `--position-rms-normalize` optionally controls the shared position RMS.
-- `--backbone_position_mode none|legacy_hybrid|random_table|sincos_table`
-  chooses the backbone input representation independently from decoder target
-  conditioning. New tables have a learned input scale initialized to `0.1`;
-  BOS remains separate.
-
-`--input_stem_time_film` (clear alias for `--input_timestep_conditioning film`)
-adds zero-initialized timestep FiLM directly after the diffusion `6 -> width`
-projection. Standard diffusion-block timestep AdaLN remains active regardless.
-`--input_projection_init
-xavier|kaiming_linear` controls the corresponding initializer ablation.
-
-For native x0 prediction, `--phase_aux_weight` adds an amplitude-gated physical
-Fourier phase loss over ordinary complex orbits. It uses timestep weights but
-not orbit-scale loss weights; `--phase_gradient_diagnostic_step` logs its
-weighted output-gradient norm relative to the base objective once for calibration.
-
-For a clean content-only input stream while retaining conditional position,
-use `--no-position-input-addition --position-rms-normalize`.
+See [`TOKENIZER_DESIGN.md`](TOKENIZER_DESIGN.md) for the experiment sequence and
+objective definitions.
 
 ## Training
 
-Fit/load codec statistics once (main process writes `codec_stats.pt`), then train:
+Use the shared lifetime GPU claim launcher on this machine:
 
 ```bash
 cd /workspace/AFIG
-source /venv/main/bin/activate
-
-# CPU / tiny smoke (synthetic data by default — fast, no download)
-python train_continuous.py --smoke --output_dir continuous_smoke --report_to none
-
-# Real CIFAR-10 via torchvision (downloads ~163MB from cs.toronto.edu if missing)
-python train_continuous.py --dataset cifar10 --data_root ./data ...
-
-# Or use a local HuggingFace CIFAR arrow cache (already present on this host under SNRAdam)
-python train_continuous.py --dataset huggingface_cifar ...
-
-# Full-ish moderate run on GPU (use shared claim helper on this machine)
-gpu-claim status
-gpu-claim run --owner AFIG --job continuous-train --wait -- \
-  python train_continuous.py \
-    --output_dir continuous_runs \
-    --dataset auto \
-    --preset moderate \
-    --prediction_type epsilon \
-    --loss_weighting none \
-    --history_corruption none \
-    --mixed_precision bf16
-
-# Exploratory 10×768 with polar history, radial weighting, and frequency conditioning
-gpu-claim run --owner AFIG --job continuous-10x768 --wait -- \
-  python train_continuous.py \
-    --output_dir continuous_runs/hf_cifar_10x768_bs32 \
-    --codec_stats_path continuous_runs/hf_cifar_moderate/codec_stats.pt \
-    --dataset huggingface_cifar \
-    --num_layers 10 --width 768 --num_heads 12 \
-    --diff_width 768 --diff_depth 3 \
-    --train_batch_size 32 --diffusion_batch_mul 1 \
-    --learning_rate 7e-5 --adam_beta2 0.99 \
-    --prediction_type v_prediction --loss_weighting min_snr \
-    --radial_power_weighting \
-    --radial_power_exponent 0.5 \
-    --history_polar_features log_amp_gated_phase \
-    --frequency_conditioning \
-    --history_corruption none \
-    --mixed_precision bf16 --gradient_checkpointing --allow_tf32
+gpu-claim run --owner AFIG --job tokenizer-n32-d64-full-s1 --wait -- \
+  python -u train_progressive_tokenizer.py \
+    --output_dir tokenizer_runs/n32-d64-full-s1 \
+    --objective full
 ```
 
-### Data sources (`--dataset`)
+The trainer overwrites one resumable `checkpoint_latest.pt` and removes it after
+writing the final model-only checkpoint. It records reconstruction panels,
+streaming metrics, final prefix curves, and latent covariance diagnostics.
 
-| Value | Behavior |
-| --- | --- |
-| `auto` (default) | torchvision CIFAR if present/downloadable, else local HF arrows, else synthetic |
-| `cifar10` | Force torchvision CIFAR-10 under `--data_root` |
-| `huggingface_cifar` | Force local HuggingFace `cifar10-train.arrow` cache |
-| `synthetic` | Random 32×32 tensors (used by `--smoke` unless overridden) |
-
-Note: the official Toronto CIFAR tarball can be very slow from this host (~50KB/s).
-If `./data/cifar-10-batches-py` is missing, prefer `--dataset huggingface_cifar` or let
-`auto` pick up the existing arrow cache.
-
-## Autoencoder / VAE representation training
-
-`train_autoencoder.py` trains reconstruction codecs independently of the AR
-generator. It supports:
-
-- `causal_k`: contiguous radial-order chunks compressed to one latent each;
-- `causal_ring`: integer-radius rings split into an adaptive number of balanced
-  angular sectors and pooled to one latent per sector;
-- `spatial_downsample`: a residual convolutional AE/VAE whose real latent map
-  can be exported as channel-generic Hermitian FFT tokens.
-
-Frequency modes use a full-receptive-field causal TCN by default. `--depth 0`
-chooses the minimum dilation depth whose final position can depend on the first
-position. Pooling is configurable with `flat_mlp`, `perceiver_full`, or
-`perceiver_sector`. Perceiver pooling uses a directly learned query for every
-exported latent, a configurable higher-dimensional multi-head attention space
-(`--perceiver_width`, `--perceiver_heads`), Q/K RMS normalization, and a residual
-feed-forward block before projection to `latent_dim`.
-
-The ring codec treats angular sectors as the causal units. Its coefficient
-Transformer is block-causal: tokens mix bidirectionally inside their own sector
-and attend every earlier sector, but never a later one. Unique sector queries
-pool only their own dynamically sized sector. The mirrored decoder causally
-mixes the sector latents and masks coordinate cross-attention so coefficients in
-sector `j` can use only latents `<= j`; no full-ring averaging is performed.
-`--ring_transformer_layers` controls the encoder and decoder depth.
-
-Frequency codecs support symmetric target/group conditioning with
-`--group_conditioning none|film|low_rank|film_low_rank`. The condition includes
-absolute frequency coordinates, radius/angle, group size and identity,
-axis/self-conjugate status, and empirical orbit scale; it modulates encoder
-blocks, pooling, causal latent processing, and the final coordinate decoder.
+CPU-sized correctness smoke:
 
 ```bash
-# Four consecutive Fourier coefficients per latent.
-scripts/run_autoencoder_gate.sh causal_k 0 30000
-
-# Adaptive 1–4 angular-sector latents per integer-radius ring.
-TARGET_TOKENS_PER_LATENT=16 MAX_RING_LATENTS=4 \
-  scripts/run_autoencoder_gate.sh causal_ring 0 30000
-
-# 32x32 image -> 8x8 real latent map -> 34 latent FFT orbit tokens.
-SPATIAL_DOWNSAMPLE=4 SPATIAL_LATENT_CHANNELS=8 \
-  scripts/run_autoencoder_gate.sh spatial_downsample 0 30000
+CUDA_VISIBLE_DEVICES='' python train_progressive_tokenizer.py \
+  --smoke --output_dir /tmp/progressive-tokenizer-smoke
+python -m pytest -q tests/test_progressive_tokenizer.py
 ```
 
-Set `VARIATIONAL=true KL_WEIGHT=... KL_FREE_BITS=...` for a VAE; deterministic
-AE training is the default. Checkpointing remains opt-in. Reconstruction logs
-include pixel MSE/PSNR, physical Fourier NRMSE, log-amplitude, phase, radial
-power, KL/rate, latent statistics, scalar compression, and throughput.
+## Planned modeling gate
 
-Raw complex FFT MSE is disabled by default because it duplicates pixel MSE under
-the orthonormal FFT. Independent objectives are available through
-`--log_amplitude_weight`, `--phase_loss_weight`, and
-`--radial_log_power_weight`; phase uses target-amplitude gating. The normalized
-Cartesian token loss defaults to `0.01`, and sparse output-gradient ratios are
-logged to calibrate spectral auxiliaries.
+Once the autoencoder passes reconstruction:
 
-Latent evaluation includes radial-prefix reconstructions, Gaussian perturbation,
-Hermitian round-trip error, covariance/correlation, edge, boundary, and
-checkerboard diagnostics. Training robustness knobs include
-`--latent_noise_std`, `--latent_ring_dropout`, and
-`--latent_high_frequency_dropout`.
-
-For ImageFolder data, call `train_autoencoder.py --dataset imagefolder
---data_root PATH --resolution 64|128`. Exported checkpoints include model
-configuration and fitted Fourier codec state where applicable. Ring-level AR
-queries and diffusion heads are intentionally not part of this trainer.
-
-Export contracts:
-
-- frequency `export_latents(tokens)` returns `[B,G,latent_dim]` plus
-  `latent_parent`, `token_parent`, padded `gather_indices`, and `gather_mask`;
-- spatial `export_latents(images)` returns the real map
-  `[B,C,H/downsample,W/downsample]` and radial Hermitian tokens
-  `[B,L,2C]`, where `L=h*w/2+2` for even latent dimensions.
-
-Existing image autoencoders can be evaluated without retraining:
-
-```bash
-gpu-claim run --owner AFIG --job external-vae-eval --wait -- \
-  python evaluate_image_autoencoder.py \
-    --model stabilityai/sd-vae-ft-mse \
-    --resolution 32 --save_latent_stats
-```
-
-The adapter performs `RGB -> existing encoder -> real latent map -> latent FFT`,
-handles model-specific scaling and posterior sampling, and reports when an
-8x-downsample VAE collapses a 32x32 image to a 4x4 latent. For a trained custom
-frequency checkpoint, `fit_autoencoder_latent_interface.py` fits per-position
-latent statistics and a small next-token causal probe.
-
-### Target-12 latent AFIG
-
-`train_latent_continuous.py` trains the compact AR generator selected for the
-53-token, 64-D target-12 sequential-ring codec. The frozen codec maps CIFAR-10
-images to per-position/per-channel standardized latents. Each shifted Transformer
-input concatenates the preceding latent, deterministic target sector metadata,
-and a BOS flag; no learned absolute-position table or Fourier-history branch is
-used. The diffusion decoder concatenates Transformer context with the same target
-metadata before its AdaLN stack.
-
-About 10% of decoder contexts are replaced by a learned null vector while sector
-metadata stays present. Sampling supports decoder-context CFG and writes preview
-grids at scales 1.0, 1.5, and 2.0. `--cfg_norm_match` rescales each guided
-64-D prediction to the corresponding conditional prediction norm, preserving
-guidance direction without allowing CFG to inflate latent amplitude.
-
-```bash
-AE_RUN=autoencoder_runs/ae-causal-ring-t12-m8-perceiver_sector-p256h4-seq2-film_low_rank-z64-r32-s1-n30000
-
-# Fit [53,64] training-set moments once.
-gpu-claim run --owner AFIG --job fit-t12-latents --wait -- \
-  python fit_autoencoder_latent_interface.py \
-  --checkpoint "$AE_RUN/checkpoint_30000.pt"
-
-# Train only the normalized latent diffusion objective.
-gpu-claim run --owner AFIG --job latent-afig-t12 --wait -- \
-  python train_latent_continuous.py \
-  --ae_checkpoint "$AE_RUN/checkpoint_30000.pt" \
-  --latent_interface "$AE_RUN/latent_interface.pt" \
-  --output_dir latent_continuous_runs/t12-seed1 \
-  --run_name latent-afig-t12-seed1
-
-# Larger 30k rectified-flow coherence run with norm-matched CFG.
-scripts/run_latent_afig_coherence.sh
-```
-
-Latent checkpoints inline the fitted moments, deterministic position features,
-feature schema, layout fingerprint, sequence length, token dimension, and frozen
-AE reference. Loading rejects a mismatched codec or latent interface.
-
-Useful flags:
-
-- `--resume_from_checkpoint PATH|latest`
-- `--codec_stats_path PATH` (defaults to `$output_dir/codec_stats.pt`)
-- `--history_corruption none|gaussian`
-- `--history_polar_features none|log_amp_gated_phase`
-- `--history_cartesian_features centered|phase_preserving|policy`
-- `--history_mean_policy legacy|per_orbit|pooled_ordinary|self_only`
-- `--history_scale_policy legacy|centered_std|uncentered_rms`
-- `--centering all|self_conjugate_std|self_conjugate_rms`
-- `--diffusion_mean_policy legacy|per_orbit|pooled_ordinary|self_only`
-- `--diffusion_scale_policy legacy|centered_std|uncentered_rms`
-- `--frequency_conditioning`
-- `--backbone_position_mode none|legacy_hybrid|random_table|sincos_table`
-- `--input_timestep_conditioning none|film`
-- `--[no-]input_stem_time_film`
-- `--phase_aux_weight FLOAT --phase_aux_gate FLOAT`
-- `--input_projection_init xavier|kaiming_linear`
-- `--position_num_frequencies 4 --position_max_frequency 8`
-- `--[no-]position-input-addition`
-- `--[no-]transformer-position-film`
-- `--[no-]diffusion-target-conditioning`
-- `--position-rms-normalize`
-- `--radial_power_weighting`
-- `--radial_power_exponent 0.5`
-- `--checkpointing_steps 0` (default; set above zero only for resumable runs)
-- `--save_final_checkpoint` (off by default)
-- `--preset tiny|moderate|legacy`
-- `--dataset auto|cifar10|huggingface_cifar|synthetic`
-
-Checkpoint saving is disabled by default. When explicitly enabled, versioned
-`.pt` files contain model, optimizer, LR schedule, EMA, codec export, and configs.
-
-### Validation diagnostics
-
-Logged / saved periodically:
-
-- fixed-seed sample image grid `samples_{step}.png` every 5,000 steps by
-  default (`--preview_steps`; set to 0 to disable)
-- Hermitian violation and imaginary reconstruction energy
-- backbone vs denoiser wall time
-- deterministic held-out normalized Cartesian, physical complex/amplitude/phase,
-  radial-power, timestep/radius, normalization-distortion, and perturbation
-  diagnostics (`--spectral_diagnostic_steps`)
-- instantaneous loss by timestep bucket and selected radius bins
-- GPU-side timestep EMAs for raw MSE, unweighted objective, time weight, and
-  effective weighted objective (`--timestep_histogram_bins`,
-  `--timestep_histogram_decay`, `--timestep_histogram_log_steps`)
-- routine training metrics and throughput every 25 optimizer steps
-  (`--logging_steps`), avoiding per-step device synchronization
-- sparse CUDA-event timings for Fourier encoding, forward, backward, gradient
-  processing, optimizer, total GPU step, and CPU data wait
-  (`--timing_steps`, default 100; set to 0 to disable)
-- radial weight mean / range at startup
-
-Checkpoint-free FID/KID is independent of previews and disabled by default.
-Enable it explicitly with `--final_eval`; `--final_eval_samples` controls its
-sample count.
-
-Read-only W&B run selection and exact history export is available through
-`scripts/wandb_runs.py`. For example:
-
-```bash
-python scripts/wandb_runs.py \
-  --entity "$WANDB_ENTITY" \
-  --group orbit-standardize-output-gain \
-  --metric loss,grad_norm \
-  --min-step 10000 --max-step 20000 --step-interval 100 \
-  --output flow_metrics.csv
-```
-
-Architecture campaigns use the matched-step scorecard:
-
-```bash
-python scripts/analyze_architecture_gates.py \
-  --entity "$WANDB_ENTITY" \
-  --steps 5000,30000,100000 \
-  --output-dir analysis/architecture_gates
-```
-
-It resolves duplicate reruns, tolerates optional metrics, matches only at or
-before each requested optimizer step, computes paired-seed deltas against each
-gate control, and writes run-level CSV plus aggregate CSV/JSON/Markdown. Steps
-below 30k are labeled exploratory; future promotions should normally use at
-least 30k steps because 10k and shorter runs are often not intelligible.
-
-## Tests
-
-```bash
-cd /workspace/AFIG
-python -m unittest discover -s tests -v
-```
-
-## Legacy quantized path
-
-```bash
-python train_quantized.py
-```
-
-Still uses the polar half-spectrum unrolling in `utils.py` with a discrete vocab
-and cross-entropy. Narrow compatibility fixes only:
-
-- device-correct `new_empty` in `get_1d_freqs_from_2d`
-- optional `context` on `TransformerLayer.forward`
-- `topk_sample` / `top_k_sampling` alias
-
-## Future TODOs (stubbed, not implemented)
-
-- **Flow matching** per-token decoder + Euler sampler
-- **CFG** via class-condition dropout in the Transformer (do not drop AR state `z`)
-- Alternate history corruptions: masked tokens, rollout-mix
-- **FixedChunkGrouping**: joint denoise over K consecutive coefficients
-- **RadialBandGrouping**: block-AR over integer-radius bands
-
-## Notes for agents on this host
-
-Any exclusive single-GPU train/eval must go through `gpu-claim`
-(see `/workspace/GPU_QUEUEING.md`). Do not invent a parallel claim scheme.
+1. Freeze it and extract clean `32 x 64` latent sequences.
+2. Train a joint noncausal continuous model over the complete tensor.
+3. Require semantic decoded samples from that positive control.
+4. Train an autoregressive prior
+   `p(z_1, ..., z_32) = product_i p(z_i | z_<i)`.
+5. Keep the token distribution head modular between rectified flow and a
+   conditional normalizing flow.

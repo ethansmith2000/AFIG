@@ -2,6 +2,7 @@ data/
 wandb*/
 continuous_runs/
 latent_continuous_runs/
+tokenizer_runs/
 logs/
 *.pt
 *.pth
