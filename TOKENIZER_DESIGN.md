@@ -41,6 +41,10 @@ L_full = MSE(x, D(E(x))).
 Its purpose is to establish the reconstruction ceiling and inspect the emergent
 latent distribution without imposing an ordering regularizer prematurely.
 
+The initial optimizer uses a 1,000-step linear warmup to `2e-4`. The first run
+showed a clear late-step instability after its best 5k checkpoint, so the
+canonical continuation restores that checkpoint and fine-tunes at `5e-5`.
+
 ## Gate B: progressive prefixes
 
 For an ordered prefix of length `K`, the same decoder masks every latent after
