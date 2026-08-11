@@ -98,3 +98,17 @@ alignment; no CFG or EMA is used.
 ```bash
 scripts/run_progressive_ar_flow.sh
 ```
+
+## Current results
+
+- Unordered deterministic codec: 41.18 dB complete reconstruction.
+- Progressive deterministic codec: 35.73 dB complete reconstruction, with
+  prefixes rising smoothly from 20.54 dB at one token.
+- Joint flow on the frozen 12.5k representation: FID 75.30 at 20k.
+- Teacher-forced AR flow on the same representation: FID 105.90 at 20k,
+  despite substantially lower teacher-forced flow loss.
+
+The representation is generatively viable, but plain AR training has a clear
+exposure-bias penalty. The initial fixed latent cache also removes horizontal-
+flip augmentation and begins to overfit, so final-tokenizer modeling should
+restore that augmentation before comparing exposure-aware objectives.

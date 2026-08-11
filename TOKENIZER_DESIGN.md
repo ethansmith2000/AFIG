@@ -69,6 +69,12 @@ the warmup had reached only `5e-6`. The ordered objective must therefore shape
 the encoder and decoder together instead of attempting to rewrite a converged,
 distributed code.
 
+The completed 30k Gate-B checkpoint reaches full-test prefix PSNR
+`20.54 / 22.61 / 25.14 / 28.84 / 31.95 / 35.73` dB at
+`K = 1 / 2 / 4 / 8 / 16 / 32`. This is a smooth successive-refinement code,
+with a 5.45 dB complete-reconstruction cost relative to the unordered Gate-A
+ceiling.
+
 ## Gate A result
 
 The selected 25k checkpoint reconstructs the complete CIFAR-10 test set at
@@ -165,3 +171,19 @@ canonical AdaLN-Zero blocks. Training noises all 32 teacher-forced targets in
 parallel; inference generates one complete 64-D register at a time with 50-step
 Heun integration. The normalization, optimizer, flow path, lack of EMA, and
 flat loss weighting match Gate C.
+
+The initial comparison used the tokenizer frozen at 12.5k so modeling could
+begin before the codec run completed. AR 5k/10k/15k/20k FID was
+`139.44 / 123.08 / 113.21 / 105.90`, with KID
+`0.1390 / 0.1205 / 0.1092 / 0.1013`. At every matched checkpoint this is worse
+than joint flow, even though AR teacher-forced validation MSE is much lower.
+For example, at 10k AR validation MSE is `0.289` versus joint flow's `0.424`,
+while FID is `123.08` versus `94.27`. This is direct evidence of exposure bias.
+
+The AR cache contains one fixed orientation for each of 50k training images.
+By 20k, training MSE fell to `0.215` while held-out teacher-forced MSE worsened
+from `0.287` at 15k to `0.319`. Thus the late AR run also overfits. A canonical
+follow-up should encode both original and horizontally flipped images from the
+completed tokenizer before testing an exposure-aware objective. The present
+priors remain valid controls, but should not be mistaken for models of the
+final 30k latent representation.
