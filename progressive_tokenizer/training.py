@@ -12,28 +12,19 @@ import torch.nn as nn
 def optimizer_parameter_groups(
     model: nn.Module, weight_decay: float
 ) -> list[dict]:
-    """Apply weight decay only to ordinary matrix/kernel weights.
+    """Apply decay only to Linear/Conv weights, never identities or norms."""
 
-    Learned positions, pooling queries, output queries, QK temperatures, biases,
-    and normalization parameters are deliberately excluded.
-    """
+    decay_ids: set[int] = set()
+    matrix_modules = (nn.Linear, nn.Conv1d, nn.Conv2d, nn.Conv3d)
+    for module in model.modules():
+        if isinstance(module, matrix_modules) and module.weight.requires_grad:
+            decay_ids.add(id(module.weight))
 
     decay: list[nn.Parameter] = []
     no_decay: list[nn.Parameter] = []
-    protected_fragments = (
-        "position",
-        "pool_queries",
-        "output_token",
-        "logit_scale",
-        "norm",
-    )
-    for name, parameter in model.named_parameters():
-        if not parameter.requires_grad:
-            continue
-        protected = parameter.ndim < 2 or any(
-            fragment in name for fragment in protected_fragments
-        )
-        (no_decay if protected else decay).append(parameter)
+    for parameter in model.parameters():
+        if parameter.requires_grad:
+            (decay if id(parameter) in decay_ids else no_decay).append(parameter)
     if not decay or not no_decay:
         raise RuntimeError("optimizer grouping unexpectedly produced an empty group")
     return [
@@ -116,4 +107,3 @@ class LatentMomentAccumulator:
 
 def count_parameters(parameters: Iterable[torch.nn.Parameter]) -> int:
     return sum(parameter.numel() for parameter in parameters)
-

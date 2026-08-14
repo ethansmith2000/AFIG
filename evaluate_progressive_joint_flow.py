@@ -23,6 +23,22 @@ from progressive_tokenizer import (
 from progressive_tokenizer.checkpoints import load_tokenizer_checkpoint
 
 
+def physical_latent_layout(values: torch.Tensor, payload: dict) -> torch.Tensor:
+    """Map a prior's sampled layout back to the tokenizer's physical registers."""
+
+    layout = payload.get("latent_layout")
+    if not layout:
+        return values
+    if layout.get("type") != "consecutive_blocks":
+        raise ValueError("unsupported latent layout")
+    sequence_length = int(layout["physical_sequence_length"])
+    token_dim = int(layout["physical_token_dim"])
+    expected = sequence_length * token_dim
+    if values.shape[1] * values.shape[2] != expected:
+        raise ValueError("sampled latent layout does not match tokenizer layout")
+    return values.reshape(values.shape[0], sequence_length, token_dim)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True)
@@ -87,12 +103,14 @@ def main() -> None:
     device = torch.device(args.device)
     payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     model_type = payload.get("model_type")
+    model_config = dict(payload["model_config"])
+    model_config.setdefault("qk_norm", "l2_temperature")
     if model_type == "progressive_joint_rectified_flow":
-        model = JointRectifiedFlow(JointFlowConfig(**payload["model_config"]))
+        model = JointRectifiedFlow(JointFlowConfig(**model_config))
         sample_method = "sample"
     elif model_type == "progressive_autoregressive_rectified_flow":
         model = AutoregressiveRectifiedFlow(
-            AutoregressiveFlowConfig(**payload["model_config"])
+            AutoregressiveFlowConfig(**model_config)
         )
         sample_method = "generate"
     else:
@@ -138,7 +156,9 @@ def main() -> None:
                     steps=args.sample_steps,
                     generator=generator,
                 )
-            raw_latents = standardized.float() * scale + mean
+            raw_latents = physical_latent_layout(
+                standardized.float() * scale + mean, payload
+            )
             decoded = tokenizer.decode(raw_latents).float()
         images = decoded.add(1.0).div(2.0)
         features = extractor(images)

@@ -31,6 +31,9 @@ class TokenizerConfig:
     pool_depth: int = 2
     decoder_depth: int = 8
     mlp_ratio: float = 4.0
+    pool_type: str = "residual"
+    qk_norm: str = "rms"
+    cross_attention_bias: bool = False
     attention_dropout: float = 0.0
     projection_dropout: float = 0.0
     rope_theta: float = 10_000.0
@@ -50,6 +53,12 @@ class TokenizerConfig:
             raise ValueError("all model depths must be positive")
         if self.mlp_ratio <= 0:
             raise ValueError("mlp_ratio must be positive")
+        if self.pool_type not in {"residual", "cross_only"}:
+            raise ValueError("pool_type must be residual or cross_only")
+        if self.pool_type == "cross_only" and self.pool_depth != 1:
+            raise ValueError("cross_only pooling requires pool_depth=1")
+        if self.qk_norm not in {"rms", "l2_temperature"}:
+            raise ValueError("qk_norm must be rms or l2_temperature")
 
     @property
     def grid_size(self) -> int:
@@ -137,6 +146,7 @@ class SelfAttention(nn.Module):
         num_heads: int,
         attention_dropout: float,
         projection_dropout: float,
+        qk_norm: str,
     ):
         super().__init__()
         self.num_heads = num_heads
@@ -145,9 +155,23 @@ class SelfAttention(nn.Module):
         self.out = nn.Linear(width, width)
         self.out_dropout = nn.Dropout(projection_dropout)
         self.attention_dropout = attention_dropout
-        self.logit_scale = nn.Parameter(
-            torch.full((num_heads,), math.log(math.sqrt(self.head_dim)))
-        )
+        self.qk_norm = qk_norm
+        if qk_norm == "rms":
+            self.query_norm = nn.RMSNorm(
+                self.head_dim, eps=1e-6, elementwise_affine=True
+            )
+            self.key_norm = nn.RMSNorm(
+                self.head_dim, eps=1e-6, elementwise_affine=True
+            )
+            self.register_parameter("logit_scale", None)
+        elif qk_norm == "l2_temperature":
+            self.query_norm = nn.Identity()
+            self.key_norm = nn.Identity()
+            self.logit_scale = nn.Parameter(
+                torch.full((num_heads,), math.log(math.sqrt(self.head_dim)))
+            )
+        else:
+            raise ValueError(f"unsupported QK normalization: {qk_norm}")
 
     def forward(self, x: torch.Tensor, rope: Optional[Rotary2D] = None) -> torch.Tensor:
         batch, length, width = x.shape
@@ -155,19 +179,24 @@ class SelfAttention(nn.Module):
             batch, length, 3, self.num_heads, self.head_dim
         )
         q, k, v = qkv.permute(2, 0, 3, 1, 4).unbind(dim=0)
+        q = self.query_norm(q)
+        k = self.key_norm(k)
         if rope is not None:
             q = rope.rotate(q)
             k = rope.rotate(k)
-        q = F.normalize(q.float(), dim=-1).to(dtype=q.dtype)
-        k = F.normalize(k.float(), dim=-1).to(dtype=k.dtype)
-        scale = self.logit_scale.exp().clamp(max=100.0).to(q.dtype)
-        q = q * scale[None, :, None, None]
+        attention_scale = None
+        if self.qk_norm == "l2_temperature":
+            q = F.normalize(q.float(), dim=-1).to(dtype=q.dtype)
+            k = F.normalize(k.float(), dim=-1).to(dtype=k.dtype)
+            scale = self.logit_scale.exp().clamp(max=100.0).to(q.dtype)
+            q = q * scale[None, :, None, None]
+            attention_scale = 1.0
         output = F.scaled_dot_product_attention(
             q,
             k,
             v,
             dropout_p=self.attention_dropout if self.training else 0.0,
-            scale=1.0,
+            scale=attention_scale,
         )
         output = output.transpose(1, 2).reshape(batch, length, width)
         return self.out_dropout(self.out(output))
@@ -180,18 +209,34 @@ class CrossAttention(nn.Module):
         num_heads: int,
         attention_dropout: float,
         projection_dropout: float,
+        qk_norm: str,
+        bias: bool,
     ):
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = width // num_heads
-        self.q = nn.Linear(width, width)
-        self.kv = nn.Linear(width, 2 * width)
+        self.q = nn.Linear(width, width, bias=bias)
+        self.kv = nn.Linear(width, 2 * width, bias=bias)
         self.out = nn.Linear(width, width)
         self.out_dropout = nn.Dropout(projection_dropout)
         self.attention_dropout = attention_dropout
-        self.logit_scale = nn.Parameter(
-            torch.full((num_heads,), math.log(math.sqrt(self.head_dim)))
-        )
+        self.qk_norm = qk_norm
+        if qk_norm == "rms":
+            self.query_norm = nn.RMSNorm(
+                self.head_dim, eps=1e-6, elementwise_affine=True
+            )
+            self.key_norm = nn.RMSNorm(
+                self.head_dim, eps=1e-6, elementwise_affine=True
+            )
+            self.register_parameter("logit_scale", None)
+        elif qk_norm == "l2_temperature":
+            self.query_norm = nn.Identity()
+            self.key_norm = nn.Identity()
+            self.logit_scale = nn.Parameter(
+                torch.full((num_heads,), math.log(math.sqrt(self.head_dim)))
+            )
+        else:
+            raise ValueError(f"unsupported QK normalization: {qk_norm}")
 
     def forward(
         self,
@@ -208,10 +253,15 @@ class CrossAttention(nn.Module):
             batch, memory_length, 2, self.num_heads, self.head_dim
         )
         k, v = kv.permute(2, 0, 3, 1, 4).unbind(dim=0)
-        q = F.normalize(q.float(), dim=-1).to(dtype=q.dtype)
-        k = F.normalize(k.float(), dim=-1).to(dtype=k.dtype)
-        scale = self.logit_scale.exp().clamp(max=100.0).to(q.dtype)
-        q = q * scale[None, :, None, None]
+        q = self.query_norm(q)
+        k = self.key_norm(k)
+        attention_scale = None
+        if self.qk_norm == "l2_temperature":
+            q = F.normalize(q.float(), dim=-1).to(dtype=q.dtype)
+            k = F.normalize(k.float(), dim=-1).to(dtype=k.dtype)
+            scale = self.logit_scale.exp().clamp(max=100.0).to(q.dtype)
+            q = q * scale[None, :, None, None]
+            attention_scale = 1.0
         attention_mask = None
         if memory_mask is not None:
             if memory_mask.shape != (batch, memory_length):
@@ -226,7 +276,7 @@ class CrossAttention(nn.Module):
             v,
             attn_mask=attention_mask,
             dropout_p=self.attention_dropout if self.training else 0.0,
-            scale=1.0,
+            scale=attention_scale,
         )
         output = output.transpose(1, 2).reshape(batch, query_length, width)
         return self.out_dropout(self.out(output))
@@ -245,6 +295,7 @@ class EncoderBlock(nn.Module):
             config.num_heads,
             config.attention_dropout,
             config.projection_dropout,
+            config.qk_norm,
         )
         self.ffn_norm = _norm(config.width)
         self.ffn = FeedForward(
@@ -266,6 +317,8 @@ class PerceiverPoolBlock(nn.Module):
             config.num_heads,
             config.attention_dropout,
             config.projection_dropout,
+            config.qk_norm,
+            config.cross_attention_bias,
         )
         self.self_norm = _norm(config.width)
         self.self_attention = SelfAttention(
@@ -273,6 +326,7 @@ class PerceiverPoolBlock(nn.Module):
             config.num_heads,
             config.attention_dropout,
             config.projection_dropout,
+            config.qk_norm,
         )
         self.ffn_norm = _norm(config.width)
         self.ffn = FeedForward(
@@ -296,6 +350,7 @@ class DecoderBlock(nn.Module):
             config.num_heads,
             config.attention_dropout,
             config.projection_dropout,
+            config.qk_norm,
         )
         self.cross_query_norm = _norm(config.width)
         self.cross_memory_norm = _norm(config.width)
@@ -304,6 +359,8 @@ class DecoderBlock(nn.Module):
             config.num_heads,
             config.attention_dropout,
             config.projection_dropout,
+            config.qk_norm,
+            config.cross_attention_bias,
         )
         self.ffn_norm = _norm(config.width)
         self.ffn = FeedForward(
@@ -350,9 +407,25 @@ class ProgressiveTokenizer(nn.Module):
         self.pool_queries = nn.Parameter(
             torch.empty(1, config.num_latents, config.width)
         )
-        self.pool_blocks = nn.ModuleList(
-            PerceiverPoolBlock(config) for _ in range(config.pool_depth)
-        )
+        if config.pool_type == "residual":
+            self.pool_blocks = nn.ModuleList(
+                PerceiverPoolBlock(config) for _ in range(config.pool_depth)
+            )
+            self.pool_query_norm = None
+            self.pool_memory_norm = None
+            self.pool_attention = None
+        else:
+            self.pool_blocks = nn.ModuleList()
+            self.pool_query_norm = _norm(config.width)
+            self.pool_memory_norm = _norm(config.width)
+            self.pool_attention = CrossAttention(
+                config.width,
+                config.num_heads,
+                config.attention_dropout,
+                config.projection_dropout,
+                config.qk_norm,
+                config.cross_attention_bias,
+            )
         self.latent_norm = _norm(config.width)
         self.latent_projection = nn.Linear(config.width, config.latent_dim)
 
@@ -409,8 +482,19 @@ class ProgressiveTokenizer(nn.Module):
         patches = self.encoder_norm(patches)
 
         queries = self.pool_queries.expand(images.shape[0], -1, -1)
-        for block in self.pool_blocks:
-            queries = block(queries, patches)
+        if self.config.pool_type == "residual":
+            for block in self.pool_blocks:
+                queries = block(queries, patches)
+        else:
+            if (
+                self.pool_attention is None
+                or self.pool_query_norm is None
+                or self.pool_memory_norm is None
+            ):
+                raise RuntimeError("cross-only pooling modules were not constructed")
+            queries = self.pool_attention(
+                self.pool_query_norm(queries), self.pool_memory_norm(patches)
+            )
         return self.latent_projection(self.latent_norm(queries))
 
     def _prefix_mask(
@@ -434,7 +518,10 @@ class ProgressiveTokenizer(nn.Module):
                 f"prefix_lengths must be scalar or shape {(latents.shape[0],)}, "
                 f"received {tuple(prefix_lengths.shape)}"
             )
-        if bool(((prefix_lengths < 1) | (prefix_lengths > self.config.num_latents)).any()):
+        invalid_prefix = (prefix_lengths < 1) | (
+            prefix_lengths > self.config.num_latents
+        )
+        if not torch.compiler.is_compiling() and bool(invalid_prefix.any()):
             raise ValueError(
                 f"prefix lengths must lie in [1, {self.config.num_latents}]"
             )
@@ -474,10 +561,18 @@ class ProgressiveTokenizer(nn.Module):
         self,
         images: torch.Tensor,
         prefix_lengths: Optional[Union[int, torch.Tensor]] = None,
+        *,
+        include_full_reconstruction: bool = False,
     ) -> dict[str, torch.Tensor]:
         latents = self.encode(images)
         reconstruction = self.decode(latents, prefix_lengths)
-        return {"latents": latents, "reconstruction": reconstruction}
+        output = {"latents": latents, "reconstruction": reconstruction}
+        if include_full_reconstruction:
+            if prefix_lengths is None:
+                output["full_reconstruction"] = reconstruction
+            else:
+                output["full_reconstruction"] = self.decode(latents)
+        return output
 
     @property
     def exported_token_count(self) -> int:

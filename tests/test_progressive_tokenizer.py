@@ -80,7 +80,7 @@ class TestProgressiveTokenizer(unittest.TestCase):
         self.assertGreater(float(cross_weight.grad.abs().sum()), 0)
         self.assertIsNotNone(model.patch_embed.weight.grad)
 
-    def test_weight_decay_excludes_identity_and_temperature_parameters(self):
+    def test_weight_decay_excludes_identity_and_qk_norm_parameters(self):
         model = ProgressiveTokenizer(tiny_config())
         groups = optimizer_parameter_groups(model, weight_decay=0.05)
         decayed = {id(parameter) for parameter in groups[0]["params"]}
@@ -90,13 +90,42 @@ class TestProgressiveTokenizer(unittest.TestCase):
         self.assertIn(id(model.encoder_position), protected)
         self.assertIn(id(model.pool_queries), protected)
         self.assertIn(
-            id(model.encoder_blocks[0].attention.logit_scale), protected
+            id(model.encoder_blocks[0].attention.query_norm.weight), protected
         )
         self.assertTrue(decayed.isdisjoint(protected))
         self.assertEqual(
             len(decayed) + len(protected),
             sum(1 for parameter in model.parameters() if parameter.requires_grad),
         )
+
+    def test_cross_only_pool_exports_attended_values_and_trains(self):
+        config = tiny_config()
+        config = TokenizerConfig(
+            **{
+                **config.fingerprint(),
+                "pool_type": "cross_only",
+                "pool_depth": 1,
+            }
+        )
+        model = ProgressiveTokenizer(config)
+        images = torch.randn(2, 3, 8, 8)
+        output = model(images, prefix_lengths=torch.tensor([2, 3]))
+        self.assertEqual(output["latents"].shape, (2, 4, 8))
+        F.mse_loss(output["reconstruction"], images).backward()
+        self.assertIsNotNone(model.pool_attention)
+        self.assertIsNotNone(model.pool_attention.kv.weight.grad)
+        self.assertGreater(float(model.pool_attention.kv.weight.grad.abs().sum()), 0)
+
+    def test_rms_qk_scales_start_at_one(self):
+        model = ProgressiveTokenizer(tiny_config())
+        attention = model.encoder_blocks[0].attention
+        torch.testing.assert_close(
+            attention.query_norm.weight, torch.ones_like(attention.query_norm.weight)
+        )
+        torch.testing.assert_close(
+            attention.key_norm.weight, torch.ones_like(attention.key_norm.weight)
+        )
+        self.assertIsNone(attention.logit_scale)
 
 
 class TestRotaryPrecision(unittest.TestCase):
@@ -112,4 +141,3 @@ class TestRotaryPrecision(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

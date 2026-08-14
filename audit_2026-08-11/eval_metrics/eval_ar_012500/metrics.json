@@ -1,0 +1,13 @@
+{
+  "checkpoint_step": 12500,
+  "decoded_clipping_fraction": 0.021344661458333334,
+  "decoded_max": 1.625,
+  "decoded_min": -1.640625,
+  "fid": 109.50703374756665,
+  "kid": 0.10387329012155533,
+  "model_type": "progressive_autoregressive_rectified_flow",
+  "num_samples": 5000,
+  "sample_steps": 50,
+  "standardized_latent_mean": 0.0009458439142013504,
+  "standardized_latent_std": 0.993239943051626
+}

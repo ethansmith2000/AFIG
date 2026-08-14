@@ -21,6 +21,7 @@ from progressive_tokenizer import (
 )
 from progressive_tokenizer.checkpoints import load_tokenizer_checkpoint
 from progressive_tokenizer.training import count_parameters, optimizer_parameter_groups
+from progressive_tokenizer.tracking import WandbTracker
 from train_progressive_joint_flow import (
     atomic_save,
     autocast_context,
@@ -38,9 +39,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--width", type=int, default=512)
     parser.add_argument("--trunk_depth", type=int, default=12)
     parser.add_argument("--head_depth", type=int, default=6)
+    parser.add_argument(
+        "--block_size",
+        type=int,
+        default=1,
+        help="Concatenate this many consecutive latent registers per AR decision.",
+    )
     parser.add_argument("--num_heads", type=int, default=8)
     parser.add_argument("--mlp_ratio", type=float, default=4.0)
+    parser.add_argument(
+        "--qk_norm", choices=["rms", "l2_temperature"], default="rms"
+    )
     parser.add_argument("--gradient_checkpointing", action="store_true")
+    parser.add_argument(
+        "--compile",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Compile the training forward with mode=default and fullgraph=True.",
+    )
+    parser.add_argument("--report_to", choices=["none", "wandb"], default="wandb")
+    parser.add_argument(
+        "--tracker_project_name", default="afig-progressive-tokenizer"
+    )
+    parser.add_argument("--run_name", default=None)
+    parser.add_argument("--run_group", default="ar-prior")
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--max_train_steps", type=int, default=20000)
@@ -59,7 +81,39 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample_steps", type=int, default=50)
     parser.add_argument("--checkpoint_every", type=int, default=2500)
     parser.add_argument("--resume", default=None)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.block_size <= 0:
+        parser.error("--block_size must be positive")
+    return args
+
+
+def block_latents(latents: torch.Tensor, block_size: int) -> torch.Tensor:
+    """Group consecutive [T,D] registers into [T/block_size, block_size*D]."""
+
+    if latents.ndim != 3:
+        raise ValueError("latents must have shape [N,T,D]")
+    if latents.shape[1] % block_size:
+        raise ValueError("latent sequence length must be divisible by block_size")
+    if block_size == 1:
+        return latents
+    return latents.reshape(
+        latents.shape[0],
+        latents.shape[1] // block_size,
+        latents.shape[2] * block_size,
+    )
+
+
+def unblock_latents(
+    latents: torch.Tensor,
+    *,
+    sequence_length: int,
+    token_dim: int,
+) -> torch.Tensor:
+    """Restore grouped AR tokens to the tokenizer's physical register layout."""
+
+    if latents.numel() != latents.shape[0] * sequence_length * token_dim:
+        raise ValueError("blocked latents do not match tokenizer latent dimensions")
+    return latents.reshape(latents.shape[0], sequence_length, token_dim)
 
 
 @torch.no_grad()
@@ -125,7 +179,12 @@ def save_preview(
             generator=generator,
         )
         raw = standardized.float() * scale + mean
-        images = tokenizer.decode(raw)
+        physical_raw = unblock_latents(
+            raw,
+            sequence_length=tokenizer.config.num_latents,
+            token_dim=tokenizer.config.latent_dim,
+        )
+        images = tokenizer.decode(physical_raw)
     save_image(
         images.float().add(1).div(2).clamp(0, 1),
         output,
@@ -154,6 +213,12 @@ def checkpoint_payload(model, optimizer, step, cache, mean, scale) -> dict:
         "normalization": {"mean": mean.cpu(), "scale": scale.cpu()},
         "tokenizer_checkpoint": cache["tokenizer_checkpoint"],
         "tokenizer_step": cache["tokenizer_step"],
+        "latent_layout": {
+            "type": "consecutive_blocks",
+            "block_size": model.config.token_dim // cache["model_config"]["latent_dim"],
+            "physical_sequence_length": cache["model_config"]["num_latents"],
+            "physical_token_dim": cache["model_config"]["latent_dim"],
+        },
     }
 
 
@@ -168,8 +233,12 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     cache = torch.load(args.latent_cache, map_location="cpu", weights_only=False)
-    train_latents = cache["train_latents"]
-    test_latents = cache["test_latents"]
+    physical_train_latents = cache["train_latents"]
+    physical_test_latents = cache["test_latents"]
+    if physical_train_latents.shape[1] % args.block_size:
+        raise ValueError("tokenizer sequence length must be divisible by block_size")
+    train_latents = block_latents(physical_train_latents, args.block_size)
+    test_latents = block_latents(physical_test_latents, args.block_size)
     sequence_length, token_dim = train_latents.shape[1:]
     global_mean = cache["statistics"]["global_mean"].float().to(device)
     global_scale = cache["statistics"]["global_std"].float().to(device)
@@ -201,6 +270,7 @@ def main() -> None:
         head_depth=args.head_depth,
         num_heads=args.num_heads,
         mlp_ratio=args.mlp_ratio,
+        qk_norm=args.qk_norm,
         gradient_checkpointing=args.gradient_checkpointing,
     )
     model = AutoregressiveRectifiedFlow(config).to(device)
@@ -218,6 +288,8 @@ def main() -> None:
         model.load_state_dict(payload["model"])
         optimizer.load_state_dict(payload["optimizer"])
         start_step = int(payload["step"])
+    if args.compile:
+        model.compile(mode="default", fullgraph=True)
     tokenizer, tokenizer_payload = load_tokenizer_checkpoint(
         cache["tokenizer_checkpoint"]
     )
@@ -234,12 +306,35 @@ def main() -> None:
         },
         "parameters": count_parameters(model.parameters()),
         "tokenizer_step": cache["tokenizer_step"],
-        "alignment": "BOS, z_1, ..., z_31 -> predict z_1, ..., z_32",
+        "latent_cache": {
+            "train_examples": int(train_latents.shape[0]),
+            "test_examples": int(test_latents.shape[0]),
+            "train_views": cache.get("train_views", ["original"]),
+        },
+        "alignment": (
+            f"BOS, b_1, ..., b_{sequence_length - 1} -> "
+            f"predict b_1, ..., b_{sequence_length}; "
+            f"each block contains {args.block_size} consecutive physical registers"
+        ),
+        "latent_layout": {
+            "type": "consecutive_blocks",
+            "block_size": args.block_size,
+            "physical_sequence_length": int(physical_train_latents.shape[1]),
+            "physical_token_dim": int(physical_train_latents.shape[2]),
+        },
     }
     (output_dir / "config.json").write_text(
         json.dumps(config_payload, indent=2, sort_keys=True) + "\n"
     )
     print(json.dumps(config_payload, sort_keys=True), flush=True)
+    tracker = WandbTracker(
+        enabled=args.report_to == "wandb",
+        output_dir=output_dir,
+        project=args.tracker_project_name,
+        name=args.run_name or output_dir.name,
+        group=args.run_group,
+        config=config_payload,
+    )
 
     iterator = iter(train_loader)
     rolling = {"loss": 0.0, "prediction_rms": 0.0, "target_rms": 0.0}
@@ -281,6 +376,7 @@ def main() -> None:
             with history.open("a") as handle:
                 handle.write(json.dumps(record, sort_keys=True) + "\n")
             print(json.dumps(record, sort_keys=True), flush=True)
+            tracker.log(record, step=completed_step, prefix="train")
             rolling = {key: 0.0 for key in rolling}
             rolling_count = 0
             window_start = time.monotonic()
@@ -293,13 +389,15 @@ def main() -> None:
                 json.dumps(metrics, indent=2, sort_keys=True) + "\n"
             )
             print(json.dumps({"evaluation": metrics}, sort_keys=True), flush=True)
+            tracker.log(metrics, step=completed_step, prefix="eval")
         if args.preview_every > 0 and completed_step % args.preview_every == 0:
+            preview_path = output_dir / f"samples_{completed_step:06d}.png"
             metrics = save_preview(
                 model,
                 tokenizer,
                 global_mean,
                 global_scale,
-                output_dir / f"samples_{completed_step:06d}.png",
+                preview_path,
                 completed_step,
                 args,
                 device,
@@ -307,6 +405,10 @@ def main() -> None:
             print(
                 json.dumps({"preview": {"step": completed_step, **metrics}}, sort_keys=True),
                 flush=True,
+            )
+            tracker.log(metrics, step=completed_step, prefix="preview")
+            tracker.log_image(
+                preview_path, step=completed_step, key="preview/samples"
             )
         if args.checkpoint_every > 0 and completed_step % args.checkpoint_every == 0:
             latest = output_dir / "checkpoint_latest.pt"
@@ -327,6 +429,7 @@ def main() -> None:
     final.pop("optimizer")
     atomic_save(final, output_dir / "checkpoint_final.pt")
     print(json.dumps({"complete": args.max_train_steps}), flush=True)
+    tracker.finish()
 
 
 if __name__ == "__main__":

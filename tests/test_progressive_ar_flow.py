@@ -6,6 +6,8 @@ from progressive_tokenizer import (
     AutoregressiveFlowConfig,
     AutoregressiveRectifiedFlow,
 )
+from progressive_tokenizer.training import optimizer_parameter_groups
+from train_progressive_ar_flow import block_latents, unblock_latents
 
 
 def tiny_model() -> AutoregressiveRectifiedFlow:
@@ -71,3 +73,35 @@ def test_generation_shape_and_seed_determinism() -> None:
     )
     assert first.shape == (2, 4, 8)
     torch.testing.assert_close(first, second)
+
+
+def test_consecutive_block_layout_round_trip() -> None:
+    physical = torch.randn(3, 64, 16)
+    blocked = block_latents(physical, 4)
+    assert blocked.shape == (3, 16, 64)
+    restored = unblock_latents(blocked, sequence_length=64, token_dim=16)
+    torch.testing.assert_close(restored, physical)
+
+
+def test_block_layout_rejects_non_divisible_sequence() -> None:
+    try:
+        block_latents(torch.randn(2, 7, 4), 2)
+    except ValueError as error:
+        assert "divisible" in str(error)
+    else:
+        raise AssertionError("expected non-divisible block layout to fail")
+
+
+def test_weight_decay_excludes_bos_and_includes_projection_weights() -> None:
+    model = tiny_model()
+    groups = optimizer_parameter_groups(model, weight_decay=0.05)
+    decayed = {id(parameter) for parameter in groups[0]["params"]}
+    protected = {id(parameter) for parameter in groups[1]["params"]}
+    assert id(model.trunk.bos) in protected
+    assert id(model.trunk.target_position) in protected
+    assert id(model.trunk.input.weight) in decayed
+    assert id(model.head.condition_fusion[0].weight) in decayed
+    assert decayed.isdisjoint(protected)
+    assert len(decayed) + len(protected) == sum(
+        parameter.requires_grad for parameter in model.parameters()
+    )

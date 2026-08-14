@@ -20,6 +20,7 @@ class JointFlowConfig:
     depth: int = 12
     num_heads: int = 8
     mlp_ratio: float = 4.0
+    qk_norm: str = "rms"
     rope_theta: float = 10_000.0
     gradient_checkpointing: bool = False
 
@@ -32,6 +33,8 @@ class JointFlowConfig:
             raise ValueError("attention head width must be even for RoPE")
         if self.depth <= 0 or self.mlp_ratio <= 0:
             raise ValueError("depth and mlp_ratio must be positive")
+        if self.qk_norm not in {"rms", "l2_temperature"}:
+            raise ValueError("qk_norm must be rms or l2_temperature")
 
     def fingerprint(self) -> dict:
         return asdict(self)
@@ -96,15 +99,29 @@ class TimestepEmbedding(nn.Module):
 
 
 class QKNormAttention(nn.Module):
-    def __init__(self, width: int, num_heads: int):
+    def __init__(self, width: int, num_heads: int, qk_norm: str):
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = width // num_heads
         self.qkv = nn.Linear(width, 3 * width)
         self.output = nn.Linear(width, width)
-        self.logit_scale = nn.Parameter(
-            torch.full((num_heads,), math.log(math.sqrt(self.head_dim)))
-        )
+        self.qk_norm = qk_norm
+        if qk_norm == "rms":
+            self.query_norm = nn.RMSNorm(
+                self.head_dim, eps=1e-6, elementwise_affine=True
+            )
+            self.key_norm = nn.RMSNorm(
+                self.head_dim, eps=1e-6, elementwise_affine=True
+            )
+            self.register_parameter("logit_scale", None)
+        elif qk_norm == "l2_temperature":
+            self.query_norm = nn.Identity()
+            self.key_norm = nn.Identity()
+            self.logit_scale = nn.Parameter(
+                torch.full((num_heads,), math.log(math.sqrt(self.head_dim)))
+            )
+        else:
+            raise ValueError(f"unsupported QK normalization: {qk_norm}")
 
     def forward(
         self, values: torch.Tensor, rope: Rotary1D, *, causal: bool = False
@@ -114,19 +131,24 @@ class QKNormAttention(nn.Module):
             batch, length, 3, self.num_heads, self.head_dim
         )
         query, key, value = qkv.permute(2, 0, 3, 1, 4).unbind(dim=0)
+        query = self.query_norm(query)
+        key = self.key_norm(key)
         query = rope(query)
         key = rope(key)
-        query = F.normalize(query.float(), dim=-1).to(value.dtype)
-        key = F.normalize(key.float(), dim=-1).to(value.dtype)
-        scale = self.logit_scale.exp().clamp(max=100.0).to(value.dtype)
-        query = query * scale[None, :, None, None]
+        attention_scale = None
+        if self.qk_norm == "l2_temperature":
+            query = F.normalize(query.float(), dim=-1).to(value.dtype)
+            key = F.normalize(key.float(), dim=-1).to(value.dtype)
+            scale = self.logit_scale.exp().clamp(max=100.0).to(value.dtype)
+            query = query * scale[None, :, None, None]
+            attention_scale = 1.0
         attended = F.scaled_dot_product_attention(
             query,
             key,
             value,
             dropout_p=0.0,
             is_causal=causal,
-            scale=1.0,
+            scale=attention_scale,
         )
         return self.output(attended.transpose(1, 2).reshape(batch, length, width))
 
@@ -153,7 +175,9 @@ class AdaLNZeroBlock(nn.Module):
     def __init__(self, config: JointFlowConfig):
         super().__init__()
         self.attention_norm = _norm(config.width)
-        self.attention = QKNormAttention(config.width, config.num_heads)
+        self.attention = QKNormAttention(
+            config.width, config.num_heads, config.qk_norm
+        )
         self.ffn_norm = _norm(config.width)
         self.ffn = FeedForward(config.width, config.mlp_ratio)
         self.modulation = nn.Sequential(

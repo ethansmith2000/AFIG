@@ -27,6 +27,7 @@ class AutoregressiveFlowConfig:
     head_depth: int = 6
     num_heads: int = 8
     mlp_ratio: float = 4.0
+    qk_norm: str = "rms"
     rope_theta: float = 10_000.0
     gradient_checkpointing: bool = False
 
@@ -41,6 +42,8 @@ class AutoregressiveFlowConfig:
             raise ValueError("trunk_depth and head_depth must be positive")
         if self.mlp_ratio <= 0:
             raise ValueError("mlp_ratio must be positive")
+        if self.qk_norm not in {"rms", "l2_temperature"}:
+            raise ValueError("qk_norm must be rms or l2_temperature")
 
     def fingerprint(self) -> dict:
         return asdict(self)
@@ -50,7 +53,9 @@ class CausalTrunkBlock(nn.Module):
     def __init__(self, config: AutoregressiveFlowConfig):
         super().__init__()
         self.attention_norm = _norm(config.width)
-        self.attention = QKNormAttention(config.width, config.num_heads)
+        self.attention = QKNormAttention(
+            config.width, config.num_heads, config.qk_norm
+        )
         self.ffn_norm = _norm(config.width)
         self.ffn = FeedForward(config.width, config.mlp_ratio)
 

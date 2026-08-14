@@ -21,6 +21,7 @@ from torchvision.utils import save_image
 from progressive_tokenizer import JointFlowConfig, JointRectifiedFlow
 from progressive_tokenizer.checkpoints import load_tokenizer_checkpoint
 from progressive_tokenizer.training import count_parameters, optimizer_parameter_groups
+from progressive_tokenizer.tracking import WandbTracker
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,7 +33,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--depth", type=int, default=12)
     parser.add_argument("--num_heads", type=int, default=8)
     parser.add_argument("--mlp_ratio", type=float, default=4.0)
+    parser.add_argument(
+        "--qk_norm", choices=["rms", "l2_temperature"], default="rms"
+    )
     parser.add_argument("--gradient_checkpointing", action="store_true")
+    parser.add_argument(
+        "--compile",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Compile the training forward with mode=default and fullgraph=True.",
+    )
+    parser.add_argument("--report_to", choices=["none", "wandb"], default="wandb")
+    parser.add_argument(
+        "--tracker_project_name", default="afig-progressive-tokenizer"
+    )
+    parser.add_argument("--run_name", default=None)
+    parser.add_argument("--run_group", default="joint-prior")
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--max_train_steps", type=int, default=20000)
@@ -241,6 +257,7 @@ def main() -> None:
         depth=args.depth,
         num_heads=args.num_heads,
         mlp_ratio=args.mlp_ratio,
+        qk_norm=args.qk_norm,
         gradient_checkpointing=args.gradient_checkpointing,
     )
     model = JointRectifiedFlow(config).to(device)
@@ -258,6 +275,8 @@ def main() -> None:
         model.load_state_dict(payload["model"])
         optimizer.load_state_dict(payload["optimizer"])
         start_step = int(payload["step"])
+    if args.compile:
+        model.compile(mode="default", fullgraph=True)
 
     tokenizer, tokenizer_payload = load_tokenizer_checkpoint(
         cache["tokenizer_checkpoint"]
@@ -275,11 +294,24 @@ def main() -> None:
         },
         "parameters": count_parameters(model.parameters()),
         "tokenizer_step": cache["tokenizer_step"],
+        "latent_cache": {
+            "train_examples": int(train_latents.shape[0]),
+            "test_examples": int(test_latents.shape[0]),
+            "train_views": cache.get("train_views", ["original"]),
+        },
     }
     (output_dir / "config.json").write_text(
         json.dumps(config_payload, indent=2, sort_keys=True) + "\n"
     )
     print(json.dumps(config_payload, sort_keys=True), flush=True)
+    tracker = WandbTracker(
+        enabled=args.report_to == "wandb",
+        output_dir=output_dir,
+        project=args.tracker_project_name,
+        name=args.run_name or output_dir.name,
+        group=args.run_group,
+        config=config_payload,
+    )
 
     iterator = iter(train_loader)
     rolling = {"loss": 0.0, "prediction_rms": 0.0, "target_rms": 0.0}
@@ -323,6 +355,7 @@ def main() -> None:
             with history.open("a") as handle:
                 handle.write(json.dumps(record, sort_keys=True) + "\n")
             print(json.dumps(record, sort_keys=True), flush=True)
+            tracker.log(record, step=completed_step, prefix="train")
             rolling = {key: 0.0 for key in rolling}
             rolling_count = 0
             window_start = time.monotonic()
@@ -341,14 +374,16 @@ def main() -> None:
                 json.dumps(metrics, indent=2, sort_keys=True) + "\n"
             )
             print(json.dumps({"evaluation": metrics}, sort_keys=True), flush=True)
+            tracker.log(metrics, step=completed_step, prefix="eval")
 
         if args.preview_every > 0 and completed_step % args.preview_every == 0:
+            preview_path = output_dir / f"samples_{completed_step:06d}.png"
             preview_metrics = save_preview(
                 model,
                 tokenizer,
                 global_mean,
                 global_scale,
-                output_dir / f"samples_{completed_step:06d}.png",
+                preview_path,
                 completed_step,
                 args,
                 device,
@@ -359,6 +394,10 @@ def main() -> None:
                     sort_keys=True,
                 ),
                 flush=True,
+            )
+            tracker.log(preview_metrics, step=completed_step, prefix="preview")
+            tracker.log_image(
+                preview_path, step=completed_step, key="preview/samples"
             )
 
         if args.checkpoint_every > 0 and completed_step % args.checkpoint_every == 0:
@@ -390,6 +429,7 @@ def main() -> None:
     final_payload.pop("optimizer")
     atomic_save(final_payload, output_dir / "checkpoint_final.pt")
     print(json.dumps({"complete": args.max_train_steps}), flush=True)
+    tracker.finish()
 
 
 if __name__ == "__main__":

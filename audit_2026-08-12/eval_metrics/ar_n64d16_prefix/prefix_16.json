@@ -1,0 +1,9 @@
+{
+  "checkpoint_step": 60000,
+  "fid": 40.98027770227543,
+  "generated_suffix_length": 48,
+  "kid": 0.030353564769029617,
+  "num_samples": 5000,
+  "prefix_length": 16,
+  "sample_steps": 50
+}

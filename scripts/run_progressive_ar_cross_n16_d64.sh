@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd /workspace/AFIG
+mkdir -p logs prior_runs prior_evals
+
+cache=tokenizer_runs/v2-cross-n16-d64-s1/latents_final_original_flip.pt
+output=prior_runs/v2-ar-cross-n16-d64-s1
+
+gpu-claim run \
+  --owner AFIG \
+  --job ar-cross-n16-d64 \
+  --wait -- \
+  /venv/main/bin/python -u train_progressive_ar_flow.py \
+    --latent_cache "$cache" \
+    --output_dir "$output" \
+    --width 512 \
+    --trunk_depth 12 \
+    --head_depth 6 \
+    --num_heads 8 \
+    --qk_norm rms \
+    --batch_size 256 \
+    --num_workers 4 \
+    --learning_rate 1e-4 \
+    --warmup_steps 1000 \
+    --max_train_steps 20000 \
+    --run_group ar-prior-v2-n16d64 \
+    --compile
+
+gpu-claim run \
+  --owner AFIG \
+  --job ar-eval20k-cross-n16-d64 \
+  --wait -- \
+  /venv/main/bin/python -u evaluate_progressive_joint_flow.py \
+    --checkpoint "$output/checkpoint_final.pt" \
+    --output_dir prior_evals/v2-ar-cross-n16-d64-020000 \
+    --num_samples 5000 \
+    --batch_size 256 \
+    --sample_steps 50

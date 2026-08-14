@@ -1,0 +1,326 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "AFIG Progressive-Prior Diagnostic",
+    "description": "Evidence-backed status, failure diagnosis, and next experimental gates for the 64x16 progressive latent prior.",
+    "generatedAt": "2026-08-13T22:40:24Z",
+    "cards": [
+      {
+        "id": "codec_psnr",
+        "description": "Full 64-token deterministic tokenizer reconstruction on CIFAR-10.",
+        "dataset": "headline",
+        "sourceId": "diagnostic_notes",
+        "metrics": [
+          { "label": "Tokenizer PSNR", "field": "codec_psnr", "format": "number", "unit": "dB" }
+        ]
+      },
+      {
+        "id": "codec_rfid",
+        "description": "Current 5k-sample reconstruction floor from all 64 real latent registers.",
+        "dataset": "headline",
+        "sourceId": "diagnostic_notes",
+        "metrics": [
+          { "label": "Reconstruction FID", "field": "codec_rfid", "format": "number" }
+        ]
+      },
+      {
+        "id": "joint_fid",
+        "description": "Matched unconditional joint rectified-flow prior over the full 64x16 tensor.",
+        "dataset": "headline",
+        "sourceId": "diagnostic_notes",
+        "metrics": [
+          { "label": "Joint-prior FID", "field": "joint_fid", "format": "number" }
+        ]
+      },
+      {
+        "id": "ar_fid",
+        "description": "Best fixed-order one-register-at-a-time causal result at 40k-60k.",
+        "dataset": "headline",
+        "sourceId": "diagnostic_notes",
+        "metrics": [
+          { "label": "Causal AR FID", "field": "ar_fid", "format": "number" }
+        ]
+      },
+      {
+        "id": "ar_gap",
+        "description": "Decoded FID penalty introduced by fixed-order autoregression relative to its matched joint prior.",
+        "dataset": "headline",
+        "sourceId": "diagnostic_notes",
+        "metrics": [
+          { "label": "AR versus joint gap", "field": "ar_joint_gap", "format": "number", "signed": true }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "model_outcomes",
+        "title": "Decoded FID across the decisive model variants",
+        "subtitle": "More 16-D registers help the joint prior, but fixed-order AR reopens a large gap; concatenating registers worsens it.",
+        "type": "bar",
+        "dataset": "model_outcomes",
+        "sourceId": "diagnostic_notes",
+        "encodings": {
+          "x": { "field": "variant", "type": "nominal", "label": "Model variant" },
+          "y": { "field": "fid", "type": "quantitative", "label": "FID" },
+          "tooltip": [
+            { "field": "kid", "type": "quantitative", "label": "KID" },
+            { "field": "factorization", "type": "nominal", "label": "Factorization" }
+          ]
+        },
+        "valueFormat": "number",
+        "layout": "full",
+        "palette": { "kind": "sequential" }
+      },
+      {
+        "id": "checkpoint_fid",
+        "title": "Causal rollout quality improves after teacher-forced validation loss turns upward",
+        "subtitle": "The single-register prior plateaus around 40k; the block-4 prior remains worse throughout.",
+        "type": "line",
+        "dataset": "checkpoint_fid",
+        "sourceId": "diagnostic_notes",
+        "encodings": {
+          "x": { "field": "step_k", "type": "quantitative", "label": "Training step, k" },
+          "y": { "field": "fid", "type": "quantitative", "label": "FID" },
+          "color": { "field": "series", "type": "nominal", "label": "Causal factorization" }
+        },
+        "valueFormat": "number",
+        "layout": "full",
+        "palette": { "kind": "categorical" }
+      },
+      {
+        "id": "oracle_prefix",
+        "title": "Exact prefixes expose distributed autoregressive compounding",
+        "subtitle": "The AR suffix helps short prefixes, but after 16 real registers it slightly degrades the already-strong prefix reconstruction.",
+        "type": "line",
+        "dataset": "oracle_prefix",
+        "sourceId": "diagnostic_notes",
+        "encodings": {
+          "x": { "field": "prefix", "type": "quantitative", "label": "Exact prefix registers" },
+          "y": { "field": "fid", "type": "quantitative", "label": "FID" },
+          "color": { "field": "series", "type": "nominal", "label": "Decode mode" }
+        },
+        "valueFormat": "number",
+        "layout": "full",
+        "palette": { "kind": "semantic" }
+      },
+      {
+        "id": "loss_share",
+        "title": "Early registers already receive more than a uniform share of flow loss",
+        "subtitle": "The first-register issue is part of a broader coarse-prefix problem, not an underweighted BOS target.",
+        "type": "line",
+        "dataset": "loss_share",
+        "sourceId": "diagnostic_notes",
+        "encodings": {
+          "x": { "field": "prefix", "type": "quantitative", "label": "Prefix registers" },
+          "y": { "field": "share", "type": "quantitative", "label": "Cumulative loss share", "format": "percent" },
+          "color": { "field": "series", "type": "nominal", "label": "Share" }
+        },
+        "valueFormat": "percent",
+        "layout": "full",
+        "palette": { "kind": "semantic" }
+      }
+    ],
+    "tables": [
+      {
+        "id": "latent_geometry",
+        "title": "Latent-axis geometry at a fixed 1,024-scalar budget",
+        "subtitle": "Longer sequences create a finer progressive path, but much of it is redundant rather than independent.",
+        "dataset": "latent_geometry",
+        "sourceId": "diagnostic_notes",
+        "defaultSort": { "field": "tokens", "direction": "asc" },
+        "columns": [
+          { "field": "layout", "label": "Layout", "type": "text" },
+          { "field": "tokens", "label": "Tokens", "format": "number" },
+          { "field": "width", "label": "Feature width", "format": "number" },
+          { "field": "sequence_rank", "label": "Sequence effective rank", "format": "number" },
+          { "field": "feature_rank", "label": "Feature effective rank", "format": "number" },
+          { "field": "joint_fid", "label": "Joint FID", "format": "number" }
+        ],
+        "layout": "full"
+      },
+      {
+        "id": "baseline_config",
+        "title": "Current causal baseline configuration",
+        "subtitle": "No timestep-dependent loss weighting, guidance, class conditioning, or EMA is active.",
+        "dataset": "baseline_config",
+        "sourceId": "diagnostic_notes",
+        "defaultSort": { "field": "area", "direction": "asc" },
+        "columns": [
+          { "field": "area", "label": "Area", "type": "text" },
+          { "field": "setting", "label": "Setting", "type": "text" }
+        ],
+        "layout": "full"
+      }
+    ],
+    "sources": [
+      {
+        "id": "diagnostic_notes",
+        "label": "AFIG diagnostic evidence extract",
+        "path": "evidence.sqlite"
+      }
+    ],
+    "blocks": [
+      { "id": "title", "type": "markdown", "body": "# AFIG Progressive-Prior Diagnostic" },
+      {
+        "id": "decision",
+        "type": "markdown",
+        "sourceId": "diagnostic_notes",
+        "body": "## We have a viable progressive representation, but not yet a viable fixed-order prior\n\nThe 64x16 tokenizer reconstructs well and its matched joint prior is materially stronger than the 16x64 and 32x32 controls. The central remaining failure is the **42.30-FID penalty introduced by fixed-order autoregression**. Naive four-register concatenation worsens the result, so the next work should preserve 16-D physical registers and target conditioning and exposure directly."
+      },
+      { "id": "metrics", "type": "metric-strip", "cardIds": ["codec_psnr", "codec_rfid", "joint_fid", "ar_fid", "ar_gap"] },
+      { "id": "outcomes_chart", "type": "chart", "chartId": "model_outcomes", "layout": "full" },
+      {
+        "id": "optimizer_finding",
+        "type": "markdown",
+        "sourceId": "diagnostic_notes",
+        "body": "## Optimizer overfit is visible, but it is not the decoded failure\n\nTeacher-forced validation flow MSE turns upward around 10k-20k while rollout FID continues to improve through 40k. Early stopping at the validation minimum would have selected a much worse generator. The constant learning rate may still be refined later, but it does not explain why AR remains far behind the joint prior."
+      },
+      { "id": "checkpoint_chart", "type": "chart", "chartId": "checkpoint_fid", "layout": "full" },
+      {
+        "id": "exposure_finding",
+        "type": "markdown",
+        "sourceId": "diagnostic_notes",
+        "body": "## Exposure error is distributed across the coarse prefix\n\nReplacing progressively longer generated prefixes with real ones improves FID smoothly. Exact AR completions add substantial value to prefixes of length 1-8, but after 16 real registers the generated suffix slightly worsens the prefix-only image. This indicates both early/middle error propagation and late detail that is insufficiently aligned to the realized scaffold."
+      },
+      { "id": "prefix_chart", "type": "chart", "chartId": "oracle_prefix", "layout": "full" },
+      {
+        "id": "first_token_finding",
+        "type": "markdown",
+        "sourceId": "diagnostic_notes",
+        "body": "## A special first-token weight is not the leading fix\n\nToken 1 already carries about **4.75%** of validation MSE, roughly three times its uniform token share, while tokens 1-8 carry about **29.2%**. Supplying the exact first token improves FID by only 1.43. Its high loss also includes irreducible entropy because BOS provides no image-specific context. If weighting is tested, use a modest normalized emphasis over the first 8-16 registers and judge decoded FID—not teacher-forced MSE."
+      },
+      { "id": "loss_chart", "type": "chart", "chartId": "loss_share", "layout": "full" },
+      {
+        "id": "architecture",
+        "type": "markdown",
+        "sourceId": "diagnostic_notes",
+        "body": "## Position exists in the trunk, but should be tested as a direct head condition\n\nEvery target slot receives a unique learned absolute embedding before the causal trunk, alongside RoPE in attention. The diffusion head receives the resulting 512-D state and timestep, but no direct positional bypass. A clean control is `MLP([h_i, e_i, e_t])`, with the same slot embedding supplied to every AdaLN block. This tests identifiability at the stochastic head without removing positional information from attention or adding a second inconsistent position system."
+      },
+      { "id": "config_table", "type": "table", "tableId": "baseline_config", "layout": "full" },
+      {
+        "id": "snr",
+        "type": "markdown",
+        "sourceId": "diagnostic_notes",
+        "body": "## Token-dependent SNR is best pursued as rolling generation\n\nCurrent training uses independent uniform time for each target with tensor-wide standardization. Slot standard deviations vary only 0.735-1.149, so marginal scale alone is unlikely to explain the AR gap. A position-dependent schedule should follow conditional innovation and the measured coarse-to-fine prefix curve, not merely slot variance. Rolling diffusion/diffusion-forcing can keep 16-D registers separate, give each history register its own noise/time embedding, and move a denoising frontier from coarse to fine."
+      },
+      {
+        "id": "roadmap",
+        "type": "markdown",
+        "sourceId": "diagnostic_notes",
+        "body": "## Recommended experiment order\n\n1. Add a direct learned target-slot condition to the flow head and verify that slot-conditioned behavior changes.\n2. Add a small noisy-history teacher-forcing control to test robustness to generated-prefix drift.\n3. Implement rolling diffusion with per-register time/noise conditioning while retaining 16-D token heads.\n4. Only afterward test modest prefix-aware weighting or per-slot scalar normalization if diagnostics still point there.\n\nThe block-4 result rules out concatenation as the useful shortcut; it does not rule out attention between separate noisy register states during denoising."
+      },
+      { "id": "geometry_table", "type": "table", "tableId": "latent_geometry", "layout": "full" },
+      {
+        "id": "quality",
+        "type": "markdown",
+        "sourceId": "diagnostic_notes",
+        "body": "## Latent quality needs a scorecard, not one covariance statistic\n\nUse decoder reconstruction floor, progressive prefix and spectral recovery, off-manifold decoder-noise sensitivity, joint-prior FID, conditional innovation by slot, and final rollout FID. Effective rank and correlation are structural descriptors: low rank may reflect useful progressive redundancy or a difficult density, so optimizing either directly would be unsafe."
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "sourceId": "diagnostic_notes",
+        "body": "## Caveats\n\nFID differences below about 0.3 are treated as protocol noise. Cross-slot teacher-forced MSE includes different irreducible conditional floors. Reconstruction FID 7.22 uses the current 5k evaluation and is best read as a codec ceiling estimate, not as a precision comparison with older 10k reconstruction evaluations."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-13T22:40:24Z",
+    "status": "ready",
+    "datasets": {
+      "headline": [
+        {
+          "codec_psnr": 34.06,
+          "codec_rfid": 7.22,
+          "joint_fid": 39.37,
+          "ar_fid": 81.68,
+          "ar_joint_gap": 42.3
+        }
+      ],
+      "model_outcomes": [
+        { "variant": "16x64 joint", "factorization": "16 tokens x 64 features", "fid": 56.53, "kid": 0.04584 },
+        { "variant": "32x32 joint", "factorization": "32 tokens x 32 features", "fid": 54.57, "kid": 0.04472 },
+        { "variant": "64x16 joint", "factorization": "64 tokens x 16 features", "fid": 39.37, "kid": 0.02843 },
+        { "variant": "64x16 single AR", "factorization": "64 causal targets x 16 features", "fid": 81.68, "kid": 0.07359 },
+        { "variant": "64x16 block-4 AR", "factorization": "16 causal targets x 64 features", "fid": 109.66, "kid": 0.10258 }
+      ],
+      "checkpoint_fid": [
+        { "step_k": 10, "series": "Single-register AR", "fid": 103.47 },
+        { "step_k": 20, "series": "Single-register AR", "fid": 89.43 },
+        { "step_k": 40, "series": "Single-register AR", "fid": 81.6 },
+        { "step_k": 60, "series": "Single-register AR", "fid": 81.68 },
+        { "step_k": 10, "series": "Block-4 AR", "fid": 140.25 },
+        { "step_k": 20, "series": "Block-4 AR", "fid": 130.96 },
+        { "step_k": 40, "series": "Block-4 AR", "fid": 117.35 },
+        { "step_k": 60, "series": "Block-4 AR", "fid": 109.66 }
+      ],
+      "oracle_prefix": [
+        { "prefix": 0, "series": "AR-completed", "fid": 81.68 },
+        { "prefix": 1, "series": "AR-completed", "fid": 80.25 },
+        { "prefix": 2, "series": "AR-completed", "fid": 77.56 },
+        { "prefix": 4, "series": "AR-completed", "fid": 70.58 },
+        { "prefix": 8, "series": "AR-completed", "fid": 58.14 },
+        { "prefix": 16, "series": "AR-completed", "fid": 40.98 },
+        { "prefix": 32, "series": "AR-completed", "fid": 19.88 },
+        { "prefix": 48, "series": "AR-completed", "fid": 10.27 },
+        { "prefix": 1, "series": "Prefix-only", "fid": 191.35 },
+        { "prefix": 2, "series": "Prefix-only", "fid": 132.02 },
+        { "prefix": 4, "series": "Prefix-only", "fid": 96.59 },
+        { "prefix": 8, "series": "Prefix-only", "fid": 63.92 },
+        { "prefix": 16, "series": "Prefix-only", "fid": 38.31 },
+        { "prefix": 32, "series": "Prefix-only", "fid": 17.76 },
+        { "prefix": 48, "series": "Prefix-only", "fid": 9.88 },
+        { "prefix": 64, "series": "Prefix-only", "fid": 7.22 }
+      ],
+      "loss_share": [
+        { "prefix": 1, "series": "Observed flow loss", "share": 0.047515 },
+        { "prefix": 2, "series": "Observed flow loss", "share": 0.07812 },
+        { "prefix": 4, "series": "Observed flow loss", "share": 0.14432 },
+        { "prefix": 8, "series": "Observed flow loss", "share": 0.29208 },
+        { "prefix": 16, "series": "Observed flow loss", "share": 0.4935 },
+        { "prefix": 32, "series": "Observed flow loss", "share": 0.7621 },
+        { "prefix": 64, "series": "Observed flow loss", "share": 1.0 },
+        { "prefix": 1, "series": "Uniform token share", "share": 0.015625 },
+        { "prefix": 2, "series": "Uniform token share", "share": 0.03125 },
+        { "prefix": 4, "series": "Uniform token share", "share": 0.0625 },
+        { "prefix": 8, "series": "Uniform token share", "share": 0.125 },
+        { "prefix": 16, "series": "Uniform token share", "share": 0.25 },
+        { "prefix": 32, "series": "Uniform token share", "share": 0.5 },
+        { "prefix": 64, "series": "Uniform token share", "share": 1.0 }
+      ],
+      "latent_geometry": [
+        { "layout": "16x64", "tokens": 16, "width": 64, "sequence_rank": 8.6, "feature_rank": 25.04, "joint_fid": 56.53 },
+        { "layout": "32x32", "tokens": 32, "width": 32, "sequence_rank": 9.88, "feature_rank": 11.44, "joint_fid": 54.57 },
+        { "layout": "64x16", "tokens": 64, "width": 16, "sequence_rank": 13.78, "feature_rank": 4.54, "joint_fid": 39.37 }
+      ],
+      "baseline_config": [
+        { "area": "Architecture", "setting": "512 width; 12 causal trunk blocks; 6 conditional AdaLN flow blocks; 8 heads; MLP ratio 4" },
+        { "area": "Attention", "setting": "RMS QK normalization; 1-D RoPE; learned absolute target-position embedding" },
+        { "area": "Flow objective", "setting": "Uniform time per target; straight rectified-flow path; velocity target; unweighted MSE" },
+        { "area": "Normalization", "setting": "One tensor-wide population mean and standard deviation" },
+        { "area": "Optimizer", "setting": "AdamW 1e-4; betas 0.9/0.995; decay 0.05 on Linear/Conv weights only; gradient clip 1.0" },
+        { "area": "Training", "setting": "Batch 256; BF16; 1k warmup then constant LR; compile default/fullgraph; no dropout" },
+        { "area": "Sampling", "setting": "50-step Heun; no EMA, CFG, or class conditioning" },
+        { "area": "Weighting", "setting": "No min-SNR, logit-normal time sampling, timestep weights, or token weights" }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "diagnostic_notes",
+      "label": "AFIG diagnostic evidence extract",
+      "path": "evidence.sqlite",
+      "query": {
+        "engine": "sqlite",
+        "language": "sql",
+        "sql": "SELECT dataset, row_order, key_1, key_2, x, y, z, note FROM reviewed_measurements ORDER BY dataset, row_order",
+        "description": "Reads the 51 reviewed measurements materialized from the project metric JSON files and canonical design log; artifact datasets are documented reshapes of these rows.",
+        "executed_at": "2026-08-13T22:40:24Z",
+        "tables_used": ["reviewed_measurements"]
+      }
+    }
+  ]
+}

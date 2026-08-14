@@ -10,7 +10,7 @@ from pathlib import Path
 
 import torch
 import torchvision
-from torch.utils.data import DataLoader
+from torch.utils.data import ConcatDataset, DataLoader
 from torchvision import transforms
 
 from progressive_tokenizer.checkpoints import load_tokenizer_checkpoint
@@ -24,16 +24,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=512)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--device", default="cuda")
+    parser.add_argument(
+        "--include_horizontal_flip",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Append a deterministic horizontal flip of every training image.",
+    )
     return parser.parse_args()
 
 
-def make_dataset(root: str, train: bool):
-    transform = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Lambda(lambda image: image.mul(2.0).sub(1.0)),
-        ]
+def make_dataset(root: str, train: bool, *, horizontal_flip: bool = False):
+    operations = []
+    if horizontal_flip:
+        operations.append(transforms.RandomHorizontalFlip(p=1.0))
+    operations.extend(
+        [transforms.ToTensor(), transforms.Lambda(lambda image: image.mul(2.0).sub(1.0))]
     )
+    transform = transforms.Compose(operations)
     return torchvision.datasets.CIFAR10(
         root=root, train=train, download=True, transform=transform
     )
@@ -99,9 +106,17 @@ def main() -> None:
         raise RuntimeError("CUDA requested but unavailable")
     model, checkpoint = load_tokenizer_checkpoint(args.tokenizer_checkpoint)
     model = model.to(device).eval()
-    train, train_labels = encode_split(
-        model, make_dataset(args.data_root, True), args, device
-    )
+    train_dataset = make_dataset(args.data_root, True)
+    train_views = ["original"]
+    if args.include_horizontal_flip:
+        train_dataset = ConcatDataset(
+            [
+                train_dataset,
+                make_dataset(args.data_root, True, horizontal_flip=True),
+            ]
+        )
+        train_views.append("horizontal_flip")
+    train, train_labels = encode_split(model, train_dataset, args, device)
     test, test_labels = encode_split(
         model, make_dataset(args.data_root, False), args, device
     )
@@ -111,6 +126,7 @@ def main() -> None:
         "tokenizer_checkpoint": str(Path(args.tokenizer_checkpoint).resolve()),
         "tokenizer_step": int(checkpoint.get("step", -1)),
         "model_config": checkpoint["model_config"],
+        "train_views": train_views,
         "train_latents": train.half(),
         "train_labels": train_labels,
         "test_latents": test.half(),
@@ -127,6 +143,7 @@ def main() -> None:
         "tokenizer_step": payload["tokenizer_step"],
         "train_shape": list(train.shape),
         "test_shape": list(test.shape),
+        "train_views": train_views,
         "global_mean": float(statistics["global_mean"]),
         "global_std": float(statistics["global_std"]),
         "global_min": float(statistics["global_min"]),

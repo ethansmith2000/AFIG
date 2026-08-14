@@ -28,6 +28,7 @@ from progressive_tokenizer.training import (
     optimizer_parameter_groups,
     pixel_psnr,
 )
+from progressive_tokenizer.tracking import WandbTracker
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -47,8 +48,19 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--num_heads", type=int, default=8)
     parser.add_argument("--encoder_depth", type=int, default=8)
     parser.add_argument("--pool_depth", type=int, default=2)
+    parser.add_argument(
+        "--pool_type", choices=["residual", "cross_only"], default="residual"
+    )
     parser.add_argument("--decoder_depth", type=int, default=8)
     parser.add_argument("--mlp_ratio", type=float, default=4.0)
+    parser.add_argument(
+        "--qk_norm", choices=["rms", "l2_temperature"], default="rms"
+    )
+    parser.add_argument(
+        "--cross_attention_bias",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
 
     parser.add_argument("--train_batch_size", type=int, default=256)
     parser.add_argument("--eval_batch_size", type=int, default=256)
@@ -62,6 +74,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--max_grad_norm", type=float, default=1.0)
     parser.add_argument("--mixed_precision", choices=["no", "bf16"], default="bf16")
     parser.add_argument("--allow_tf32", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--compile",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Compile the training forward with mode=default and fullgraph=True.",
+    )
+    parser.add_argument("--report_to", choices=["none", "wandb"], default="wandb")
+    parser.add_argument(
+        "--tracker_project_name", default="afig-progressive-tokenizer"
+    )
+    parser.add_argument("--run_name", default=None)
+    parser.add_argument("--run_group", default="tokenizer")
 
     parser.add_argument("--log_every", type=int, default=25)
     parser.add_argument("--eval_every", type=int, default=1000)
@@ -109,6 +133,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         args.checkpoint_every = 0
         args.preview_examples = 4
         args.mixed_precision = "no"
+        args.compile = False
+        args.report_to = "none"
     return args
 
 
@@ -122,8 +148,11 @@ def make_model_config(args: argparse.Namespace) -> TokenizerConfig:
         num_heads=args.num_heads,
         encoder_depth=args.encoder_depth,
         pool_depth=args.pool_depth,
+        pool_type=args.pool_type,
         decoder_depth=args.decoder_depth,
         mlp_ratio=args.mlp_ratio,
+        qk_norm=args.qk_norm,
+        cross_attention_bias=args.cross_attention_bias,
     )
 
 
@@ -321,13 +350,9 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     model_config = make_model_config(args)
+    config_payload = {"model": model_config.fingerprint(), "training": vars(args)}
     (output_dir / "config.json").write_text(
-        json.dumps(
-            {"model": model_config.fingerprint(), "training": vars(args)},
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n"
+        json.dumps(config_payload, indent=2, sort_keys=True) + "\n"
     )
 
     if not torch.cuda.is_available() and not args.smoke:
@@ -361,6 +386,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         model.load_state_dict(payload["model"])
         optimizer.load_state_dict(payload["optimizer"])
         start_step = int(payload["step"])
+    if args.compile:
+        model.compile(mode="default", fullgraph=True)
 
     parameter_count = count_parameters(model.parameters())
     print(
@@ -376,6 +403,14 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             sort_keys=True,
         ),
         flush=True,
+    )
+    tracker = WandbTracker(
+        enabled=args.report_to == "wandb",
+        output_dir=output_dir,
+        project=args.tracker_project_name,
+        name=args.run_name or output_dir.name,
+        group=args.run_group,
+        config=config_payload,
     )
 
     fixed_images = next(iter(test_loader))[0][: args.preview_examples].to(device)
@@ -394,21 +429,32 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             optimizer, step, args.learning_rate, args.warmup_steps
         )
         optimizer.zero_grad(set_to_none=True)
+        prefix_lengths = None
+        if args.objective == "progressive":
+            prefix_lengths = torch.randint(
+                1,
+                args.num_latents,
+                (images.shape[0],),
+                device=device,
+            )
         with autocast_context(args, device):
-            latents = model.encode(images)
-            full_reconstruction = model.decode(latents)
+            output = model(
+                images,
+                prefix_lengths,
+                include_full_reconstruction=args.objective == "progressive",
+            )
+            latents = output["latents"]
+            full_reconstruction = output.get(
+                "full_reconstruction", output["reconstruction"]
+            )
             full_loss = F.mse_loss(full_reconstruction, images)
             prefix_loss = full_loss.new_zeros(())
             prefix_mean = float(args.num_latents)
             if args.objective == "progressive":
-                prefix_lengths = torch.randint(
-                    1,
-                    args.num_latents,
-                    (images.shape[0],),
-                    device=device,
-                )
-                prefix_reconstruction = model.decode(latents, prefix_lengths)
+                prefix_reconstruction = output["reconstruction"]
                 prefix_loss = F.mse_loss(prefix_reconstruction, images)
+                if prefix_lengths is None:
+                    raise RuntimeError("progressive objective did not create prefixes")
                 prefix_mean = float(prefix_lengths.float().mean())
             loss = full_loss + args.prefix_loss_weight * prefix_loss
         loss.backward()
@@ -438,6 +484,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             with history_path.open("a") as handle:
                 handle.write(json.dumps(record, sort_keys=True) + "\n")
             print(json.dumps(record, sort_keys=True), flush=True)
+            tracker.log(record, step=completed_step, prefix="train")
             rolling_loss = rolling_full = rolling_prefix = 0.0
             rolling_count = 0
             rolling_start = time.monotonic()
@@ -448,7 +495,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                     sorted(
                         set(
                             prefix
-                            for prefix in (1, 2, 4, 8, 16, args.num_latents)
+                            for prefix in (1, 2, 4, 8, 16, 32, args.num_latents)
                             if prefix <= args.num_latents
                         )
                     )
@@ -469,14 +516,21 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             (output_dir / "metrics_latest.json").write_text(
                 json.dumps(metrics, indent=2, sort_keys=True) + "\n"
             )
+            preview_path = output_dir / f"reconstruction_{completed_step:06d}.png"
             save_preview(
                 model,
                 fixed_images,
-                output_dir / f"reconstruction_{completed_step:06d}.png",
+                preview_path,
                 args,
                 prefixes=evaluation_prefixes,
             )
             print(json.dumps({"evaluation": metrics}, sort_keys=True), flush=True)
+            tracker.log(metrics, step=completed_step, prefix="eval")
+            tracker.log_image(
+                preview_path,
+                step=completed_step,
+                key="eval/reconstruction",
+            )
             model.train()
 
         if args.checkpoint_every > 0 and completed_step % args.checkpoint_every == 0:
@@ -499,7 +553,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     prefixes = sorted(
         set(
             prefix
-            for prefix in (1, 2, 4, 8, 16, args.num_latents)
+            for prefix in (1, 2, 4, 8, 16, 32, args.num_latents)
             if prefix <= args.num_latents
         )
     )
@@ -542,6 +596,13 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     if latest.exists():
         latest.unlink()
     print(json.dumps({"final": final_metrics}, sort_keys=True), flush=True)
+    tracker.log(final_metrics, step=args.max_train_steps, prefix="eval/final")
+    tracker.log_image(
+        output_dir / "reconstruction_final.png",
+        step=args.max_train_steps,
+        key="eval/final_reconstruction",
+    )
+    tracker.finish()
 
 
 if __name__ == "__main__":
