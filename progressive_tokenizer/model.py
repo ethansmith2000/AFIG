@@ -597,11 +597,11 @@ class ProgressiveTokenizer(nn.Module):
                     "noise_scales must have shape [batch, num_latents] when "
                     "noise_mode is set"
                 )
-            # Reference scale is the batch latent RMS so the injected-noise SNR
-            # cannot be escaped by inflating the unconstrained latent amplitude.
-            reference = (
-                latents.detach().float().square().mean().sqrt().to(latents.dtype)
-            )
+            # Reference scale is the batch latent RMS, kept IN-GRAPH: a detached
+            # reference lets gradients treat the noise as constant, creating a
+            # runaway amplitude treadmill (observed: latent RMS 50x baseline).
+            # In-graph, amplitude is exactly gauge-neutral for both noise modes.
+            reference = latents.float().square().mean().sqrt().to(latents.dtype)
             scales = noise_scales[..., None].to(latents.dtype)
             noise = torch.randn_like(latents) * reference
             if noise_mode == "mix":
