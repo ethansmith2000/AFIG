@@ -37,6 +37,7 @@ class TokenizerConfig:
     attention_dropout: float = 0.0
     projection_dropout: float = 0.0
     rope_theta: float = 10_000.0
+    variational: bool = False
 
     def __post_init__(self) -> None:
         if self.image_size <= 0 or self.patch_size <= 0:
@@ -427,7 +428,10 @@ class ProgressiveTokenizer(nn.Module):
                 config.cross_attention_bias,
             )
         self.latent_norm = _norm(config.width)
-        self.latent_projection = nn.Linear(config.width, config.latent_dim)
+        projection_dim = (
+            2 * config.latent_dim if config.variational else config.latent_dim
+        )
+        self.latent_projection = nn.Linear(config.width, projection_dim)
 
         self.latent_input = nn.Linear(config.latent_dim, config.width)
         self.latent_position = nn.Parameter(
@@ -464,7 +468,11 @@ class ProgressiveTokenizer(nn.Module):
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
 
-    def encode(self, images: torch.Tensor) -> torch.Tensor:
+    def encode_distribution(
+        self, images: torch.Tensor
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Return (mean, log-variance); log-variance is None when deterministic."""
+
         expected = (
             self.config.in_channels,
             self.config.image_size,
@@ -495,7 +503,16 @@ class ProgressiveTokenizer(nn.Module):
             queries = self.pool_attention(
                 self.pool_query_norm(queries), self.pool_memory_norm(patches)
             )
-        return self.latent_projection(self.latent_norm(queries))
+        projected = self.latent_projection(self.latent_norm(queries))
+        if not self.config.variational:
+            return projected, None
+        mean, log_variance = projected.chunk(2, dim=-1)
+        return mean, log_variance.clamp(-8.0, 8.0)
+
+    def encode(self, images: torch.Tensor) -> torch.Tensor:
+        """Deterministic latents: the posterior mean under a variational encoder."""
+
+        return self.encode_distribution(images)[0]
 
     def _prefix_mask(
         self,
@@ -563,12 +580,43 @@ class ProgressiveTokenizer(nn.Module):
         prefix_lengths: Optional[Union[int, torch.Tensor]] = None,
         *,
         include_full_reconstruction: bool = False,
+        noise_mode: Optional[str] = None,
+        noise_scales: Optional[torch.Tensor] = None,
     ) -> dict[str, torch.Tensor]:
-        latents = self.encode(images)
-        reconstruction = self.decode(latents, prefix_lengths)
+        mean, log_variance = self.encode_distribution(images)
+        if self.config.variational and self.training:
+            latents = mean + torch.exp(0.5 * log_variance) * torch.randn_like(mean)
+        else:
+            latents = mean
+        decoded_latents = latents
+        if noise_mode is not None:
+            if noise_scales is None or tuple(noise_scales.shape) != tuple(
+                latents.shape[:2]
+            ):
+                raise ValueError(
+                    "noise_scales must have shape [batch, num_latents] when "
+                    "noise_mode is set"
+                )
+            # Reference scale is the batch latent RMS so the injected-noise SNR
+            # cannot be escaped by inflating the unconstrained latent amplitude.
+            reference = (
+                latents.detach().float().square().mean().sqrt().to(latents.dtype)
+            )
+            scales = noise_scales[..., None].to(latents.dtype)
+            noise = torch.randn_like(latents) * reference
+            if noise_mode == "mix":
+                decoded_latents = scales * latents + (1.0 - scales) * noise
+            elif noise_mode == "add":
+                decoded_latents = latents + scales * noise
+            else:
+                raise ValueError("noise_mode must be mix or add")
+        reconstruction = self.decode(decoded_latents, prefix_lengths)
         output = {"latents": latents, "reconstruction": reconstruction}
+        if self.config.variational:
+            output["mean"] = mean
+            output["log_variance"] = log_variance
         if include_full_reconstruction:
-            if prefix_lengths is None:
+            if prefix_lengths is None and noise_mode is None:
                 output["full_reconstruction"] = reconstruction
             else:
                 output["full_reconstruction"] = self.decode(latents)

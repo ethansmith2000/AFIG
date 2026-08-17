@@ -39,6 +39,37 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--objective", choices=["full", "progressive"], default="full")
     parser.add_argument("--prefix_loss_weight", type=float, default=1.0)
+    parser.add_argument(
+        "--variational",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Encoder emits a posterior mean and log-variance; training samples.",
+    )
+    parser.add_argument("--kl_weight", type=float, default=0.0)
+    parser.add_argument(
+        "--energy_reg_weight",
+        type=float,
+        default=0.0,
+        help="Weight on the per-coordinate kurtosis->3 energy-consistency penalty.",
+    )
+    parser.add_argument(
+        "--latent_shaping",
+        choices=["none", "frontier", "ramp"],
+        default="none",
+        help="Replace the random-prefix loss with a latent-noise reconstruction: "
+        "'frontier' mixes toward noise along a sampled crescendo frontier, "
+        "'ramp' adds a static ascending per-token noise floor.",
+    )
+    parser.add_argument("--shaping_loss_weight", type=float, default=1.0)
+    parser.add_argument(
+        "--frontier_overlap",
+        type=float,
+        default=8.0,
+        help="Rolling-schedule overlap: token i's data time is "
+        "clamp(frontier - i/overlap, 0, 1).",
+    )
+    parser.add_argument("--ramp_sigma_max", type=float, default=1.0)
+    parser.add_argument("--ramp_power", type=float, default=1.0)
 
     parser.add_argument("--image_size", type=int, default=32)
     parser.add_argument("--patch_size", type=int, default=4)
@@ -108,6 +139,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 
     if args.prefix_loss_weight < 0:
         parser.error("--prefix_loss_weight must be non-negative")
+    if args.kl_weight < 0 or args.shaping_loss_weight < 0 or args.energy_reg_weight < 0:
+        parser.error("loss weights must be non-negative")
+    if args.kl_weight > 0 and not args.variational:
+        parser.error("--kl_weight requires --variational")
+    if args.latent_shaping != "none" and args.objective != "progressive":
+        parser.error(
+            "--latent_shaping replaces the prefix term of the progressive objective"
+        )
+    if args.frontier_overlap <= 0:
+        parser.error("--frontier_overlap must be positive")
+    if args.ramp_sigma_max < 0 or args.ramp_power <= 0:
+        parser.error("--ramp_sigma_max must be >= 0 and --ramp_power > 0")
     if args.resume and args.init_from:
         parser.error("--resume and --init_from are mutually exclusive")
     if args.smoke:
@@ -153,6 +196,7 @@ def make_model_config(args: argparse.Namespace) -> TokenizerConfig:
         mlp_ratio=args.mlp_ratio,
         qk_norm=args.qk_norm,
         cross_attention_bias=args.cross_attention_bias,
+        variational=args.variational,
     )
 
 
@@ -419,6 +463,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     rolling_loss = 0.0
     rolling_full = 0.0
     rolling_prefix = 0.0
+    rolling_shaping = 0.0
+    rolling_kl = 0.0
+    rolling_kurtosis = 0.0
+    rolling_energy_cv = 0.0
     rolling_count = 0
     rolling_start = time.monotonic()
 
@@ -430,18 +478,40 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         )
         optimizer.zero_grad(set_to_none=True)
         prefix_lengths = None
-        if args.objective == "progressive":
+        noise_mode = None
+        noise_scales = None
+        if args.objective == "progressive" and args.latent_shaping == "none":
             prefix_lengths = torch.randint(
                 1,
                 args.num_latents,
                 (images.shape[0],),
                 device=device,
             )
+        elif args.latent_shaping == "frontier":
+            noise_mode = "mix"
+            duration = (args.num_latents - 1) / args.frontier_overlap + 1.0
+            frontier = torch.rand(images.shape[0], 1, device=device) * duration
+            index_time = (
+                torch.arange(args.num_latents, device=device, dtype=torch.float32)
+                / args.frontier_overlap
+            )
+            noise_scales = (frontier - index_time[None, :]).clamp(0.0, 1.0)
+        elif args.latent_shaping == "ramp":
+            noise_mode = "add"
+            positions = torch.arange(
+                args.num_latents, device=device, dtype=torch.float32
+            )
+            sigmas = args.ramp_sigma_max * (
+                positions / max(1, args.num_latents - 1)
+            ) ** args.ramp_power
+            noise_scales = sigmas[None, :].expand(images.shape[0], -1)
         with autocast_context(args, device):
             output = model(
                 images,
                 prefix_lengths,
                 include_full_reconstruction=args.objective == "progressive",
+                noise_mode=noise_mode,
+                noise_scales=noise_scales,
             )
             latents = output["latents"]
             full_reconstruction = output.get(
@@ -449,14 +519,41 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             )
             full_loss = F.mse_loss(full_reconstruction, images)
             prefix_loss = full_loss.new_zeros(())
+            shaping_loss = full_loss.new_zeros(())
             prefix_mean = float(args.num_latents)
-            if args.objective == "progressive":
-                prefix_reconstruction = output["reconstruction"]
-                prefix_loss = F.mse_loss(prefix_reconstruction, images)
-                if prefix_lengths is None:
-                    raise RuntimeError("progressive objective did not create prefixes")
+            if prefix_lengths is not None:
+                prefix_loss = F.mse_loss(output["reconstruction"], images)
                 prefix_mean = float(prefix_lengths.float().mean())
-            loss = full_loss + args.prefix_loss_weight * prefix_loss
+            elif noise_mode is not None:
+                shaping_loss = F.mse_loss(output["reconstruction"], images)
+            loss = (
+                full_loss
+                + args.prefix_loss_weight * prefix_loss
+                + args.shaping_loss_weight * shaping_loss
+            )
+        kl_per_dim = loss.new_zeros(())
+        if args.variational:
+            posterior_mean = output["mean"].float()
+            log_variance = output["log_variance"].float()
+            kl_per_dim = 0.5 * (
+                posterior_mean.square() + log_variance.exp() - 1.0 - log_variance
+            ).mean()
+            loss = loss + args.kl_weight * kl_per_dim
+        kurtosis_penalty = loss.new_zeros(())
+        token_energy_cv = loss.new_zeros(())
+        if args.energy_reg_weight > 0:
+            coordinates = latents.float().reshape(latents.shape[0], -1)
+            centered = coordinates - coordinates.mean(dim=0)
+            second = centered.square().mean(dim=0)
+            fourth = centered.pow(4).mean(dim=0)
+            kurtosis = fourth / (second.square() + 1e-8)
+            kurtosis_penalty = (kurtosis - 3.0).square().mean()
+            token_energy = centered.reshape(latents.shape).square().mean(dim=-1)
+            token_energy_cv = (
+                token_energy.var(dim=0)
+                / (token_energy.mean(dim=0).square() + 1e-8)
+            ).mean()
+            loss = loss + args.energy_reg_weight * kurtosis_penalty
         loss.backward()
         gradient_norm = clip_grad_norm_(model.parameters(), args.max_grad_norm)
         optimizer.step()
@@ -465,6 +562,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         rolling_loss += float(loss.detach())
         rolling_full += float(full_loss.detach())
         rolling_prefix += float(prefix_loss.detach())
+        rolling_shaping += float(shaping_loss.detach())
+        rolling_kl += float(kl_per_dim.detach())
+        rolling_kurtosis += float(kurtosis_penalty.detach())
+        rolling_energy_cv += float(token_energy_cv.detach())
         rolling_count += 1
         if completed_step % args.log_every == 0 or completed_step == 1:
             if device.type == "cuda":
@@ -475,6 +576,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 "loss": rolling_loss / rolling_count,
                 "full_loss": rolling_full / rolling_count,
                 "prefix_loss": rolling_prefix / rolling_count,
+                "shaping_loss": rolling_shaping / rolling_count,
+                "kl_per_dim": rolling_kl / rolling_count,
+                "kurtosis_penalty": rolling_kurtosis / rolling_count,
+                "token_energy_cv": rolling_energy_cv / rolling_count,
                 "prefix_mean": prefix_mean,
                 "psnr_db": pixel_psnr(rolling_full / rolling_count),
                 "learning_rate": learning_rate,
@@ -486,6 +591,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             print(json.dumps(record, sort_keys=True), flush=True)
             tracker.log(record, step=completed_step, prefix="train")
             rolling_loss = rolling_full = rolling_prefix = 0.0
+            rolling_shaping = rolling_kl = 0.0
+            rolling_kurtosis = rolling_energy_cv = 0.0
             rolling_count = 0
             rolling_start = time.monotonic()
 

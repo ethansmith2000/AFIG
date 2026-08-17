@@ -116,6 +116,61 @@ class TestProgressiveTokenizer(unittest.TestCase):
         self.assertIsNotNone(model.pool_attention.kv.weight.grad)
         self.assertGreater(float(model.pool_attention.kv.weight.grad.abs().sum()), 0)
 
+    def test_variational_sampling_and_deterministic_eval_encode(self):
+        torch.manual_seed(6)
+        config = TokenizerConfig(**{**tiny_config().fingerprint(), "variational": True})
+        model = ProgressiveTokenizer(config)
+        images = torch.randn(2, 3, 8, 8)
+        model.train()
+        first = model(images)
+        second = model(images)
+        self.assertEqual(first["latents"].shape, (2, 4, 8))
+        self.assertEqual(first["mean"].shape, (2, 4, 8))
+        self.assertEqual(first["log_variance"].shape, (2, 4, 8))
+        self.assertFalse(torch.equal(first["latents"], second["latents"]))
+        self.assertTrue(torch.equal(first["mean"], second["mean"]))
+        model.eval()
+        with torch.no_grad():
+            encoded = model.encode(images)
+            evaluated = model(images)
+        self.assertTrue(torch.equal(encoded, evaluated["latents"]))
+        self.assertTrue(torch.equal(encoded, evaluated["mean"]))
+
+    def test_latent_noise_modes_zero_scale_identity_and_validation(self):
+        torch.manual_seed(7)
+        model = ProgressiveTokenizer(tiny_config()).eval()
+        images = torch.randn(2, 3, 8, 8)
+        clean = model(images)
+        mix_clean = model(
+            images, noise_mode="mix", noise_scales=torch.ones(2, 4)
+        )
+        torch.testing.assert_close(
+            clean["reconstruction"], mix_clean["reconstruction"], rtol=0, atol=0
+        )
+        add_clean = model(
+            images, noise_mode="add", noise_scales=torch.zeros(2, 4)
+        )
+        torch.testing.assert_close(
+            clean["reconstruction"], add_clean["reconstruction"], rtol=0, atol=0
+        )
+        noisy = model(
+            images,
+            noise_mode="mix",
+            noise_scales=torch.zeros(2, 4),
+            include_full_reconstruction=True,
+        )
+        self.assertFalse(
+            torch.equal(clean["reconstruction"], noisy["reconstruction"])
+        )
+        torch.testing.assert_close(
+            clean["reconstruction"], noisy["full_reconstruction"], rtol=0, atol=0
+        )
+        self.assertTrue(torch.equal(noisy["latents"], clean["latents"]))
+        with self.assertRaises(ValueError):
+            model(images, noise_mode="mix", noise_scales=torch.ones(2, 3))
+        with self.assertRaises(ValueError):
+            model(images, noise_mode="mix")
+
     def test_rms_qk_scales_start_at_one(self):
         model = ProgressiveTokenizer(tiny_config())
         attention = model.encoder_blocks[0].attention
