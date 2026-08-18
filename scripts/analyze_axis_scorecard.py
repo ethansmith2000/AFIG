@@ -74,6 +74,57 @@ def main() -> None:
     ) * eigenvalues.sqrt()[None, :]
 
     probabilities = eigenvalues / eigenvalues.sum().clamp_min(1e-30)
+
+    # Per-tensor-axis consistency. The full-covariance surrogate reproduces all
+    # second-order structure, so any consistency difference against it is
+    # higher-order (the quantity of interest).
+    tokens, channels = latents.shape[1], latents.shape[2]
+    surrogate_original = (surrogate * 1.0) @ eigenvectors.T
+
+    def axis_stats(values_flat: torch.Tensor) -> dict:
+        values = values_flat.reshape(-1, tokens, channels)
+        token_energy = values.square().mean(dim=2)
+        token_cv2 = token_energy.var(dim=0) / (
+            token_energy.mean(dim=0).square() + 1e-12
+        )
+        log_energy = token_energy.clamp_min(1e-12).log10()
+        profile = log_energy.mean(dim=0)
+        centered_log = log_energy - profile
+        profile_correlation = torch.nn.functional.cosine_similarity(
+            log_energy - log_energy.mean(dim=1, keepdim=True),
+            (profile - profile.mean()).expand_as(log_energy),
+            dim=1,
+        )
+        adjacent = [
+            float(torch.corrcoef(torch.stack((log_energy[:, i], log_energy[:, i + 1])))[0, 1])
+            for i in range(tokens - 1)
+        ]
+        # channel axis: pooled 16-D feature eigenbasis over (sample, token) rows
+        rows = values.reshape(-1, channels).double()
+        rows = rows - rows.mean(dim=0)
+        feature_cov = rows.T @ rows / rows.shape[0]
+        feature_values, feature_vectors = torch.linalg.eigh(feature_cov)
+        feature_values = feature_values.flip(0).clamp_min(0)
+        feature_vectors = feature_vectors.flip(1)
+        feature_proj = rows @ feature_vectors
+        feature_energy = feature_proj.square()
+        feature_cv2 = feature_energy.var(dim=0) / (
+            feature_energy.mean(dim=0).square() + 1e-12
+        )
+        channel_order = [
+            float((feature_energy[:, k] > feature_energy[:, k + 1]).float().mean())
+            for k in range(channels - 1)
+        ]
+        return {
+            "token_energy_cv2_median": float(token_cv2.median()),
+            "token_energy_cv2_max": float(token_cv2.max()),
+            "token_profile_correlation_mean": float(profile_correlation.mean()),
+            "token_adjacent_log_energy_corr_mean": sum(adjacent) / len(adjacent),
+            "channel_eigen_order_consistency_mean": sum(channel_order)
+            / len(channel_order),
+            "channel_activity_cv2_median": float(feature_cv2.median()),
+        }
+
     result = {
         "cache": str(Path(args.cache).resolve()),
         "examples": int(flat.shape[0]),
@@ -86,6 +137,8 @@ def main() -> None:
         ],
         "latent": band_stats(projections, bands),
         "gaussian_surrogate": band_stats(surrogate, bands),
+        "latent_axes": axis_stats(centered.double()),
+        "gaussian_surrogate_axes": axis_stats(surrogate_original),
     }
     Path(args.output).write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
