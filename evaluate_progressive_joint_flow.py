@@ -19,6 +19,8 @@ from progressive_tokenizer import (
     AutoregressiveRectifiedFlow,
     JointFlowConfig,
     JointRectifiedFlow,
+    RollingFlowConfig,
+    RollingRectifiedFlow,
 )
 from progressive_tokenizer.checkpoints import load_tokenizer_checkpoint
 
@@ -113,6 +115,9 @@ def main() -> None:
             AutoregressiveFlowConfig(**model_config)
         )
         sample_method = "generate"
+    elif model_type == "progressive_rolling_rectified_flow":
+        model = RollingRectifiedFlow(RollingFlowConfig(**model_config))
+        sample_method = "rolling"
     else:
         raise ValueError("not a supported progressive-token flow checkpoint")
     model.load_state_dict(payload["model"])
@@ -147,6 +152,13 @@ def main() -> None:
                 standardized = model.sample(
                     current,
                     steps=args.sample_steps,
+                    solver="heun",
+                    generator=generator,
+                )
+            elif sample_method == "rolling":
+                standardized = model.sample(
+                    current,
+                    steps_per_token=args.sample_steps,
                     solver="heun",
                     generator=generator,
                 )
