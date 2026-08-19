@@ -30,6 +30,9 @@ class AutoregressiveFlowConfig:
     qk_norm: str = "rms"
     rope_theta: float = 10_000.0
     gradient_checkpointing: bool = False
+    history_reliability_conditioning: bool = False
+    history_noise_reference: float = 0.1
+    head_position_conditioning: bool = False
 
     def __post_init__(self) -> None:
         if self.sequence_length <= 0 or self.token_dim <= 0:
@@ -82,6 +85,14 @@ class CausalTokenTrunk(nn.Module):
             config.width // config.num_heads,
             config.rope_theta,
         )
+        if config.history_reliability_conditioning:
+            self.reliability = nn.Sequential(
+                nn.Linear(1, config.width),
+                nn.SiLU(),
+                nn.Linear(config.width, config.width),
+            )
+        else:
+            self.reliability = None
         self.blocks = nn.ModuleList(
             CausalTrunkBlock(config) for _ in range(config.trunk_depth)
         )
@@ -89,16 +100,44 @@ class CausalTokenTrunk(nn.Module):
         nn.init.trunc_normal_(self.bos, std=0.02)
         nn.init.trunc_normal_(self.target_position, std=0.02)
 
-    def forward(self, completed_tokens: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        completed_tokens: torch.Tensor,
+        history_noise_sigma: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         expected = (self.config.sequence_length, self.config.token_dim)
         if completed_tokens.ndim != 3 or tuple(completed_tokens.shape[1:]) != expected:
             raise ValueError(
                 f"completed_tokens must have shape [B,{expected[0]},{expected[1]}]"
             )
         batch = completed_tokens.shape[0]
-        shifted = self.input(completed_tokens[:, :-1])
+        history = completed_tokens
+        if history_noise_sigma is not None:
+            if history_noise_sigma.shape != completed_tokens.shape[:2]:
+                raise ValueError("history_noise_sigma must have shape [B, T]")
+            history = completed_tokens + history_noise_sigma[..., None].to(
+                completed_tokens.dtype
+            ) * torch.randn_like(completed_tokens)
+        shifted = self.input(history[:, :-1])
         values = torch.cat((self.bos.expand(batch, -1, -1), shifted), dim=1)
         values = values + self.target_position
+        if self.reliability is not None:
+            if history_noise_sigma is None:
+                levels = values.new_zeros(batch, self.config.sequence_length)
+            else:
+                # Reliability of each *source* position: BOS is exact, then the
+                # shifted history tokens carry their own injected noise level.
+                levels = torch.cat(
+                    (
+                        history_noise_sigma.new_zeros(batch, 1),
+                        history_noise_sigma[:, :-1].float(),
+                    ),
+                    dim=1,
+                )
+            levels = levels / self.config.history_noise_reference
+            values = values + self.reliability(
+                levels[..., None].to(values.dtype)
+            )
         for block in self.blocks:
             if self.config.gradient_checkpointing and self.training:
                 values = checkpoint(
@@ -131,8 +170,17 @@ class ConditionalFlowHead(nn.Module):
         self.config = config
         self.input = nn.Linear(config.token_dim, width)
         self.time = TimestepEmbedding(width)
+        if config.head_position_conditioning:
+            self.slot_embedding = nn.Parameter(
+                torch.empty(1, config.sequence_length, width)
+            )
+            nn.init.trunc_normal_(self.slot_embedding, std=0.02)
+            fusion_input = 3 * width
+        else:
+            self.register_parameter("slot_embedding", None)
+            fusion_input = 2 * width
         self.condition_fusion = nn.Sequential(
-            nn.Linear(2 * width, 2 * width),
+            nn.Linear(fusion_input, 2 * width),
             nn.SiLU(),
             nn.Linear(2 * width, width),
         )
@@ -155,6 +203,7 @@ class ConditionalFlowHead(nn.Module):
         noisy_tokens: torch.Tensor,
         time: torch.Tensor,
         trunk_condition: torch.Tensor,
+        slot_indices: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if noisy_tokens.shape[:-1] != time.shape:
             raise ValueError("time must match every noisy token except its channel axis")
@@ -164,9 +213,17 @@ class ConditionalFlowHead(nn.Module):
         noisy_flat = noisy_tokens.reshape(-1, noisy_tokens.shape[-1])
         condition_flat = trunk_condition.reshape(-1, trunk_condition.shape[-1])
         time_flat = time.reshape(-1)
-        condition = self.condition_fusion(
-            torch.cat((condition_flat, self.time(time_flat)), dim=-1)
-        )
+        fusion_inputs = [condition_flat]
+        if self.slot_embedding is not None:
+            if slot_indices is None:
+                raise ValueError(
+                    "slot_indices are required with head_position_conditioning"
+                )
+            if slot_indices.shape != leading:
+                raise ValueError("slot_indices must match the noisy-token leading axes")
+            fusion_inputs.append(self.slot_embedding[0][slot_indices.reshape(-1)])
+        fusion_inputs.append(self.time(time_flat))
+        condition = self.condition_fusion(torch.cat(fusion_inputs, dim=-1))
         values = self.input(noisy_flat)
         for block in self.blocks:
             values = block(values, condition)
@@ -182,6 +239,7 @@ class ConditionalFlowHead(nn.Module):
         *,
         steps: int,
         generator: Optional[torch.Generator],
+        slot_index: Optional[int] = None,
     ) -> torch.Tensor:
         if condition.ndim != 2:
             raise ValueError("single-token sampling condition must be [B,W]")
@@ -193,6 +251,18 @@ class ConditionalFlowHead(nn.Module):
             dtype=parameter.dtype,
             generator=generator,
         )
+        slots = None
+        if self.slot_embedding is not None:
+            if slot_index is None:
+                raise ValueError(
+                    "slot_index is required with head_position_conditioning"
+                )
+            slots = torch.full(
+                (values.shape[0],),
+                slot_index,
+                device=values.device,
+                dtype=torch.long,
+            )
         step_size = 1.0 / steps
         for index in range(steps):
             time = torch.full(
@@ -201,11 +271,13 @@ class ConditionalFlowHead(nn.Module):
                 device=values.device,
                 dtype=torch.float32,
             )
-            velocity = self.predict_velocity(values, time, condition)
+            velocity = self.predict_velocity(values, time, condition, slots)
             if index + 1 < steps:
                 proposal = values + step_size * velocity
                 next_time = torch.full_like(time, (index + 1) / steps)
-                next_velocity = self.predict_velocity(proposal, next_time, condition)
+                next_velocity = self.predict_velocity(
+                    proposal, next_time, condition, slots
+                )
                 values = values + 0.5 * step_size * (velocity + next_velocity)
             else:
                 values = values + step_size * velocity
@@ -225,15 +297,22 @@ class AutoregressiveRectifiedFlow(nn.Module):
         *,
         time: Optional[torch.Tensor] = None,
         noise: Optional[torch.Tensor] = None,
+        history_noise_sigma: Optional[torch.Tensor] = None,
     ) -> dict[str, torch.Tensor]:
-        condition = self.trunk(clean_tokens)
+        condition = self.trunk(clean_tokens, history_noise_sigma)
         if time is None:
             time = torch.rand(clean_tokens.shape[:-1], device=clean_tokens.device)
         if noise is None:
             noise = torch.randn_like(clean_tokens)
         noisy = (1.0 - time[..., None]) * noise + time[..., None] * clean_tokens
         target = clean_tokens - noise
-        prediction = self.head.predict_velocity(noisy, time, condition)
+        slot_indices = None
+        if self.config.head_position_conditioning:
+            slot_indices = (
+                torch.arange(clean_tokens.shape[1], device=clean_tokens.device)
+                .expand(clean_tokens.shape[0], -1)
+            )
+        prediction = self.head.predict_velocity(noisy, time, condition, slot_indices)
         squared_error = (prediction.float() - target.float()).square()
         return {
             "loss": squared_error.mean(),
@@ -263,6 +342,11 @@ class AutoregressiveRectifiedFlow(nn.Module):
         for index in range(self.config.sequence_length):
             condition = self.trunk(tokens)[:, index]
             tokens[:, index] = self.head.sample(
-                condition, steps=steps, generator=generator
+                condition,
+                steps=steps,
+                generator=generator,
+                slot_index=(
+                    index if self.config.head_position_conditioning else None
+                ),
             )
         return tokens

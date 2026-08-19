@@ -81,9 +81,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample_steps", type=int, default=50)
     parser.add_argument("--checkpoint_every", type=int, default=2500)
     parser.add_argument("--resume", default=None)
+    parser.add_argument("--history_noise_max", type=float, default=0.0)
+    parser.add_argument("--history_noise_min", type=float, default=0.0)
+    parser.add_argument("--history_noise_probability", type=float, default=0.75)
+    parser.add_argument("--history_noise_ramp_steps", type=int, default=4000)
+    parser.add_argument("--history_noise_reference", type=float, default=0.1)
+    parser.add_argument(
+        "--history_reliability_conditioning",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--head_position_conditioning",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     args = parser.parse_args()
     if args.block_size <= 0:
         parser.error("--block_size must be positive")
+    if args.history_noise_max < args.history_noise_min or args.history_noise_min < 0:
+        parser.error("history noise range must satisfy 0 <= min <= max")
+    if not 0.0 <= args.history_noise_probability <= 1.0:
+        parser.error("--history_noise_probability must lie in [0, 1]")
     return args
 
 
@@ -272,6 +291,9 @@ def main() -> None:
         mlp_ratio=args.mlp_ratio,
         qk_norm=args.qk_norm,
         gradient_checkpointing=args.gradient_checkpointing,
+        history_reliability_conditioning=args.history_reliability_conditioning,
+        history_noise_reference=args.history_noise_reference,
+        head_position_conditioning=args.head_position_conditioning,
     )
     model = AutoregressiveRectifiedFlow(config).to(device)
     optimizer = torch.optim.AdamW(
@@ -352,8 +374,19 @@ def main() -> None:
             optimizer, step, args.learning_rate, args.warmup_steps
         )
         optimizer.zero_grad(set_to_none=True)
+        history_sigma = None
+        if args.history_noise_max > 0:
+            ramp = min(1.0, (step + 1) / max(1, args.history_noise_ramp_steps))
+            mask = (
+                torch.rand(clean.shape[:2], device=device)
+                < args.history_noise_probability
+            ).float()
+            magnitude = args.history_noise_min + (
+                args.history_noise_max - args.history_noise_min
+            ) * torch.rand(clean.shape[:2], device=device)
+            history_sigma = mask * magnitude * ramp
         with autocast_context(args, device):
-            output = model(clean)
+            output = model(clean, history_noise_sigma=history_sigma)
         output["loss"].backward()
         gradient_norm = clip_grad_norm_(model.parameters(), args.max_grad_norm)
         optimizer.step()
