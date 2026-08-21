@@ -41,6 +41,34 @@ def parse_args() -> argparse.Namespace:
         default=8.0,
         help="Rolling window: token i's data time is clamp(frontier - i/overlap, 0, 1).",
     )
+    parser.add_argument(
+        "--causal",
+        action="store_true",
+        help="Mask attention to earlier registers (diffusion-forcing style). "
+        "Register index is resolving order, so this hides exactly the "
+        "registers that have not started denoising yet.",
+    )
+    parser.add_argument(
+        "--supervise_all_tokens",
+        action="store_true",
+        help="Drop the active-register loss mask. Without this, overlap 8 "
+        "supervises only ~8 of 64 registers per step.",
+    )
+    parser.add_argument(
+        "--time_jitter",
+        type=float,
+        default=0.0,
+        help="Gaussian jitter on active-register times; tolerates sampler "
+        "discretisation drift off the ideal frontier.",
+    )
+    parser.add_argument(
+        "--prefix_noise_max",
+        type=float,
+        default=0.0,
+        help="Move completed registers to t ~ U(1 - max, 1) so training "
+        "context is imperfect, as the model's own output is at inference.",
+    )
+    parser.add_argument("--prefix_noise_probability", type=float, default=0.75)
     parser.add_argument("--gradient_checkpointing", action="store_true")
     parser.add_argument(
         "--compile", action=argparse.BooleanOptionalAction, default=True
@@ -266,6 +294,11 @@ def main() -> None:
         mlp_ratio=args.mlp_ratio,
         qk_norm=args.qk_norm,
         overlap=args.overlap,
+        causal=args.causal,
+        supervise_all_tokens=args.supervise_all_tokens,
+        time_jitter=args.time_jitter,
+        prefix_noise_max=args.prefix_noise_max,
+        prefix_noise_probability=args.prefix_noise_probability,
         gradient_checkpointing=args.gradient_checkpointing,
     )
     model = RollingRectifiedFlow(config).to(device)
@@ -299,7 +332,15 @@ def main() -> None:
             "active_window": args.overlap,
             "frontier_duration": config.frontier_duration,
             "local_data_time": "clamp(frontier - token_index / overlap, 0, 1)",
-            "loss": "flat MSE over active registers only",
+            "loss": (
+                "flat MSE over all registers"
+                if args.supervise_all_tokens
+                else "flat MSE over active registers only"
+            ),
+            "attention": "causal" if args.causal else "bidirectional",
+            "time_jitter": args.time_jitter,
+            "prefix_noise_max": args.prefix_noise_max,
+            "prefix_noise_probability": args.prefix_noise_probability,
         },
         "normalization": {
             "type": "tensor_wide_population",

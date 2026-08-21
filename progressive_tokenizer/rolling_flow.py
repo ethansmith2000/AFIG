@@ -7,12 +7,35 @@ and assigns each register the local data time
 
     t_i = clamp(frontier - i / overlap, 0, 1)
 
-so early registers denoise before later ones; the loss is flat MSE over the
-active registers only (those with 0 < t_i < 1). Sampling advances the frontier
+so early registers denoise before later ones. Sampling advances the frontier
 from 0 to its full duration, giving each register `steps_per_token` solver
 steps while it is active. With overlap == sequence_length the schedule is a
 full-sequence skew; a small overlap approaches one-register-at-a-time AR with
-full attention over partially denoised history.
+attention over partially denoised history.
+
+Four options move this from "per-token-time joint" toward actual diffusion
+forcing; all default off so the recovered 2026-08-14 behaviour is reproducible.
+
+`supervise_all_tokens` drops the original active-register loss mask. Masking to
+0 < t_i < 1 starves training: at overlap 8 only ~8 of 64 registers receive
+gradient per step, which confounds any comparison against the joint prior at
+matched optimizer steps. The endpoints are ordinary rectified-flow targets, just
+higher variance ones.
+
+`causal` masks attention to earlier registers. Because register index is
+resolving order, causal masking exactly excludes the registers that have not
+started yet, and every visible register is strictly more resolved than the query.
+
+`time_jitter` and `prefix_noise_max` both address exposure bias, and both work
+by perturbing the *time vector* and then rebuilding the noisy input on the
+rectified-flow path, so the time conditioning stays exactly correct rather than
+describing an off-path input. Jitter (active registers only) tolerates the
+discretisation drift that the sampler accumulates against the ideal frontier.
+Prefix noise moves completed registers to t < 1 so that the context a register
+attends to is imperfect during training, as it is at inference where that
+context is the model's own output. Prefix noise is applied per register with
+probability `prefix_noise_probability` so that exactly-clean context, the
+inference condition, still occurs in training.
 """
 
 from __future__ import annotations
@@ -44,6 +67,11 @@ class RollingFlowConfig:
     qk_norm: str = "rms"
     rope_theta: float = 10_000.0
     overlap: float = 8.0
+    causal: bool = False
+    supervise_all_tokens: bool = False
+    time_jitter: float = 0.0
+    prefix_noise_max: float = 0.0
+    prefix_noise_probability: float = 0.75
     gradient_checkpointing: bool = False
 
     def __post_init__(self) -> None:
@@ -59,6 +87,12 @@ class RollingFlowConfig:
             raise ValueError("qk_norm must be rms or l2_temperature")
         if self.overlap <= 0:
             raise ValueError("overlap must be positive")
+        if self.time_jitter < 0.0:
+            raise ValueError("time_jitter must be non-negative")
+        if not 0.0 <= self.prefix_noise_max < 1.0:
+            raise ValueError("prefix_noise_max must lie in [0, 1)")
+        if not 0.0 <= self.prefix_noise_probability <= 1.0:
+            raise ValueError("prefix_noise_probability must lie in [0, 1]")
 
     @property
     def frontier_duration(self) -> float:
@@ -85,6 +119,7 @@ class PerTokenAdaLNZeroBlock(nn.Module):
         )
         self.ffn_norm = _norm(config.width)
         self.ffn = FeedForward(config.width, config.mlp_ratio)
+        self.causal = config.causal
         self.modulation = nn.Sequential(
             nn.SiLU(), nn.Linear(config.width, 6 * config.width)
         )
@@ -107,6 +142,7 @@ class PerTokenAdaLNZeroBlock(nn.Module):
                 self.attention_norm(values), attention_shift, attention_scale
             ),
             rope,
+            causal=self.causal,
         )
         return values + ffn_gate * self.ffn(
             _modulate_tokens(self.ffn_norm(values), ffn_shift, ffn_scale)
@@ -167,6 +203,32 @@ class RollingRectifiedFlow(nn.Module):
         )
         return (frontier.float()[:, None] - index_time[None, :]).clamp(0.0, 1.0)
 
+    def perturb_times(self, times: torch.Tensor) -> torch.Tensor:
+        """Apply prefix noise and jitter to a frontier-derived time vector.
+
+        Both perturbations move the *time*, not the input, so the caller can
+        rebuild the noisy latent on the rectified-flow path and keep the time
+        conditioning exact. Completed registers (t == 1) take prefix noise;
+        active registers (0 < t < 1) take jitter. Unstarted registers stay at
+        exactly 0, which is what the sampler feeds them.
+        """
+
+        config = self.config
+        if config.prefix_noise_max > 0.0:
+            completed = times >= 1.0
+            selected = (
+                torch.rand_like(times) < config.prefix_noise_probability
+            ) & completed
+            lowered = 1.0 - torch.rand_like(times) * config.prefix_noise_max
+            times = torch.where(selected, lowered, times)
+        if config.time_jitter > 0.0:
+            active = (times > 0.0) & (times < 1.0)
+            jittered = (times + torch.randn_like(times) * config.time_jitter).clamp(
+                0.0, 1.0
+            )
+            times = torch.where(active, jittered, times)
+        return times
+
     def predict_velocity(
         self, noisy_latents: torch.Tensor, times: torch.Tensor
     ) -> torch.Tensor:
@@ -206,6 +268,8 @@ class RollingRectifiedFlow(nn.Module):
         if noise is None:
             noise = torch.randn_like(clean_latents)
         times = self.local_times(frontier)
+        if self.training:
+            times = self.perturb_times(times)
         time_view = times[..., None].to(clean_latents.dtype)
         noisy = (1.0 - time_view) * noise + time_view * clean_latents
         target = clean_latents - noise
@@ -213,7 +277,10 @@ class RollingRectifiedFlow(nn.Module):
         squared_error = (prediction.float() - target.float()).square()
         active = ((times > 0.0) & (times < 1.0)).float()
         active_scalars = (active.sum() * clean_latents.shape[-1]).clamp_min(1.0)
-        loss = (squared_error * active[..., None]).sum() / active_scalars
+        if self.config.supervise_all_tokens:
+            loss = squared_error.mean()
+        else:
+            loss = (squared_error * active[..., None]).sum() / active_scalars
         per_token_active = active.sum(dim=0)
         per_token_mse = (squared_error.mean(dim=2) * active).sum(
             dim=0

@@ -1,0 +1,32 @@
+[gpu-claim] job=v6-eval-roll8-df owner=AFIG -> gpu1
+{"generated": 256}
+{"generated": 512}
+{"generated": 768}
+{"generated": 1024}
+{"generated": 1280}
+{"generated": 1536}
+{"generated": 1792}
+{"generated": 2048}
+{"generated": 2304}
+{"generated": 2560}
+{"generated": 2816}
+{"generated": 3072}
+{"generated": 3328}
+{"generated": 3584}
+{"generated": 3840}
+{"generated": 4096}
+{"generated": 4352}
+{"generated": 4608}
+{"generated": 4864}
+{"generated": 5000}
+Traceback (most recent call last):
+  File "/workspace/AFIG/evaluate_progressive_joint_flow.py", line 227, in <module>
+    main()
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/AFIG/evaluate_progressive_joint_flow.py", line 214, in main
+    output.mkdir(parents=True, exist_ok=True)
+  File "/venv/main/lib/python3.12/pathlib.py", line 1311, in mkdir
+    os.mkdir(self, mode)
+OSError: [Errno 28] No space left on device: 'prior_evals/v6-roll8-df-vae-060000'

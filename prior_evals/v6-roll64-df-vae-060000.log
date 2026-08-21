@@ -1,0 +1,64 @@
+Traceback (most recent call last):
+  File "/workspace/bin/gpu-claim.py", line 282, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/workspace/bin/gpu-claim.py", line 278, in main
+    return cmd_run(args, command)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/bin/gpu-claim.py", line 231, in cmd_run
+    write_meta(idx, {
+  File "/workspace/bin/gpu-claim.py", line 100, in write_meta
+    with open(tmp, "w") as f:
+         ^^^^^^^^^^^^^^
+OSError: [Errno 28] No space left on device: '/tmp/vast_gpu_claims/gpu_7.claim.tmp'
+Traceback (most recent call last):
+  File "/workspace/AFIG/evaluate_progressive_joint_flow.py", line 10, in <module>
+    import torch
+  File "/venv/main/lib/python3.12/site-packages/torch/__init__.py", line 2247, in <module>
+    from torch import _VF as _VF, functional as functional  # usort: skip
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/torch/functional.py", line 8, in <module>
+    import torch.nn.functional as F
+  File "/venv/main/lib/python3.12/site-packages/torch/nn/__init__.py", line 8, in <module>
+    from torch.nn.modules import *  # usort: skip # noqa: F403
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/torch/nn/modules/__init__.py", line 1, in <module>
+    from .module import Module  # usort: skip
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/torch/nn/modules/module.py", line 17, in <module>
+    from torch.utils._python_dispatch import is_traceable_wrapper_subclass
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/__init__.py", line 8, in <module>
+    from torch.utils import (
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/data/__init__.py", line 1, in <module>
+    from torch.utils.data.dataloader import (
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 26, in <module>
+    import torch.utils.data.graph_settings
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/data/graph_settings.py", line 8, in <module>
+    from torch.utils.data.datapipes.iter.sharding import (
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/data/datapipes/__init__.py", line 1, in <module>
+    from torch.utils.data.datapipes import dataframe as dataframe, iter as iter, map as map
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/data/datapipes/dataframe/__init__.py", line 1, in <module>
+    from torch.utils.data.datapipes.dataframe.dataframes import (
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/data/datapipes/dataframe/dataframes.py", line 4, in <module>
+    from torch.utils.data.datapipes._decorator import functional_datapipe
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/data/datapipes/_decorator.py", line 8, in <module>
+    from torch.utils.data.datapipes.datapipe import IterDataPipe, MapDataPipe
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/data/datapipes/datapipe.py", line 17, in <module>
+    dill = import_dill()
+           ^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/_import_utils.py", line 30, in import_dill
+    import dill
+  File "/venv/main/lib/python3.12/site-packages/dill/__init__.py", line 33, in <module>
+    from .session import (
+  File "/venv/main/lib/python3.12/site-packages/dill/session.py", line 25, in <module>
+    TEMPDIR = pathlib.PurePath(tempfile.gettempdir())
+                               ^^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/tempfile.py", line 315, in gettempdir
+    return _os.fsdecode(_gettempdir())
+                        ^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/tempfile.py", line 308, in _gettempdir
+    tempdir = _get_default_tempdir()
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/tempfile.py", line 223, in _get_default_tempdir
+    raise FileNotFoundError(_errno.ENOENT,
+FileNotFoundError: [Errno 2] No usable temporary directory found in ['/tmp', '/var/tmp', '/usr/tmp', '/workspace/AFIG']

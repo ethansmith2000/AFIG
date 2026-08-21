@@ -1,0 +1,22 @@
+[gpu-claim] job=v5-eval-ar owner=AFIG -> gpu2
+{"generated": 256}
+{"generated": 512}
+{"generated": 768}
+{"generated": 1024}
+{"generated": 1280}
+{"generated": 1536}
+{"generated": 1792}
+{"generated": 2048}
+{"generated": 2304}
+{"generated": 2560}
+{"generated": 2816}
+{"generated": 3072}
+{"generated": 3328}
+{"generated": 3584}
+{"generated": 3840}
+{"generated": 4096}
+{"generated": 4352}
+{"generated": 4608}
+{"generated": 4864}
+{"generated": 5000}
+{"checkpoint_step": 60000, "decoded_clipping_fraction": 0.002192252604166667, "decoded_max": 1.28125, "decoded_min": -1.2734375, "fid": 79.38208752156004, "kid": 0.07018520683050156, "model_type": "progressive_autoregressive_rectified_flow", "num_samples": 5000, "sample_steps": 50, "standardized_latent_mean": 0.0031482055274554568, "standardized_latent_std": 0.9680955647978792}

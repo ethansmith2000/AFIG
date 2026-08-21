@@ -32,6 +32,23 @@ def tiny_config(**overrides) -> RollingFlowConfig:
     return RollingFlowConfig(**base)
 
 
+def wake(model: RollingRectifiedFlow) -> RollingRectifiedFlow:
+    """Give the zero-initialized AdaLN gates and output head nonzero values.
+
+    Fresh models emit exactly zero -- every block gate and the final projection
+    are zero-initialized -- so any test that asks what the model *attends to*
+    would pass vacuously.
+    """
+
+    with torch.no_grad():
+        for block in model.blocks:
+            torch.nn.init.normal_(block.modulation[-1].weight, std=0.02)
+            torch.nn.init.normal_(block.modulation[-1].bias, std=0.02)
+        torch.nn.init.normal_(model.final.modulation[-1].weight, std=0.02)
+        torch.nn.init.normal_(model.final.output.weight, std=0.02)
+    return model
+
+
 class TestRollingSchedule(unittest.TestCase):
     def test_local_times_match_recovered_spec(self):
         # Recovered W&B config: N=64, overlap=8 -> frontier_duration 8.875;
@@ -95,6 +112,120 @@ class TestRollingSchedule(unittest.TestCase):
         joint_count = sum(p.numel() for p in joint.parameters())
         self.assertEqual(rolling_count, joint_count)
         self.assertEqual(rolling_count, 70_293_520)
+
+    def test_supervise_all_tokens_covers_every_register(self):
+        torch.manual_seed(31)
+        clean = torch.randn(3, 8, 4)
+        noise = torch.randn_like(clean)
+        frontier = torch.full((3,), 1.5)
+        masked = RollingRectifiedFlow(tiny_config()).eval()
+        full = RollingRectifiedFlow(tiny_config(supervise_all_tokens=True)).eval()
+        full.load_state_dict(masked.state_dict())
+        times = masked.local_times(frontier)
+        noisy = (1 - times[..., None]) * noise + times[..., None] * clean
+        prediction = masked.predict_velocity(noisy, times)
+        squared = (prediction - (clean - noise)).square()
+        torch.testing.assert_close(
+            full(clean, frontier=frontier, noise=noise)["loss"], squared.mean()
+        )
+        # only slot 2 is active at frontier 1.5, so the masked loss sees 1/8th
+        # of the registers and the two objectives must differ.
+        torch.testing.assert_close(
+            masked(clean, frontier=frontier, noise=noise)["loss"],
+            squared[:, 2].mean(),
+        )
+
+    def test_causal_attention_hides_later_registers(self):
+        torch.manual_seed(32)
+        model = wake(RollingRectifiedFlow(tiny_config(causal=True)).eval())
+        times = torch.full((1, 8), 0.5)
+        first = torch.randn(1, 8, 4)
+        second = first.clone()
+        second[:, 5:] = torch.randn(1, 3, 4)
+        with torch.no_grad():
+            left = model.predict_velocity(first, times)
+            right = model.predict_velocity(second, times)
+        # registers before the edit are unaffected; the edited ones move.
+        torch.testing.assert_close(left[:, :5], right[:, :5])
+        self.assertFalse(torch.equal(left[:, 5:], right[:, 5:]))
+
+    def test_bidirectional_attention_still_sees_later_registers(self):
+        torch.manual_seed(33)
+        model = wake(RollingRectifiedFlow(tiny_config()).eval())
+        times = torch.full((1, 8), 0.5)
+        first = torch.randn(1, 8, 4)
+        second = first.clone()
+        second[:, 5:] = torch.randn(1, 3, 4)
+        with torch.no_grad():
+            left = model.predict_velocity(first, times)
+            right = model.predict_velocity(second, times)
+        self.assertFalse(torch.equal(left[:, :5], right[:, :5]))
+
+    def test_prefix_noise_only_lowers_completed_registers(self):
+        torch.manual_seed(34)
+        model = RollingRectifiedFlow(
+            tiny_config(prefix_noise_max=0.2, prefix_noise_probability=1.0)
+        ).train()
+        base = model.local_times(torch.tensor([1.5]))
+        perturbed = model.perturb_times(base)
+        completed = base >= 1.0
+        active = (base > 0.0) & (base < 1.0)
+        unstarted = base <= 0.0
+        self.assertTrue(bool(completed.any()))
+        self.assertTrue(((perturbed[completed] >= 0.8) & (perturbed[completed] < 1.0)).all())
+        torch.testing.assert_close(perturbed[active], base[active])
+        torch.testing.assert_close(perturbed[unstarted], base[unstarted])
+
+    def test_prefix_noise_probability_keeps_clean_context_in_distribution(self):
+        torch.manual_seed(35)
+        model = RollingRectifiedFlow(
+            tiny_config(prefix_noise_max=0.2, prefix_noise_probability=0.75)
+        ).train()
+        base = model.local_times(torch.full((512,), 1.5))
+        perturbed = model.perturb_times(base)
+        completed = base >= 1.0
+        untouched = (perturbed[completed] >= 1.0).float().mean()
+        # the inference condition (exactly clean context) must keep occurring
+        self.assertGreater(float(untouched), 0.15)
+        self.assertLess(float(untouched), 0.35)
+
+    def test_time_jitter_only_moves_active_registers(self):
+        torch.manual_seed(36)
+        model = RollingRectifiedFlow(tiny_config(time_jitter=0.05)).train()
+        base = model.local_times(torch.full((64,), 1.5))
+        perturbed = model.perturb_times(base)
+        active = (base > 0.0) & (base < 1.0)
+        self.assertFalse(torch.equal(perturbed[active], base[active]))
+        self.assertTrue((perturbed >= 0.0).all() and (perturbed <= 1.0).all())
+        torch.testing.assert_close(perturbed[~active], base[~active])
+
+    def test_perturbations_are_training_only(self):
+        torch.manual_seed(37)
+        model = RollingRectifiedFlow(
+            tiny_config(time_jitter=0.05, prefix_noise_max=0.2)
+        ).eval()
+        clean = torch.randn(2, 8, 4)
+        noise = torch.randn_like(clean)
+        frontier = torch.full((2,), 1.5)
+        first = model(clean, frontier=frontier, noise=noise)["loss"]
+        second = model(clean, frontier=frontier, noise=noise)["loss"]
+        torch.testing.assert_close(first, second)
+
+    def test_new_options_do_not_change_parameter_count(self):
+        dims = dict(sequence_length=64, token_dim=16, overlap=8.0)
+        plain = RollingRectifiedFlow(RollingFlowConfig(**dims))
+        forcing = RollingRectifiedFlow(
+            RollingFlowConfig(
+                **dims,
+                causal=True,
+                supervise_all_tokens=True,
+                time_jitter=0.05,
+                prefix_noise_max=0.1,
+            )
+        )
+        count = lambda m: sum(p.numel() for p in m.parameters())  # noqa: E731
+        self.assertEqual(count(plain), count(forcing))
+        self.assertEqual(count(plain), 70_293_520)
 
     def test_gradients_flow_only_from_active_registers(self):
         torch.manual_seed(13)
