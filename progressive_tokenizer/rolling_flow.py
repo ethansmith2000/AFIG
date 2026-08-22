@@ -72,6 +72,8 @@ class RollingFlowConfig:
     time_jitter: float = 0.0
     prefix_noise_max: float = 0.0
     prefix_noise_probability: float = 0.75
+    independent_time_probability: float = 0.0
+    overlap_jitter: float = 0.0
     gradient_checkpointing: bool = False
 
     def __post_init__(self) -> None:
@@ -93,6 +95,10 @@ class RollingFlowConfig:
             raise ValueError("prefix_noise_max must lie in [0, 1)")
         if not 0.0 <= self.prefix_noise_probability <= 1.0:
             raise ValueError("prefix_noise_probability must lie in [0, 1]")
+        if not 0.0 <= self.independent_time_probability <= 1.0:
+            raise ValueError("independent_time_probability must lie in [0, 1]")
+        if self.overlap_jitter < 0.0:
+            raise ValueError("overlap_jitter must be non-negative")
 
     @property
     def frontier_duration(self) -> float:
@@ -188,20 +194,63 @@ class RollingRectifiedFlow(nn.Module):
         self.final = PerTokenFinalLayer(config.width, config.token_dim)
         nn.init.trunc_normal_(self.position, std=0.02)
 
-    def local_times(self, frontier: torch.Tensor) -> torch.Tensor:
-        """Per-register data time for frontier positions [B]."""
+    def local_times(
+        self, frontier: torch.Tensor, overlap: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """Per-register data time for frontier positions [B].
+
+        `overlap` may be a per-sample [B] tensor, which makes the ramp slope
+        vary across the batch; omitting it uses the configured scalar.
+        """
 
         if frontier.ndim != 1:
             raise ValueError("frontier must have shape [B]")
-        index_time = (
-            torch.arange(
-                self.config.sequence_length,
-                device=frontier.device,
-                dtype=torch.float32,
-            )
-            / self.config.overlap
+        index = torch.arange(
+            self.config.sequence_length,
+            device=frontier.device,
+            dtype=torch.float32,
         )
-        return (frontier.float()[:, None] - index_time[None, :]).clamp(0.0, 1.0)
+        if overlap is None:
+            index_time = index[None, :] / self.config.overlap
+        else:
+            if overlap.shape != frontier.shape:
+                raise ValueError("overlap must have shape [B]")
+            index_time = index[None, :] / overlap.float()[:, None]
+        return (frontier.float()[:, None] - index_time).clamp(0.0, 1.0)
+
+    def sample_overlap(self, batch: int, device: torch.device) -> torch.Tensor:
+        """Per-sample roll rate, log-uniform around the configured overlap.
+
+        The frontier *position* is already randomised every step, but with a
+        fixed overlap every sample sees the identical ramp slope. Jittering the
+        slope is the schedule-shape half of the superset, and it is the axis the
+        engine comparison actually moves along (joint > roll64 > roll8). A model
+        trained across slopes can also have its overlap chosen at sampling time.
+        """
+
+        spread = torch.empty(batch, device=device).uniform_(
+            -self.config.overlap_jitter, self.config.overlap_jitter
+        )
+        return (self.config.overlap * spread.exp()).clamp_min(1e-3)
+
+    def mix_independent_times(self, times: torch.Tensor) -> torch.Tensor:
+        """Replace whole samples' schedules with independent per-register times.
+
+        Under the strict frontier every register only ever trains against one
+        context quality: the earliest registers always see all-noise context,
+        the latest always see perfect context. Neither ever sees the
+        intermediate-quality context that actually occurs at inference, where
+        the prefix is the model's own imperfect output. Drawing independent
+        times for a fraction of samples covers that middle ground, and lets a
+        trained model be sampled with schedules other than the one it saw.
+        """
+
+        independent = torch.rand_like(times)
+        selected = (
+            torch.rand(times.shape[0], 1, device=times.device, dtype=times.dtype)
+            < self.config.independent_time_probability
+        )
+        return torch.where(selected, independent, times)
 
     def perturb_times(self, times: torch.Tensor) -> torch.Tensor:
         """Apply prefix noise and jitter to a frontier-derived time vector.
@@ -260,22 +309,32 @@ class RollingRectifiedFlow(nn.Module):
         noise: Optional[torch.Tensor] = None,
     ) -> dict[str, torch.Tensor]:
         batch = clean_latents.shape[0]
+        overlap = None
+        if self.training and self.config.overlap_jitter > 0.0:
+            overlap = self.sample_overlap(batch, clean_latents.device)
         if frontier is None:
-            frontier = (
-                torch.rand(batch, device=clean_latents.device)
-                * self.config.frontier_duration
+            duration = (
+                self.config.frontier_duration
+                if overlap is None
+                else (self.config.sequence_length - 1) / overlap + 1.0
             )
+            frontier = torch.rand(batch, device=clean_latents.device) * duration
         if noise is None:
             noise = torch.randn_like(clean_latents)
-        times = self.local_times(frontier)
-        if self.training:
-            times = self.perturb_times(times)
+        base_times = self.local_times(frontier, overlap)
+        if self.training and self.config.independent_time_probability > 0.0:
+            base_times = self.mix_independent_times(base_times)
+        times = self.perturb_times(base_times) if self.training else base_times
         time_view = times[..., None].to(clean_latents.dtype)
         noisy = (1.0 - time_view) * noise + time_view * clean_latents
         target = clean_latents - noise
         prediction = self.predict_velocity(noisy, times)
         squared_error = (prediction.float() - target.float()).square()
-        active = ((times > 0.0) & (times < 1.0)).float()
+        # The supervision set is defined by the *unperturbed* schedule. Prefix
+        # noise moves completed registers to t < 1 to corrupt the context a
+        # register attends to; letting that also pull them into the loss would
+        # silently re-add the near-t=1 targets that masking exists to exclude.
+        active = ((base_times > 0.0) & (base_times < 1.0)).float()
         active_scalars = (active.sum() * clean_latents.shape[-1]).clamp_min(1.0)
         if self.config.supervise_all_tokens:
             loss = squared_error.mean()
@@ -309,13 +368,17 @@ class RollingRectifiedFlow(nn.Module):
         *,
         steps_per_token: int = 50,
         solver: str = "heun",
+        overlap: Optional[float] = None,
         generator: Optional[torch.Generator] = None,
     ) -> torch.Tensor:
         if steps_per_token <= 0:
             raise ValueError("steps_per_token must be positive")
         if solver not in {"euler", "heun"}:
             raise ValueError("solver must be euler or heun")
-        duration = self.config.frontier_duration
+        if overlap is not None and overlap <= 0:
+            raise ValueError("overlap must be positive")
+        roll = self.config.overlap if overlap is None else overlap
+        duration = (self.config.sequence_length - 1) / roll + 1.0
         total_steps = max(1, round(steps_per_token * duration))
         parameter = self.input.weight
         values = torch.randn(

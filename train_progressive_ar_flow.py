@@ -24,6 +24,7 @@ from progressive_tokenizer.training import count_parameters, optimizer_parameter
 from progressive_tokenizer.tracking import WandbTracker
 from train_progressive_joint_flow import (
     atomic_save,
+    prune_numbered_checkpoints,
     autocast_context,
     normalize,
     seed_everything,
@@ -80,6 +81,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preview_images", type=int, default=16)
     parser.add_argument("--sample_steps", type=int, default=50)
     parser.add_argument("--checkpoint_every", type=int, default=2500)
+    parser.add_argument(
+        "--keep_numbered_checkpoints",
+        type=int,
+        default=0,
+        help="How many step-numbered checkpoints to retain. 0 (default) keeps "
+        "only checkpoint_latest.pt for resume plus the final checkpoint; "
+        "raise it only when intermediate steps will actually be evaluated.",
+    )
     parser.add_argument("--resume", default=None)
     parser.add_argument("--history_noise_max", type=float, default=0.0)
     parser.add_argument("--history_noise_min", type=float, default=0.0)
@@ -451,10 +460,14 @@ def main() -> None:
                 ),
                 latest,
             )
-            numbered = output_dir / f"checkpoint_{completed_step:06d}.pt"
-            if numbered.exists():
-                numbered.unlink()
-            os.link(latest, numbered)
+            if args.keep_numbered_checkpoints > 0:
+                numbered = output_dir / f"checkpoint_{completed_step:06d}.pt"
+                if numbered.exists():
+                    numbered.unlink()
+                os.link(latest, numbered)
+                prune_numbered_checkpoints(
+                    output_dir, args.keep_numbered_checkpoints
+                )
 
     final = checkpoint_payload(
         model, optimizer, args.max_train_steps, cache, global_mean, global_scale

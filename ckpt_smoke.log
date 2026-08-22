@@ -1,0 +1,9 @@
+keep=2 ->
+checkpoint_000004.pt
+checkpoint_000006.pt
+checkpoint_final.pt
+checkpoint_latest.pt
+default(0) ->
+checkpoint_final.pt
+checkpoint_latest.pt
+SMOKEDONE

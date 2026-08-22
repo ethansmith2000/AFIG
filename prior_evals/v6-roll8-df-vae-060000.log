@@ -1,4 +1,4 @@
-[gpu-claim] job=v6-eval-roll8-df owner=AFIG -> gpu1
+[gpu-claim] job=v6-eval-roll8-df owner=AFIG -> gpu7
 {"generated": 256}
 {"generated": 512}
 {"generated": 768}
@@ -19,14 +19,4 @@
 {"generated": 4608}
 {"generated": 4864}
 {"generated": 5000}
-Traceback (most recent call last):
-  File "/workspace/AFIG/evaluate_progressive_joint_flow.py", line 227, in <module>
-    main()
-  File "/venv/main/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
-    return func(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^
-  File "/workspace/AFIG/evaluate_progressive_joint_flow.py", line 214, in main
-    output.mkdir(parents=True, exist_ok=True)
-  File "/venv/main/lib/python3.12/pathlib.py", line 1311, in mkdir
-    os.mkdir(self, mode)
-OSError: [Errno 28] No space left on device: 'prior_evals/v6-roll8-df-vae-060000'
+{"checkpoint_step": 60000, "decoded_clipping_fraction": 0.007151692708333333, "decoded_max": 1.34375, "decoded_min": -1.40625, "fid": 72.76298530344673, "kid": 0.06369292736053467, "model_type": "progressive_rolling_rectified_flow", "num_samples": 5000, "sample_steps": 50, "standardized_latent_mean": -0.004374606243315609, "standardized_latent_std": 1.009213645373385}

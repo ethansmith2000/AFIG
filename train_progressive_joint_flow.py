@@ -66,6 +66,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preview_images", type=int, default=16)
     parser.add_argument("--sample_steps", type=int, default=50)
     parser.add_argument("--checkpoint_every", type=int, default=2500)
+    parser.add_argument(
+        "--keep_numbered_checkpoints",
+        type=int,
+        default=0,
+        help="How many step-numbered checkpoints to retain. 0 (default) keeps "
+        "only checkpoint_latest.pt for resume plus the final checkpoint; "
+        "raise it only when intermediate steps will actually be evaluated.",
+    )
     parser.add_argument("--resume", default=None)
     return parser.parse_args()
 
@@ -75,6 +83,19 @@ def seed_everything(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+def prune_numbered_checkpoints(output_dir: Path, keep: int) -> None:
+    """Keep only the `keep` most recent numbered checkpoints.
+
+    A 60k run at the default 2500-step cadence otherwise leaves 24 numbered
+    checkpoints of roughly 840 MB each -- 20 GB per run, on a shared box.
+    checkpoint_latest.pt (for resume) and checkpoint_final.pt are never touched.
+    """
+
+    numbered = sorted(output_dir.glob("checkpoint_[0-9]*.pt"))
+    for stale in numbered[: max(0, len(numbered) - keep)]:
+        stale.unlink()
 
 
 def atomic_save(payload: dict, path: Path) -> None:
@@ -413,10 +434,14 @@ def main() -> None:
                 ),
                 latest,
             )
-            numbered = output_dir / f"checkpoint_{completed_step:06d}.pt"
-            if numbered.exists():
-                numbered.unlink()
-            os.link(latest, numbered)
+            if args.keep_numbered_checkpoints > 0:
+                numbered = output_dir / f"checkpoint_{completed_step:06d}.pt"
+                if numbered.exists():
+                    numbered.unlink()
+                os.link(latest, numbered)
+                prune_numbered_checkpoints(
+                    output_dir, args.keep_numbered_checkpoints
+                )
 
     final_payload = checkpoint_payload(
         model,

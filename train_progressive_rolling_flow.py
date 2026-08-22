@@ -69,6 +69,22 @@ def parse_args() -> argparse.Namespace:
         "context is imperfect, as the model's own output is at inference.",
     )
     parser.add_argument("--prefix_noise_probability", type=float, default=0.75)
+    parser.add_argument(
+        "--overlap_jitter",
+        type=float,
+        default=0.0,
+        help="Log-uniform spread on the per-sample roll rate: overlap is "
+        "multiplied by exp(U(-j, j)). ln(2)=0.693 gives [overlap/2, overlap*2]. "
+        "Randomises the ramp slope, which is otherwise identical every step.",
+    )
+    parser.add_argument(
+        "--independent_time_probability",
+        type=float,
+        default=0.0,
+        help="Fraction of samples trained with independent per-register times "
+        "instead of the frontier schedule, covering context qualities the "
+        "strict frontier never presents.",
+    )
     parser.add_argument("--gradient_checkpointing", action="store_true")
     parser.add_argument(
         "--compile", action=argparse.BooleanOptionalAction, default=True
@@ -101,6 +117,14 @@ def parse_args() -> argparse.Namespace:
         help="Solver steps per register (total steps = steps * frontier duration).",
     )
     parser.add_argument("--checkpoint_every", type=int, default=2500)
+    parser.add_argument(
+        "--keep_numbered_checkpoints",
+        type=int,
+        default=0,
+        help="How many step-numbered checkpoints to retain. 0 (default) keeps "
+        "only checkpoint_latest.pt for resume plus the final checkpoint; "
+        "raise it only when intermediate steps will actually be evaluated.",
+    )
     parser.add_argument("--resume", default=None)
     return parser.parse_args()
 
@@ -110,6 +134,19 @@ def seed_everything(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+def prune_numbered_checkpoints(output_dir: Path, keep: int) -> None:
+    """Keep only the `keep` most recent numbered checkpoints.
+
+    A 60k run at the default 2500-step cadence otherwise leaves 24 numbered
+    checkpoints of roughly 840 MB each -- 20 GB per run, on a shared box.
+    checkpoint_latest.pt (for resume) and checkpoint_final.pt are never touched.
+    """
+
+    numbered = sorted(output_dir.glob("checkpoint_[0-9]*.pt"))
+    for stale in numbered[: max(0, len(numbered) - keep)]:
+        stale.unlink()
 
 
 def atomic_save(payload: dict, path: Path) -> None:
@@ -299,6 +336,8 @@ def main() -> None:
         time_jitter=args.time_jitter,
         prefix_noise_max=args.prefix_noise_max,
         prefix_noise_probability=args.prefix_noise_probability,
+        independent_time_probability=args.independent_time_probability,
+        overlap_jitter=args.overlap_jitter,
         gradient_checkpointing=args.gradient_checkpointing,
     )
     model = RollingRectifiedFlow(config).to(device)
@@ -341,6 +380,8 @@ def main() -> None:
             "time_jitter": args.time_jitter,
             "prefix_noise_max": args.prefix_noise_max,
             "prefix_noise_probability": args.prefix_noise_probability,
+            "independent_time_probability": args.independent_time_probability,
+            "overlap_jitter": args.overlap_jitter,
         },
         "normalization": {
             "type": "tensor_wide_population",
@@ -465,10 +506,14 @@ def main() -> None:
                 ),
                 latest,
             )
-            numbered = output_dir / f"checkpoint_{completed_step:06d}.pt"
-            if numbered.exists():
-                numbered.unlink()
-            os.link(latest, numbered)
+            if args.keep_numbered_checkpoints > 0:
+                numbered = output_dir / f"checkpoint_{completed_step:06d}.pt"
+                if numbered.exists():
+                    numbered.unlink()
+                os.link(latest, numbered)
+                prune_numbered_checkpoints(
+                    output_dir, args.keep_numbered_checkpoints
+                )
 
     final_payload = checkpoint_payload(
         model,
