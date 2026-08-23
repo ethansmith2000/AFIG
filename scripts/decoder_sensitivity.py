@@ -24,6 +24,24 @@ from live_evaluation import InceptionFeatures, StreamingMoments, _fid  # noqa: E
 from progressive_tokenizer.checkpoints import load_tokenizer_checkpoint  # noqa: E402
 
 
+
+def reject_rescaled_cache(payload: dict, path: str) -> None:
+    """Refuse a magnitude-rescaled cache rather than decode it un-inverted.
+
+    These scripts decode cached latents directly. A cache carrying
+    `token_scale` holds registers scaled by up to 5.6x / 0.18x, so decoding it
+    raw yields a wrongly inflated reconstruction floor -- which would make a
+    prior-vs-oracle gap look artificially small.
+    """
+
+    if isinstance(payload, dict) and payload.get("token_scale") is not None:
+        raise ValueError(
+            f"{path} carries token_scale (profile "
+            f"{payload.get('token_scale_config')}); this script is not "
+            "rescale-aware. Point it at the unscaled cache."
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache", required=True)
@@ -41,6 +59,7 @@ def main() -> None:
 
     device = torch.device(args.device)
     payload = torch.load(args.cache, map_location="cpu", weights_only=False)
+    reject_rescaled_cache(payload, args.cache)
     tokenizer, _ = load_tokenizer_checkpoint(payload["tokenizer_checkpoint"])
     tokenizer = tokenizer.to(device).eval().requires_grad_(False)
     latents = payload["test_latents"].float()[: args.num_examples]

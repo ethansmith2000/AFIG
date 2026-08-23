@@ -339,7 +339,7 @@ def _modulate_tokens(
 class PerTokenAdaLNZeroBlock(nn.Module):
     """AdaLN-Zero block whose condition varies per token ([B, N, W])."""
 
-    def __init__(self, config):
+    def __init__(self, config, causal: bool = False):
         super().__init__()
         self.attention_norm = _norm(config.width)
         self.attention = QKNormAttention(
@@ -347,7 +347,10 @@ class PerTokenAdaLNZeroBlock(nn.Module):
         )
         self.ffn_norm = _norm(config.width)
         self.ffn = FeedForward(config.width, config.mlp_ratio)
-        self.causal = config.causal
+        # taken as an explicit argument: JointFlowConfig has no `causal`
+        # field, and reading one off the config raised AttributeError on the
+        # first instantiation after the rolling engine was removed.
+        self.causal = causal
         self.modulation = nn.Sequential(
             nn.SiLU(), nn.Linear(config.width, 6 * config.width)
         )

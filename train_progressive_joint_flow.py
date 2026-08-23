@@ -178,6 +178,7 @@ def save_preview(
     step: int,
     args: argparse.Namespace,
     device: torch.device,
+    token_scale: Optional[torch.Tensor] = None,
 ) -> dict:
     model.eval()
     generator = torch.Generator(device=device).manual_seed(10_000 + step)
@@ -189,6 +190,11 @@ def save_preview(
             generator=generator,
         )
         raw = standardized.float() * scale + mean
+        # a magnitude-rescaled cache must be inverted before decoding, exactly
+        # as the evaluator does -- otherwise previews of a healthy run look
+        # broken (register 0 up to 5.6x hot, register 63 down to 0.18x)
+        if token_scale is not None:
+            raw = raw / token_scale
         images = tokenizer.decode(raw)
     save_image(
         images.float().add(1).div(2).clamp(0, 1),
@@ -308,6 +314,9 @@ def main() -> None:
     if int(tokenizer_payload.get("step", -1)) != int(cache["tokenizer_step"]):
         raise ValueError("latent cache and tokenizer checkpoint step differ")
     tokenizer = tokenizer.to(device).eval().requires_grad_(False)
+    preview_token_scale = cache.get("token_scale")
+    if preview_token_scale is not None:
+        preview_token_scale = preview_token_scale.float().to(device)[None, :, None]
     config_payload = {
         "model": config.fingerprint(),
         "training": vars(args),
@@ -411,6 +420,7 @@ def main() -> None:
                 completed_step,
                 args,
                 device,
+                preview_token_scale,
             )
             print(
                 json.dumps(

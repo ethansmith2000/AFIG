@@ -123,6 +123,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--eval_examples", type=int, default=2048)
     parser.add_argument("--checkpoint_every", type=int, default=2500)
     parser.add_argument(
+        "--discard_resume_state",
+        action="store_true",
+        help="Delete checkpoint_latest.pt on completion. Off by default: it "
+        "carries the optimizer state a completed run needs to be extended.",
+    )
+    parser.add_argument(
         "--keep_numbered_checkpoints",
         action="store_true",
         help="Retain every periodic optimizer checkpoint in addition to the latest one.",
@@ -699,8 +705,11 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         },
         output_dir / "checkpoint_final.pt",
     )
+    # checkpoint_latest.pt is the only optimizer-bearing checkpoint, so
+    # deleting it makes a completed run impossible to extend or resume. This
+    # project has already lost weights once; keep it unless asked otherwise.
     latest = output_dir / "checkpoint_latest.pt"
-    if latest.exists():
+    if args.discard_resume_state and latest.exists():
         latest.unlink()
     print(json.dumps({"final": final_metrics}, sort_keys=True), flush=True)
     tracker.log(final_metrics, step=args.max_train_steps, prefix="eval/final")

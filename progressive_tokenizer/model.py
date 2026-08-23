@@ -38,6 +38,8 @@ class TokenizerConfig:
     projection_dropout: float = 0.0
     rope_theta: float = 10_000.0
     variational: bool = False
+    log_variance_floor: float = -8.0
+    hard_log_variance_clamp: bool = False
 
     def __post_init__(self) -> None:
         if self.image_size <= 0 or self.patch_size <= 0:
@@ -507,7 +509,29 @@ class ProgressiveTokenizer(nn.Module):
         if not self.config.variational:
             return projected, None
         mean, log_variance = projected.chunk(2, dim=-1)
-        return mean, log_variance.clamp(-8.0, 8.0)
+        return mean, self._bound_log_variance(log_variance)
+
+    def _bound_log_variance(self, log_variance: torch.Tensor) -> torch.Tensor:
+        """Bound log-variance below without killing the gradient at the floor.
+
+        A hard clamp is an absorbing trap: reconstruction always pushes sigma
+        down, and once the pre-clamp value passes the floor the clamp emits
+        zero gradient, so even the KL's restoring force is disconnected. The
+        v5 "vae" arm collapsed exactly this way -- 99.97% of logvars sat at
+        -8.0, sigma pinned at a constant 0.018, and the KL's sigma-term was a
+        constant 3.500 (= 0.5*(e^-8 - 1 + 8)) contributing no gradient. That
+        arm was therefore not variational: it was a deterministic encoder plus
+        fixed 1.8% jitter.
+
+        Softplus keeps the same floor but leaves the gradient alive, so the KL
+        can still push sigma back up and the floor stops being absorbing.
+        """
+
+        floor = self.config.log_variance_floor
+        if self.config.hard_log_variance_clamp:
+            return log_variance.clamp(floor, -floor)
+        bounded = floor + torch.nn.functional.softplus(log_variance - floor)
+        return -floor - torch.nn.functional.softplus(-floor - bounded)
 
     def encode(self, images: torch.Tensor) -> torch.Tensor:
         """Deterministic latents: the posterior mean under a variational encoder."""

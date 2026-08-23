@@ -197,6 +197,7 @@ def save_preview(
     step,
     args,
     device,
+    token_scale=None,
 ) -> dict:
     model.eval()
     generator = torch.Generator(device=device).manual_seed(54321)
@@ -212,6 +213,10 @@ def save_preview(
             sequence_length=tokenizer.config.num_latents,
             token_dim=tokenizer.config.latent_dim,
         )
+        # applied after unblock_latents: token_scale indexes physical
+        # registers, matching the evaluator's post-layout divide
+        if token_scale is not None:
+            physical_raw = physical_raw / token_scale
         images = tokenizer.decode(physical_raw)
     save_image(
         images.float().add(1).div(2).clamp(0, 1),
@@ -241,6 +246,8 @@ def checkpoint_payload(model, optimizer, step, cache, mean, scale) -> dict:
         "normalization": {"mean": mean.cpu(), "scale": scale.cpu()},
         "tokenizer_checkpoint": cache["tokenizer_checkpoint"],
         "tokenizer_step": cache["tokenizer_step"],
+        # without this a magnitude-rescaled cache decodes un-inverted at eval
+        "token_scale": cache.get("token_scale"),
         "latent_layout": {
             "type": "consecutive_blocks",
             "block_size": model.config.token_dim // cache["model_config"]["latent_dim"],
@@ -327,6 +334,9 @@ def main() -> None:
     if int(tokenizer_payload.get("step", -1)) != int(cache["tokenizer_step"]):
         raise ValueError("latent cache and tokenizer checkpoint step differ")
     tokenizer = tokenizer.to(device).eval().requires_grad_(False)
+    preview_token_scale = cache.get("token_scale")
+    if preview_token_scale is not None:
+        preview_token_scale = preview_token_scale.float().to(device)[None, :, None]
     config_payload = {
         "model": config.fingerprint(),
         "training": vars(args),
@@ -443,6 +453,7 @@ def main() -> None:
                 completed_step,
                 args,
                 device,
+                preview_token_scale,
             )
             print(
                 json.dumps({"preview": {"step": completed_step, **metrics}}, sort_keys=True),

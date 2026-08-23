@@ -32,10 +32,29 @@ def parse_args() -> argparse.Namespace:
 
 
 @torch.no_grad()
+
+def reject_rescaled_cache(payload: dict, path: str) -> None:
+    """Refuse a magnitude-rescaled cache rather than decode it un-inverted.
+
+    These scripts decode cached latents directly. A cache carrying
+    `token_scale` holds registers scaled by up to 5.6x / 0.18x, so decoding it
+    raw yields a wrongly inflated reconstruction floor -- which would make a
+    prior-vs-oracle gap look artificially small.
+    """
+
+    if isinstance(payload, dict) and payload.get("token_scale") is not None:
+        raise ValueError(
+            f"{path} carries token_scale (profile "
+            f"{payload.get('token_scale_config')}); this script is not "
+            "rescale-aware. Point it at the unscaled cache."
+        )
+
+
 def main() -> None:
     args = parse_args()
     device = torch.device(args.device)
     payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    reject_rescaled_cache(payload, args.latent_cache)
     config = AutoregressiveFlowConfig(**payload["model_config"])
     if not 0 <= args.prefix_length <= config.sequence_length:
         raise ValueError("prefix_length must be between zero and sequence length")

@@ -28,10 +28,29 @@ def parse_args() -> argparse.Namespace:
 
 
 @torch.no_grad()
+
+def reject_rescaled_cache(payload: dict, path: str) -> None:
+    """Refuse a magnitude-rescaled cache rather than decode it un-inverted.
+
+    These scripts decode cached latents directly. A cache carrying
+    `token_scale` holds registers scaled by up to 5.6x / 0.18x, so decoding it
+    raw yields a wrongly inflated reconstruction floor -- which would make a
+    prior-vs-oracle gap look artificially small.
+    """
+
+    if isinstance(payload, dict) and payload.get("token_scale") is not None:
+        raise ValueError(
+            f"{path} carries token_scale (profile "
+            f"{payload.get('token_scale_config')}); this script is not "
+            "rescale-aware. Point it at the unscaled cache."
+        )
+
+
 def main() -> None:
     args = parse_args()
     device = torch.device(args.device)
     cache = torch.load(args.latent_cache, map_location="cpu", weights_only=False)
+    reject_rescaled_cache(cache, args.latent_cache)
     latents = cache["test_latents"][: args.num_samples].float()
     tokenizer, _ = load_tokenizer_checkpoint(cache["tokenizer_checkpoint"])
     tokenizer = tokenizer.to(device).eval().requires_grad_(False)
