@@ -1,0 +1,27 @@
+{
+  "global_mean": -0.05327196419239044,
+  "global_std": 0.5031316876411438,
+  "output": "pixel_runs/v8-cifar10-patches-original-flip.pt",
+  "representation_config": {
+    "image_size": 32,
+    "in_channels": 3,
+    "layout": "raster_nonoverlapping",
+    "patch_size": 4,
+    "value_range": "[-1,1]"
+  },
+  "representation_type": "cifar10_pixel_patches",
+  "test_shape": [
+    10000,
+    64,
+    48
+  ],
+  "train_shape": [
+    100000,
+    64,
+    48
+  ],
+  "train_views": [
+    "original",
+    "horizontal_flip"
+  ]
+}
