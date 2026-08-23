@@ -20,6 +20,12 @@ from torchvision.utils import save_image
 
 from progressive_tokenizer import JointFlowConfig, JointRectifiedFlow
 from progressive_tokenizer.checkpoints import load_tokenizer_checkpoint
+from progressive_tokenizer.representations import (
+    PIXEL_PATCHES,
+    TOKENIZER_LATENTS,
+    decode_representation,
+    representation_type,
+)
 from progressive_tokenizer.training import count_parameters, optimizer_parameter_groups
 from progressive_tokenizer.tracking import WandbTracker
 
@@ -172,6 +178,7 @@ def evaluate(
 def save_preview(
     model: JointRectifiedFlow,
     tokenizer,
+    representation_payload: dict,
     mean: torch.Tensor,
     scale: torch.Tensor,
     output: Path,
@@ -195,7 +202,9 @@ def save_preview(
         # broken (register 0 up to 5.6x hot, register 63 down to 0.18x)
         if token_scale is not None:
             raw = raw / token_scale
-        images = tokenizer.decode(raw)
+        images = decode_representation(
+            raw, representation_payload, tokenizer=tokenizer
+        )
     save_image(
         images.float().add(1).div(2).clamp(0, 1),
         output,
@@ -221,7 +230,8 @@ def checkpoint_payload(
     mean: torch.Tensor,
     scale: torch.Tensor,
 ) -> dict:
-    return {
+    kind = representation_type(cache)
+    payload = {
         "version": 1,
         "model_type": "progressive_joint_rectified_flow",
         "model_config": model.config.fingerprint(),
@@ -229,12 +239,23 @@ def checkpoint_payload(
         "optimizer": optimizer.state_dict(),
         "step": step,
         "normalization": {"mean": mean.cpu(), "scale": scale.cpu()},
-        "tokenizer_checkpoint": cache["tokenizer_checkpoint"],
-        "tokenizer_step": cache["tokenizer_step"],
+        "representation_type": kind,
         # a rescaled cache carries the per-register magnitude profile; the
         # evaluator must divide it out before handing latents to the decoder
         "token_scale": cache.get("token_scale"),
     }
+    if kind == TOKENIZER_LATENTS:
+        payload.update(
+            {
+                "tokenizer_checkpoint": cache["tokenizer_checkpoint"],
+                "tokenizer_step": cache["tokenizer_step"],
+            }
+        )
+    elif kind == PIXEL_PATCHES:
+        payload["representation_config"] = dict(cache["representation_config"])
+    else:
+        raise ValueError(f"unsupported representation type: {kind}")
+    return payload
 
 
 def main() -> None:
@@ -308,12 +329,25 @@ def main() -> None:
     if args.compile:
         model.compile(mode="default", fullgraph=True)
 
-    tokenizer, tokenizer_payload = load_tokenizer_checkpoint(
-        cache["tokenizer_checkpoint"]
-    )
-    if int(tokenizer_payload.get("step", -1)) != int(cache["tokenizer_step"]):
-        raise ValueError("latent cache and tokenizer checkpoint step differ")
-    tokenizer = tokenizer.to(device).eval().requires_grad_(False)
+    kind = representation_type(cache)
+    tokenizer = None
+    tokenizer_step = None
+    if kind == TOKENIZER_LATENTS:
+        tokenizer, tokenizer_payload = load_tokenizer_checkpoint(
+            cache["tokenizer_checkpoint"]
+        )
+        if int(tokenizer_payload.get("step", -1)) != int(cache["tokenizer_step"]):
+            raise ValueError("latent cache and tokenizer checkpoint step differ")
+        tokenizer = tokenizer.to(device).eval().requires_grad_(False)
+        tokenizer_step = int(cache["tokenizer_step"])
+    elif kind == PIXEL_PATCHES:
+        representation_config = cache.get("representation_config")
+        if not isinstance(representation_config, dict):
+            raise ValueError("pixel cache is missing representation_config")
+        # Decode one item now so malformed layouts fail before a long run.
+        decode_representation(train_latents[:1].float(), cache)
+    else:
+        raise ValueError(f"unsupported representation type: {kind}")
     preview_token_scale = cache.get("token_scale")
     if preview_token_scale is not None:
         preview_token_scale = preview_token_scale.float().to(device)[None, :, None]
@@ -326,7 +360,11 @@ def main() -> None:
             "scale": float(global_scale),
         },
         "parameters": count_parameters(model.parameters()),
-        "tokenizer_step": cache["tokenizer_step"],
+        "representation": {
+            "type": kind,
+            "config": cache.get("representation_config"),
+            "tokenizer_step": tokenizer_step,
+        },
         "latent_cache": {
             "train_examples": int(train_latents.shape[0]),
             "test_examples": int(test_latents.shape[0]),
@@ -414,6 +452,7 @@ def main() -> None:
             preview_metrics = save_preview(
                 model,
                 tokenizer,
+                cache,
                 global_mean,
                 global_scale,
                 preview_path,

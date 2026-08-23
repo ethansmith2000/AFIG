@@ -222,10 +222,13 @@ endpoint-preserving warp `phi_i(t) = a_i*t / (1 - t + a_i*t)`, train on
 `d phi_i`. That reproduces the scaled-data SNR curve exactly without touching
 latent magnitudes.
 
-The thesis quantity that scaling provably cannot touch -- and that has never
-been measured -- is **axis B**, the conditioning-gain curve (zero for a
-stationary Gaussian by construction). It is measurable on the existing cache
-with no training run. Measure it before any thesis-level conclusion.
+The thesis quantity missing from the campaign is **direct conditioning
+utility**: whether correct already-resolved context reduces held-out denoising
+error on later directions relative to marginally matched, batch-shuffled
+context. The subsequently added squared-energy correlation is only a dependence
+proxy; it does not measure this gain. A trained-prior context ablation can be run
+on existing checkpoints without another generative training run, while an
+intrinsic/Bayes-gain estimate would require a separately validated probe.
 
 ## 5. Questions we would most like attacked
 
@@ -249,12 +252,10 @@ with no training run. Measure it before any thesis-level conclusion.
    construction, and would need a metric that rewards it (FID vs prefix length
    under one joint prior).
 3. **[malformed, retired]** The metric has ~zero power (see above). The
-   replacement is the theory's **axis B** -- the conditioning-gain curve: how
-   much does knowing the already-resolved directions reduce uncertainty about
-   the rest? It is zero for a stationary Gaussian by construction, is exactly
-   what scaling cannot touch, is measurable on the existing cache with no
-   training run, and has never been measured. Do this before any
-   thesis-level conclusion.
+   replacement is a held-out context-utility curve: how much does correct
+   early context improve late-direction denoising relative to batch-shuffled
+   context with the same marginal? Report eigenband and literal-token-prefix
+   ablations separately. The energy-correlation proxy does not answer this.
 4. The heavy tails sit in the low-variance channel eigendirections. Harmful
    structure to remove, or useful sparse detail to preserve?
 5. We have **no external baseline** -- no pixel-space diffusion at matched

@@ -21,6 +21,12 @@ from progressive_tokenizer import (
     JointRectifiedFlow,
 )
 from progressive_tokenizer.checkpoints import load_tokenizer_checkpoint
+from progressive_tokenizer.representations import (
+    PIXEL_PATCHES,
+    TOKENIZER_LATENTS,
+    decode_representation,
+    representation_type,
+)
 
 
 def physical_latent_layout(values: torch.Tensor, payload: dict) -> torch.Tensor:
@@ -122,12 +128,20 @@ def main() -> None:
     token_scale = payload.get("token_scale")
     if token_scale is not None:
         token_scale = token_scale.float().to(device)[None, :, None]
-    tokenizer, tokenizer_payload = load_tokenizer_checkpoint(
-        payload["tokenizer_checkpoint"]
-    )
-    if int(tokenizer_payload.get("step", -1)) != int(payload["tokenizer_step"]):
-        raise ValueError("prior and tokenizer checkpoint steps do not match")
-    tokenizer = tokenizer.to(device).eval().requires_grad_(False)
+    kind = representation_type(payload)
+    tokenizer = None
+    if kind == TOKENIZER_LATENTS:
+        tokenizer, tokenizer_payload = load_tokenizer_checkpoint(
+            payload["tokenizer_checkpoint"]
+        )
+        if int(tokenizer_payload.get("step", -1)) != int(payload["tokenizer_step"]):
+            raise ValueError("prior and tokenizer checkpoint steps do not match")
+        tokenizer = tokenizer.to(device).eval().requires_grad_(False)
+    elif kind == PIXEL_PATCHES:
+        if not isinstance(payload.get("representation_config"), dict):
+            raise ValueError("pixel prior is missing representation_config")
+    else:
+        raise ValueError(f"unsupported representation type: {kind}")
     extractor = InceptionFeatures(device)
     reference = reference_features(args, extractor)
 
@@ -164,7 +178,9 @@ def main() -> None:
             )
             if token_scale is not None:
                 raw_latents = raw_latents / token_scale
-            decoded = tokenizer.decode(raw_latents).float()
+            decoded = decode_representation(
+                raw_latents, payload, tokenizer=tokenizer
+            ).float()
         images = decoded.add(1.0).div(2.0)
         features = extractor(images)
         generated_moments.update(features)
@@ -188,6 +204,7 @@ def main() -> None:
     metrics = {
         "checkpoint_step": int(payload["step"]),
         "model_type": model_type,
+        "representation_type": kind,
         "num_samples": generated,
         "sample_steps": args.sample_steps,
         "token_scale_applied": token_scale is not None,

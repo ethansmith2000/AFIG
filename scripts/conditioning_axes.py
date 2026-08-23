@@ -8,14 +8,11 @@ nothing. What matters for diffusability is:
   order? If per-sample spectra deviate wildly from the population spectrum, the
   schedule is only right on average and carries no per-sample information.
 
-  Axis B -- conditioning gain: do the directions that clear the noise floor
-  early actually help predict the ones that clear it later? In the population
-  eigenbasis the directions are uncorrelated *by construction*, so the entire
-  linear conditioning gain is exactly zero and any real value is higher-order.
-  Energy (squared-magnitude) correlation is therefore a clean probe: it is
-  exactly 0 for a Gaussian of any covariance, and strongly positive for natural
-  images, whose scale-mixture structure is what makes coarse-to-fine
-  conditioning pay.
+  Energy-dependence proxy -- are squared magnitudes statistically dependent
+  across population eigen-directions? This is zero in a known population
+  eigenbasis for a multivariate Gaussian, but it is not itself a measurement of
+  predictive or denoising conditioning gain. Global scale mixtures and other
+  common causes can produce it without establishing a coarse-to-fine mechanism.
 
 Reports both for a latent cache and, as the reference, for CIFAR-10 pixels.
 """
@@ -61,11 +58,12 @@ def axis_a(rotated: torch.Tensor, eigenvalues: torch.Tensor) -> dict:
     }
 
 
-def axis_b(rotated: torch.Tensor, bands: list[tuple[int, int]]) -> dict:
-    """Higher-order conditioning gain: energy correlation in the eigenbasis.
+def energy_dependence(rotated: torch.Tensor, bands: list[tuple[int, int]]) -> dict:
+    """Descriptive squared-energy correlation in the sample eigenbasis.
 
-    Zero for any Gaussian, because eigen-directions are uncorrelated and a
-    Gaussian's squared magnitudes inherit no dependence from zero covariance.
+    This statistic is only a dependence proxy. The basis is estimated on these
+    same samples, the raw aggregate depends on dimension/banding, and the
+    finite-sample values are not a direct conditioning-gain estimate.
     """
 
     energy = rotated.square()
@@ -89,7 +87,7 @@ def axis_b(rotated: torch.Tensor, bands: list[tuple[int, int]]) -> dict:
         "energy_correlation_offdiagonal_mean": float(correlation[off].mean()),
         "energy_correlation_offdiagonal_absmean": float(correlation[off].abs().mean()),
         "finite_sample_null_scale": noise_floor,
-        "signal_to_null_ratio": float(correlation[off].abs().mean() / noise_floor),
+        "absmean_over_null_sd": float(correlation[off].abs().mean() / noise_floor),
         "band_energy_correlation": band_gain,
     }
 
@@ -133,7 +131,7 @@ def main() -> None:
             - (1 / (1 + (eigenvalues / eigenvalues.mean()).sqrt())).min()
         ),
         "axis_a_consistency": axis_a(rotated, eigenvalues),
-        "axis_b_conditioning": axis_b(rotated, bands),
+        "energy_dependence_proxy": energy_dependence(rotated, bands),
     }
     text = json.dumps(result, indent=2)
     if args.output:

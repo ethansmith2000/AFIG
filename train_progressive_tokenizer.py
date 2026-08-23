@@ -47,6 +47,16 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--kl_weight", type=float, default=0.0)
     parser.add_argument(
+        "--hard_log_variance_clamp",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Use the historical hard [-8, 8] posterior log-variance clamp. "
+            "This is retained for exact controls against checkpoints trained "
+            "before the differentiable bound was introduced."
+        ),
+    )
+    parser.add_argument(
         "--energy_reg_weight",
         type=float,
         default=0.0,
@@ -203,6 +213,7 @@ def make_model_config(args: argparse.Namespace) -> TokenizerConfig:
         qk_norm=args.qk_norm,
         cross_attention_bias=args.cross_attention_bias,
         variational=args.variational,
+        hard_log_variance_clamp=args.hard_log_variance_clamp,
     )
 
 
