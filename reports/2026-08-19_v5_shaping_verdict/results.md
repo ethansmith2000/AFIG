@@ -5,23 +5,32 @@ identical recipe, same box and same commit; each cached with horizontal-flip
 views, then judged by an identical 60k-step joint prior and 5k-sample decoded
 FID. This is the first fully param-matched, control-included shaping matrix.
 
-> **Retraction of the mechanism (2026-08-23).** External review, independently
-> verified: the winning `vae-kl1e4` arm's posterior collapsed to the -8.0
-> log-variance clamp -- 99.97% of dims pinned, sigma a constant 0.0183, the
-> KL's sigma-term a constant 3.5001 against the analytic floor 3.5002. The arm
-> is a deterministic encoder with fixed 1.8% jitter and a weak mu-L2, not a
-> rate-constrained VAE, so **"KL shaping wins" is unsupported** and the FID
-> 35.85 belongs to an unidentified mechanism. Fixed by a softplus bound
-> (commit 0d5d92f); the arm needs re-running.
+> **Mechanism note (2026-08-23).** External review, independently verified: the
+> `vae-kl1e4` arm's posterior sits at the -8.0 log-variance clamp for 99.97% of
+> dims -- sigma a constant 0.0183 against posterior-mean RMS 1.096 (~1.7%
+> relative noise), and the KL's sigma-term a constant 3.5001 against the
+> analytic floor 3.5002.
 >
-> Two further corrections. The "+-0.3 FID protocol noise" quoted below is
-> same-seed repeatability, not decision noise -- independent-seed FID-5k
-> variance is realistically +-1-2 FID, so **"the ordering is real at every gap"
-> is withdrawn** for the sub-2-FID gaps. And section 2's `channel_eigen_order_
-> consistency` argument is void: that statistic's feasible range is ~0.50-0.60
-> for any distribution given these spectra, and every arm matches its own
-> Gaussian surrogate to +-0.005, so "no intervention moved it" was guaranteed
-> a priori rather than being evidence for the theory.
+> **This is the normal latent-diffusion operating regime, not a failure.** SD's
+> VAE runs KL ~1e-6 with effectively deterministic posteriors; near-negligible
+> logvar is the intended design point. The result stands. What changes is
+> narrower:
+>   - the arm should be *named* "small fixed noise + mu-L2", not
+>     "rate-constrained VAE" -- the KL's live component is the mu term;
+>   - a KL-weight sweep would be degenerate: any weight that loses the race to
+>     the clamp yields the same sigma = 0.018;
+>   - `kl_per_dim` is not a rate monitor (3.5 of its 4.1 nats is a constant);
+>   - the clamp is absorbing (zero gradient past the floor), so sigma could
+>     never recover. Softplus bound added in 0d5d92f for future runs.
+>
+> Two genuine corrections below. The "+-0.3 FID protocol noise" is same-seed
+> repeatability, not decision noise -- independent-seed FID-5k variance is
+> realistically +-1-2 FID, so **"the ordering is real at every gap" is
+> withdrawn** for the sub-2-FID gaps. And section 2's
+> `channel_eigen_order_consistency` argument is void: that statistic's feasible
+> range is ~0.50-0.60 for any distribution given these spectra, and every arm
+> matches its own Gaussian surrogate to +-0.005, so "no intervention moved it"
+> was guaranteed a priori rather than being evidence for the theory.
 
 ## Verdict
 

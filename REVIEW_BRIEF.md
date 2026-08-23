@@ -85,18 +85,17 @@ in the v5 matrix.
 - Reconstruction dB is non-predictive: energycv has the best PSNR and loses 3.2
   FID to vae.
 
-***The "vae" arm is not variational.** Verified on `checkpoint_final.pt`:
-99.97% of posterior log-variances sit exactly at the -8.0 clamp
-(`model.py`), sigma is pinned at 0.0183 against a posterior-mean RMS of 1.096,
-and the KL's sigma-term is a constant 3.5001 -- the analytic clamp floor
-`0.5*(e^-8 - 1 + 8) = 3.5002` -- contributing no gradient. The clamp is
-absorbing: reconstruction always pushes sigma down, and past the floor the
-clamp passes zero gradient, disconnecting the KL's restoring force. The KL is
-also a per-dim *mean*, so `kl_weight=1e-4` is ~1e-7 per image in the summed
-convention. **FID 35.85 belongs to "deterministic encoder + fixed 1.8% jitter +
-weak mu-L2", not to rate-constrained coding.** Any KL-weight sweep would have
-been degenerate (every weight losing the race yields the same sigma). Fixed by
-a softplus bound; the arm must be re-run before the mechanism is claimed.
+***The "vae" arm is effectively deterministic** -- and that is the normal LDM
+regime, not a defect. Verified on `checkpoint_final.pt`: 99.97% of posterior
+log-variances sit at the -8.0 clamp, sigma is a constant 0.0183 against
+posterior-mean RMS 1.096 (~1.7% relative noise), and the KL's sigma-term is a
+constant 3.5001 (the analytic floor). SD's VAE uses KL ~1e-6 with effectively
+deterministic posteriors, so this is the design point rather than a collapse to
+be fixed. The narrower consequences: the arm is "small fixed noise + mu-L2",
+not rate-constrained coding; any KL-weight sweep is degenerate (every weight
+losing the race gives the same sigma); `kl_per_dim` is not a rate monitor (3.5
+of 4.1 nats is constant); and the clamp passes zero gradient past the floor, so
+sigma can never recover (softplus bound added for future runs).
 
 ### Latent higher-order structure
 
@@ -181,29 +180,52 @@ cross the noise floor within **10.4% of the schedule**. Natural images have a
 ~10^3 low/high-frequency energy ratio, spreading crossings over ~94% of the
 schedule.
 
-**Corrected 2026-08-23.** The 10.4% figure is the *register-index marginal*.
-In the flattened 1024-dim eigenbasis -- the basis rotation-invariant RF
-training actually responds to -- the same cache's crossings span ~92% of the
-schedule, against ~96% for CIFAR pixels. Per-coordinate spread within a token
-is already 35%. **The code is not missing SNR ordering; it is missing
-*alignment* between the SNR order and the token axis**, which flat-MSE training
-is invariant to except through per-token layers, Adam, and loss weighting. So
-the magnitude sweep tests token-axis alignment plus a welded a_i^2 reweighting,
-not "giving the code an SNR order" -- and a negative result must not be read as
-refuting the ordering thesis. First result: alpha=0.5 (64x) gives FID 40.93 vs
-35.85 flat, consistent with the reweighting being net-negative.
+**Corrected 2026-08-23 (two independent reviews + recomputation).** The
+premise of this section is wrong, and two numbers in it were wrong.
 
-So the code is semantically ordered but not ordered *along the token axis* in
-the SNR sense. The proposal is to impose the missing spectrum
-directly — scale register `i` by `a_i` (e.g. a power law), train the joint prior
-on the rescaled cache, and invert the scale before decoding.
+*The code is not missing an SNR spectrum.* The 10.4% figure is the
+**register-index marginal** -- it averages 16 channels into one energy per
+register, discarding the spectrum diffusion actually sees. In the flattened
+1024-dim eigenbasis, after the prior's scalar normalisation, the same cache has
+lambda_max/lambda_min = 3.3e5 and a **crossing spread of 0.905**, against ~0.92
+for CIFAR pixels. Per-coordinate spread within a register is already 0.35. The
+code is SNR-ordered in its covariance eigenbasis; it is only **not
+token-aligned**, and flat-MSE training is invariant to that alignment except
+through per-token layers, Adam, and loss weighting.
 
-Note this is a no-op only for an infinite-capacity, infinite-step model: the
-forward noise is isotropic, so scaling data per coordinate is exactly a
-per-coordinate noise schedule, which changes resolution order, the effective
-per-coordinate loss weighting, and discretization error allocation. A post-hoc
-rescale costs no AE training, so it cleanly separates "ordering helps" from
-"ordering is a reparameterization".
+*Arithmetic error.* For energy ratio R the maximum crossing separation is
+`(R^0.25 - 1)/(R^0.25 + 1)`. R = 10^3 gives **0.698**, not the 0.94 claimed
+here; 0.94 needs R ~ 1.1e6. The natural-image 10^3 *band* ratio and the ~0.92
+*per-coordinate* spread (driven by a ~3.7e5 DC-to-Nyquist ratio) were
+conflated.
+
+*Reporting error.* `rescale_cache.py` printed the profile multiplier as the
+energy ratio, but it multiplies the 1.59 the cache already had. The arms
+labelled 8x / 64x / 996x are really **12.8x / 102x / 1588x**.
+
+*Likelier mechanism for the observed loss.* The rescaling degrades
+conditioning rather than merely reweighting: effective rank falls
+100.0 -> 84.8 -> 58.4 -> 31.8 and the condition number rises 3.3e5 -> 7.0e6
+across alpha = 0 / 0.25 / 0.5 / 0.83. alpha = 0.5 measured **FID 40.93** vs
+35.85 flat.
+
+**So this sweep tests "does token-axis alignment help this architecture", not
+"does adding a missing spectrum help", and a negative result does not refute
+the ordering thesis.** If a mild alignment test is still wanted, target the
+*actual* post-scale ratio at alpha ~ 0.1-0.2.
+
+For a genuine SNR-only arm, do **not** use `t_i = clamp(t + delta_i, 0, 1)`:
+that is the rolling frontier schedule we removed, with the same exposure
+pathology, and it fails to map noise to data at common endpoints. Use the
+endpoint-preserving warp `phi_i(t) = a_i*t / (1 - t + a_i*t)`, train on
+`(1-phi_i)eps + phi_i*z` predicting `z - eps`, and sample with increments
+`d phi_i`. That reproduces the scaled-data SNR curve exactly without touching
+latent magnitudes.
+
+The thesis quantity that scaling provably cannot touch -- and that has never
+been measured -- is **axis B**, the conditioning-gain curve (zero for a
+stationary Gaussian by construction). It is measurable on the existing cache
+with no training run. Measure it before any thesis-level conclusion.
 
 ## 5. Questions we would most like attacked
 

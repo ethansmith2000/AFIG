@@ -72,11 +72,13 @@ def main() -> None:
     scale = build_profile(sequence_length, args.profile, args.alpha)
 
     before = crossing_times(train.float())
+    energy_before = train.float().square().mean(dim=(0, 2))
     payload["train_latents"] = (train.float() * scale[None, :, None]).to(train.dtype)
     payload["test_latents"] = (
         payload["test_latents"].float() * scale[None, :, None]
     ).to(payload["test_latents"].dtype)
     after = crossing_times(payload["train_latents"].float())
+    energy_after = payload["train_latents"].float().square().mean(dim=(0, 2))
 
     payload["token_scale"] = scale
     payload["token_scale_config"] = {"profile": args.profile, "alpha": args.alpha}
@@ -104,9 +106,13 @@ def main() -> None:
                 "alpha": args.alpha,
                 "scale_first": float(scale[0]),
                 "scale_last": float(scale[-1]),
-                "energy_ratio_first_to_last": float(
-                    (scale[0] / scale[-1]).square()
-                ),
+                # the profile multiplier is NOT the resulting data ratio: it
+                # multiplies the ratio the cache already had (1.59 on the v5
+                # vae cache). Report both -- the earlier runs were labelled
+                # 8x/64x/996x when the data ratios were 12.8/102/1588.
+                "profile_multiplier": float((scale[0] / scale[-1]).square()),
+                "energy_ratio_before": float(energy_before[0] / energy_before[-1]),
+                "energy_ratio_after": float(energy_after[0] / energy_after[-1]),
                 "crossing_spread_before": float(before.max() - before.min()),
                 "crossing_spread_after": float(after.max() - after.min()),
             },
