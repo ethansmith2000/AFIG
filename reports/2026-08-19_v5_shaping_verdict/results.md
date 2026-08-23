@@ -5,6 +5,24 @@ identical recipe, same box and same commit; each cached with horizontal-flip
 views, then judged by an identical 60k-step joint prior and 5k-sample decoded
 FID. This is the first fully param-matched, control-included shaping matrix.
 
+> **Retraction of the mechanism (2026-08-23).** External review, independently
+> verified: the winning `vae-kl1e4` arm's posterior collapsed to the -8.0
+> log-variance clamp -- 99.97% of dims pinned, sigma a constant 0.0183, the
+> KL's sigma-term a constant 3.5001 against the analytic floor 3.5002. The arm
+> is a deterministic encoder with fixed 1.8% jitter and a weak mu-L2, not a
+> rate-constrained VAE, so **"KL shaping wins" is unsupported** and the FID
+> 35.85 belongs to an unidentified mechanism. Fixed by a softplus bound
+> (commit 0d5d92f); the arm needs re-running.
+>
+> Two further corrections. The "+-0.3 FID protocol noise" quoted below is
+> same-seed repeatability, not decision noise -- independent-seed FID-5k
+> variance is realistically +-1-2 FID, so **"the ordering is real at every gap"
+> is withdrawn** for the sub-2-FID gaps. And section 2's `channel_eigen_order_
+> consistency` argument is void: that statistic's feasible range is ~0.50-0.60
+> for any distribution given these spectra, and every arm matches its own
+> Gaussian surrogate to +-0.005, so "no intervention moved it" was guaranteed
+> a priori rather than being evidence for the theory.
+
 ## Verdict
 
 | arm | FID | KID | eff-rank | tok-profile-corr | chan-order-consist. | chan CV2 | PSNR |

@@ -1,5 +1,11 @@
 # Why the rolling engine loses to joint (2026-08-21)
 
+> **Provenance note (2026-08-23).** The rolling engine was removed from the
+> tree; the per-register MSE table below is not regenerable from HEAD. The code
+> that produced it is recoverable at commit **f906d4a** (`git show
+> f906d4a:progressive_tokenizer/rolling_flow.py`). Regenerate from that hash
+> before publishing these numbers. All runs are single-seed.
+
 All runs on the v5 vae-kl1e4 cache, 60k steps, 5k-sample decoded FID.
 
 ## The ladder

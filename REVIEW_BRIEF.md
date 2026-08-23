@@ -41,8 +41,16 @@ trained on sampled z).
 
 **Metric protocol (important).** Decoded **FID** on 5,000 samples against the
 CIFAR-10 test set decides everything. Reconstruction PSNR/dB is treated as a
-capacity check only, never a selection metric. Protocol noise ~ +-0.3 FID.
-Latent MSE was retired for cross-model decisions. Most results are single-seed.
+capacity check only, never a selection metric. Latent MSE was retired for cross-model decisions. **All results are
+single-seed.**
+
+**Protocol-noise correction (2026-08-23).** The long-quoted "+-0.3 FID protocol
+noise" was measured by *re-running the same eval with the sampler hard-seeded*
+(`--seed 54321`), so it captures only bf16/atomic nondeterminism, not decision
+noise. Independent-seed FID-5k variance at these levels is realistically
++-1-2 FID, and training-seed variance is on top of that. Every gap below ~2 FID
+in this document should be read as unresolved, including several adjacent pairs
+in the v5 matrix.
 
 ## 3. Results so far
 
@@ -50,18 +58,45 @@ Latent MSE was retired for cross-model decisions. Most results are single-seed.
 
 | arm | FID | eff-rank | tok-profile-corr | chan-order-consist. | PSNR |
 |---|---:|---:|---:|---:|---:|
-| vae (KL 1e-4) | **35.85** | 100.7 | 0.312 | 0.537 | ~33.9 |
+| vae (KL 1e-4)* | **35.85** | 100.7 | 0.312 | 0.537 | ~33.9 |
 | energycv (kurtosis->3 penalty) | 39.03 | 26.3 | 0.172 | 0.551 | 34.02 |
 | ramp (sigma-ramp latent noise) | 40.72 | 519.6 | 0.725 | 0.508 | — |
 | det (control) | 41.16 | 61.0 | 0.587 | 0.540 | 32.88 |
 | frontier (frontier-noise) | 47.60 | 48.8 | **0.908** | 0.514 | 31.41 |
 
-- Token-axis *schedule consistency* anti-predicts FID (Spearman +0.8, wrong
-  sign). Both arms that explicitly shaped the resolving schedule failed.
-- `channel_eigen_order_consistency` sits at **0.508-0.551 (chance) in all five
-  arms** — no second-order intervention moved it.
+- Token-axis *schedule consistency* rank-correlates with FID at Spearman +0.8
+  (wrong sign). **Under-powered**: n=5 gives exact permutation p=0.13
+  two-sided, and one rank swap destroys it. `tok-profile-corr` is also largely
+  explained by each arm's Gaussian surrogate (frontier 0.908 raw vs 0.937
+  surrogate -- *less* schedule-consistent than its own second-order surrogate),
+  so the correlation is mostly with second-order energy-profile shape, which
+  this same document calls gauge. Both arms that shaped the schedule did fail;
+  the statistic supporting it is weak.
+- `channel_eigen_order_consistency` sits at 0.508-0.551 in all five arms.
+  **This is not evidence of anything.** 0.5 is not the chance level: the
+  statistic compares lambda_k*chi2_1 vs lambda_k+1*chi2_1 on single samples,
+  which for a Gaussian is (2/pi)*arctan(sqrt(lambda_k/lambda_k+1)) -- given
+  these near-degenerate adjacent eigenvalues its entire feasible range is
+  ~0.50-0.60 for *any* distribution. Every arm matches its own Gaussian
+  surrogate to within +-0.005 (vae 0.5372 vs 0.5391; det 0.5404 vs 0.5412;
+  energycv 0.5505 vs 0.5540; ramp 0.5081 vs 0.5034; frontier 0.5138 vs 0.5101),
+  and the cross-arm spread is fully explained by spectral flatness. "No
+  intervention moved it" was guaranteed a priori by a near-zero-power test.
 - Reconstruction dB is non-predictive: energycv has the best PSNR and loses 3.2
   FID to vae.
+
+***The "vae" arm is not variational.** Verified on `checkpoint_final.pt`:
+99.97% of posterior log-variances sit exactly at the -8.0 clamp
+(`model.py`), sigma is pinned at 0.0183 against a posterior-mean RMS of 1.096,
+and the KL's sigma-term is a constant 3.5001 -- the analytic clamp floor
+`0.5*(e^-8 - 1 + 8) = 3.5002` -- contributing no gradient. The clamp is
+absorbing: reconstruction always pushes sigma down, and past the floor the
+clamp passes zero gradient, disconnecting the KL's restoring force. The KL is
+also a per-dim *mean*, so `kl_weight=1e-4` is ~1e-7 per image in the summed
+convention. **FID 35.85 belongs to "deterministic encoder + fixed 1.8% jitter +
+weak mu-L2", not to rate-constrained coding.** Any KL-weight sweep would have
+been degenerate (every weight losing the race yields the same sigma). Fixed by
+a softplus bound; the arm must be re-run before the mechanism is claimed.
 
 ### Latent higher-order structure
 
@@ -69,9 +104,18 @@ Raw channel coordinates are near-Gaussian (kurtosis ~3.0-3.2) and the
 fourth-moment pair slice `E[z_i^2 z_j^2]` sits within 11-15% of its Gaussian
 value `L_ii L_jj + 2 L_ij^2` — so there is little for an energy-covariance
 regularizer to bite on. But rotating into the channel eigenbasis exposes
-kurtosis up to 6.05, rank-ordered: top-4 eigendirections 2.8-3.7, bottom-4
-5.2-5.6. The non-Gaussianity is real and lives in the low-variance directions;
-the code has arranged for its working coordinates to be the most Gaussian view.
+elevated kurtosis, loosely increasing with rank. **Corrected figures**: the
+6.05 maximum is the *det* arm's (vae's max is 5.78), and the earlier
+"top-4 2.8-3.7 / bottom-4 5.2-5.6" range matched no single arm -- per arm the
+top-4 are det [2.84, 2.22, 2.48, 3.50], vae [2.49, 4.58, 4.58, 3.13], energycv
+[3.33, 3.72, 3.35, 2.43]. "Rank-ordered" is a loose trend, not monotone (vae's
+rank-2 direction is already 4.58). **Omitted and awkward**: frontier's
+eigen-kurtosis is 36-88 at essentially every rank, and frontier is the worst
+FID arm -- that datapoint is not reconciled with "the non-Gaussianity lives in
+the low-variance directions". Pooling across 64 token positions with
+heterogeneous covariances also manufactures kurtosis by scale-mixing; per-token
+estimates stay elevated, so the qualitative claim survives, but with an
+unquantified max-over-16-directions selection bias at n=20k.
 
 ### Decoder sensitivity (reconstruction FID vs injected latent noise)
 
@@ -137,8 +181,20 @@ cross the noise floor within **10.4% of the schedule**. Natural images have a
 ~10^3 low/high-frequency energy ratio, spreading crossings over ~94% of the
 schedule.
 
-So the code is semantically ordered but **not** ordered in the SNR sense that
-diffusion actually responds to. The proposal is to impose the missing spectrum
+**Corrected 2026-08-23.** The 10.4% figure is the *register-index marginal*.
+In the flattened 1024-dim eigenbasis -- the basis rotation-invariant RF
+training actually responds to -- the same cache's crossings span ~92% of the
+schedule, against ~96% for CIFAR pixels. Per-coordinate spread within a token
+is already 35%. **The code is not missing SNR ordering; it is missing
+*alignment* between the SNR order and the token axis**, which flat-MSE training
+is invariant to except through per-token layers, Adam, and loss weighting. So
+the magnitude sweep tests token-axis alignment plus a welded a_i^2 reweighting,
+not "giving the code an SNR order" -- and a negative result must not be read as
+refuting the ordering thesis. First result: alpha=0.5 (64x) gives FID 40.93 vs
+35.85 flat, consistent with the reweighting being net-negative.
+
+So the code is semantically ordered but not ordered *along the token axis* in
+the SNR sense. The proposal is to impose the missing spectrum
 directly — scale register `i` by `a_i` (e.g. a power law), train the joint prior
 on the rescaled cache, and invert the scale before decoding.
 
@@ -151,19 +207,42 @@ rescale costs no AE training, so it cleanly separates "ordering helps" from
 
 ## 5. Questions we would most like attacked
 
-1. Is the post-hoc rescale argument right, or is there a reason it must be a
-   no-op that we are missing? What profile `a_i` would you impose, and how would
-   you avoid simply starving the low-magnitude registers of loss weight until
-   they are never learned?
-2. Ordered code helps (5.3 FID from shaping) but ordered *generation* costs
-   16-44 FID. Is the progressive-tokenizer premise worth keeping at all, or is
-   the right conclusion "use the ordered code, generate jointly"?
-3. `channel_eigen_order_consistency` is pinned at chance across five very
-   different objectives. Is there any objective that could move it?
+1. **[partly answered]** The rescale is not a no-op (scalar-only
+   standardisation confirmed), but it conflates schedule shift with loss
+   reweighting. The clean decomposition is C' = magnitude scaling `a_i` plus a
+   compensating loss weight `w_i = 1/a_i^2`, which cancels the implicit
+   reweighting and isolates the pure schedule shift in decoded units. A
+   per-register *time offset* is not a viable alternative: `t_i = clamp(t +
+   delta_i, 0, 1)` is literally the rolling frontier schedule we removed, with
+   the same exposure pathology.
+2. "Ordered code helps (5.3 FID)" is **unsupported on both ends**: the winning
+   arm is not the intervention it is named after (see above), and the two arms
+   that actually shaped ordering (ramp, frontier) tied or lost to the det
+   control. All five arms share the nested-prefix objective, so the matrix
+   cannot speak to whether progressiveness helps at all. The missing control is
+   a **no-prefix tokenizer at matched everything**; if it also reaches ~35.85,
+   the progressive premise contributes nothing measurable to diffusability.
+   Ordered *generation* still costs 16-44 FID, so "generate jointly" stands --
+   but a progressive code justified only by full-length FID is dead weight by
+   construction, and would need a metric that rewards it (FID vs prefix length
+   under one joint prior).
+3. **[malformed, retired]** The metric has ~zero power (see above). The
+   replacement is the theory's **axis B** -- the conditioning-gain curve: how
+   much does knowing the already-resolved directions reduce uncertainty about
+   the rest? It is zero for a stationary Gaussian by construction, is exactly
+   what scaling cannot touch, is measurable on the existing cache with no
+   training run, and has never been measured. Do this before any
+   thesis-level conclusion.
 4. The heavy tails sit in the low-variance channel eigendirections. Harmful
    structure to remove, or useful sparse detail to preserve?
-5. We have **no external baseline** — no pixel-space diffusion at matched budget.
-   How much should that discount everything above?
+5. We have **no external baseline** -- no pixel-space diffusion at matched
+   budget. The latent is only 3:1 compression, so the honest comparison is the
+   same 64-token DiT on 4x4 pixel patches; literature pixel CIFAR sits at
+   FID 2-3 at comparable budgets, i.e. the representation tax may be ~10x the
+   largest effect this whole matrix measured. Note `train_continuous.py`'s
+   FID uses the CIFAR **train** split as reference while every progressive
+   evaluator uses the **test** split -- those numbers are incommensurable and
+   must never share a table.
 6. Anything in `rolling_flow.py` / `joint_flow.py` / `train_progressive_*.py`
    that looks wrong. We have already found and fixed: an amplitude treadmill
    from a detached RMS reference, prefix noise silently enlarging the
