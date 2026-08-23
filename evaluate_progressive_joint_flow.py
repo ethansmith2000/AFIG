@@ -52,6 +52,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_samples", type=int, default=5000)
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--sample_steps", type=int, default=50)
+    parser.add_argument(
+        "--sample_overlap",
+        type=float,
+        default=None,
+        help="Rolling models only: override the schedule slope at sampling "
+        "time. Requires a checkpoint trained with overlap jitter for the "
+        "chosen value to be in distribution.",
+    )
     parser.add_argument("--seed", type=int, default=54321)
     parser.add_argument("--device", default="cuda")
     return parser.parse_args()
@@ -124,6 +132,9 @@ def main() -> None:
     model = model.to(device).eval()
     mean = payload["normalization"]["mean"].float().to(device)
     scale = payload["normalization"]["scale"].float().to(device)
+    token_scale = payload.get("token_scale")
+    if token_scale is not None:
+        token_scale = token_scale.float().to(device)[None, :, None]
     tokenizer, tokenizer_payload = load_tokenizer_checkpoint(
         payload["tokenizer_checkpoint"]
     )
@@ -160,6 +171,7 @@ def main() -> None:
                     current,
                     steps_per_token=args.sample_steps,
                     solver="heun",
+                    overlap=args.sample_overlap,
                     generator=generator,
                 )
             else:
@@ -171,6 +183,8 @@ def main() -> None:
             raw_latents = physical_latent_layout(
                 standardized.float() * scale + mean, payload
             )
+            if token_scale is not None:
+                raw_latents = raw_latents / token_scale
             decoded = tokenizer.decode(raw_latents).float()
         images = decoded.add(1.0).div(2.0)
         features = extractor(images)
@@ -197,6 +211,8 @@ def main() -> None:
         "model_type": model_type,
         "num_samples": generated,
         "sample_steps": args.sample_steps,
+        "sample_overlap": args.sample_overlap,
+        "token_scale_applied": token_scale is not None,
         "fid": _fid(
             reference["feature_mean"],
             reference["feature_covariance"],

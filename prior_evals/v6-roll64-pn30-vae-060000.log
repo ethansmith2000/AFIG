@@ -1,0 +1,22 @@
+[gpu-claim] job=v6-eval-roll64-pn30 owner=AFIG -> gpu1
+{"generated": 256}
+{"generated": 512}
+{"generated": 768}
+{"generated": 1024}
+{"generated": 1280}
+{"generated": 1536}
+{"generated": 1792}
+{"generated": 2048}
+{"generated": 2304}
+{"generated": 2560}
+{"generated": 2816}
+{"generated": 3072}
+{"generated": 3328}
+{"generated": 3584}
+{"generated": 3840}
+{"generated": 4096}
+{"generated": 4352}
+{"generated": 4608}
+{"generated": 4864}
+{"generated": 5000}
+{"checkpoint_step": 60000, "decoded_clipping_fraction": 0.0037372395833333333, "decoded_max": 1.3359375, "decoded_min": -1.2890625, "fid": 48.35130632470077, "kid": 0.03640899062156677, "model_type": "progressive_rolling_rectified_flow", "num_samples": 5000, "sample_steps": 50, "standardized_latent_mean": -0.00654182293601556, "standardized_latent_std": 1.0068830193456066}

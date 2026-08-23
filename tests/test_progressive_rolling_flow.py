@@ -330,6 +330,38 @@ class TestRollingSchedule(unittest.TestCase):
         with self.assertRaises(ValueError):
             model.sample(2, steps_per_token=3, overlap=0.0)
 
+    def test_sample_overlap_override_matches_a_natively_configured_model(self):
+        """The override must reach local_times, not just the sweep duration.
+
+        Computing `duration` from the override while the per-register times
+        still used config.overlap made the frontier over-run the schedule (a
+        no-op tail, identical samples) or stop short of it (late registers left
+        partially noisy).
+        """
+
+        torch.manual_seed(43)
+        overridden = RollingRectifiedFlow(tiny_config(overlap=2.0)).eval()
+        native = RollingRectifiedFlow(tiny_config(overlap=4.0)).eval()
+        native.load_state_dict(overridden.state_dict())
+        torch.manual_seed(7)
+        left = overridden.sample(3, steps_per_token=4, overlap=4.0)
+        torch.manual_seed(7)
+        right = native.sample(3, steps_per_token=4)
+        torch.testing.assert_close(left, right)
+
+    def test_sample_overlap_override_fully_denoises_every_register(self):
+        torch.manual_seed(44)
+        model = wake(RollingRectifiedFlow(tiny_config(overlap=2.0)).eval())
+        for overlap in (1.0, 4.0, 8.0):
+            duration = (model.config.sequence_length - 1) / overlap + 1.0
+            final = model.local_times(
+                torch.tensor([duration]), torch.tensor([overlap])
+            )
+            self.assertTrue(
+                bool((final == 1.0).all()),
+                f"overlap {overlap} leaves registers unresolved: {final}",
+            )
+
     def test_gradients_flow_only_from_active_registers(self):
         torch.manual_seed(13)
         model = RollingRectifiedFlow(tiny_config())

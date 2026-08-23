@@ -399,8 +399,12 @@ class RollingRectifiedFlow(nn.Module):
             frontier_next = torch.full_like(
                 frontier_now, (index + 1) * duration / total_steps
             )
-            times_now = self.local_times(frontier_now)
-            times_next = self.local_times(frontier_next)
+            # the override must reach local_times too: computing `duration`
+            # from `roll` while the times still used config.overlap made the
+            # sweep over- or under-run the schedule.
+            roll_now = torch.full_like(frontier_now, roll)
+            times_now = self.local_times(frontier_now, roll_now)
+            times_next = self.local_times(frontier_next, roll_now)
             step_sizes = (times_next - times_now)[..., None].to(values.dtype)
             velocity = self.predict_velocity(values, times_now)
             if solver == "heun" and index + 1 < total_steps:

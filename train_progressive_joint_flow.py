@@ -225,6 +225,9 @@ def checkpoint_payload(
         "normalization": {"mean": mean.cpu(), "scale": scale.cpu()},
         "tokenizer_checkpoint": cache["tokenizer_checkpoint"],
         "tokenizer_step": cache["tokenizer_step"],
+        # a rescaled cache carries the per-register magnitude profile; the
+        # evaluator must divide it out before handing latents to the decoder
+        "token_scale": cache.get("token_scale"),
     }
 
 
