@@ -22,7 +22,16 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import sys
 from pathlib import Path
+
+# Direct execution sets sys.path[0] to ``scripts/`` rather than the repository
+# root. Make the local package import deterministic under gpu-claim/supervisor
+# launchers as well as interactive module execution.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset

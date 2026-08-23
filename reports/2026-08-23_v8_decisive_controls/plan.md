@@ -17,7 +17,7 @@ normalization, 50-step Heun, decoded FID/KID on 5,000 samples with seed 54321.
 The fixed evaluation seed controls the sample comparison but does not estimate
 decision variance. Treat differences below approximately 2 FID as unresolved.
 
-## E1 — matched pixel-space baseline (running)
+## E1 — matched pixel-space baseline (complete)
 
 **Hypothesis.** If raw pixels substantially beat the selected learned latent at
 the same prior recipe, a representation tax exists. This arm does not by itself
@@ -31,10 +31,14 @@ separate geometry from dimensional rate.
 - Evaluation: `prior_evals/v8-joint-pixels-060000`.
 - Launcher/log: `scripts/run_v8_pixel_control.sh`,
   `prior_runs/v8-joint-pixels-s1.launch.log`.
-- Live state at journal creation: active under `gpu-claim`, job
-  `v8-joint-pixels`.
+- Completed: `2026-08-23T10:32:45Z`.
+- FID/KID: **27.4104 / 0.01627** at 60k steps and 5k generated samples.
+- Standardized sample RMS: `0.9454`; decoded clipping fraction: `0.00706`.
+- Initial comparison: this beats the selected progressive VAE latent's 35.85
+  FID by 8.44. The gap establishes a representation-and/or-dimensional-rate
+  tax under the matched prior recipe; it does not yet separate those causes.
 
-## E2 — matched unordered tokenizer (running)
+## E2 — matched unordered tokenizer (prior queued)
 
 **Hypothesis.** Removing nested-prefix reconstruction while holding architecture,
 nominal rate, stochasticity, optimizer, cache augmentation, and joint prior
@@ -49,10 +53,15 @@ fixed measures whether progressiveness helps or taxes full-length generation.
 - Evaluation: `prior_evals/v8-joint-unordered-vae-060000`.
 - Launcher/log: `scripts/run_v8_unordered_control.sh`,
   `tokenizer_runs/v8-unordered-vae-s1.launch.log`.
-- Live state at journal creation: tokenizer active under `gpu-claim`, job
-  `v8-unordered-vae-s1-tokenizer`.
+- Tokenizer completed: full test PSNR **35.88 dB** versus approximately 34.04
+  dB for the progressive VAE. Several unordered slots have RMS near 0.16 while
+  most are near 1.0, so the full-only objective did not use all nominal token
+  positions uniformly; this is a measured representation consequence, not a
+  reason to alter the arm post hoc.
+- Cache and axis scorecard completed. The 60k joint prior is waiting through
+  `gpu-claim` for a free GPU; no decoded generative verdict exists yet.
 
-## E3 — trained-prior context ablation (queued after E1/E2 obtained GPUs)
+## E3 — trained-prior context ablation (requeued after launch failure)
 
 **Question.** Does the trained joint denoiser actually use correct early context
 to reduce late-direction velocity MSE relative to batch-shuffled or
@@ -66,6 +75,11 @@ ablations separately.
 - Existing cache: `tokenizer_runs/v5-vae-kl1e4-s1/latents_final_original_flip.pt`.
 - Output: `reports/2026-08-23_context_ablation/v5-vae-joint.json`.
 - Tool/log: `scripts/conditioning_context_ablation.py`, `context_v8_vae.log`.
+- First attempt claimed a GPU and exited before loading data because direct
+  script execution omitted the repository root from `sys.path`. The launcher
+  path was repaired and smoke-checked; the diagnostic was requeued through
+  `gpu-claim`. No checkpoint or experimental output was modified by the failed
+  attempt.
 
 ## E4 — literal latent shape at fixed representation (planned, not queued)
 
@@ -114,4 +128,3 @@ For every arm append: completion timestamp, training seed, checkpoint and cache
 paths, final reconstruction metrics, FID/KID, clipping fraction, training
 throughput, GPU time, failures/retries, and a one-paragraph verdict. Update
 `EXPERIMENT_JOURNAL.md` and commit the durable evidence.
-
