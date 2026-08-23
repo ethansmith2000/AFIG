@@ -19,8 +19,6 @@ from progressive_tokenizer import (
     AutoregressiveRectifiedFlow,
     JointFlowConfig,
     JointRectifiedFlow,
-    RollingFlowConfig,
-    RollingRectifiedFlow,
 )
 from progressive_tokenizer.checkpoints import load_tokenizer_checkpoint
 
@@ -52,14 +50,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_samples", type=int, default=5000)
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--sample_steps", type=int, default=50)
-    parser.add_argument(
-        "--sample_overlap",
-        type=float,
-        default=None,
-        help="Rolling models only: override the schedule slope at sampling "
-        "time. Requires a checkpoint trained with overlap jitter for the "
-        "chosen value to be in distribution.",
-    )
     parser.add_argument("--seed", type=int, default=54321)
     parser.add_argument("--device", default="cuda")
     return parser.parse_args()
@@ -123,9 +113,6 @@ def main() -> None:
             AutoregressiveFlowConfig(**model_config)
         )
         sample_method = "generate"
-    elif model_type == "progressive_rolling_rectified_flow":
-        model = RollingRectifiedFlow(RollingFlowConfig(**model_config))
-        sample_method = "rolling"
     else:
         raise ValueError("not a supported progressive-token flow checkpoint")
     model.load_state_dict(payload["model"])
@@ -166,14 +153,6 @@ def main() -> None:
                     solver="heun",
                     generator=generator,
                 )
-            elif sample_method == "rolling":
-                standardized = model.sample(
-                    current,
-                    steps_per_token=args.sample_steps,
-                    solver="heun",
-                    overlap=args.sample_overlap,
-                    generator=generator,
-                )
             else:
                 standardized = model.generate(
                     current,
@@ -211,7 +190,6 @@ def main() -> None:
         "model_type": model_type,
         "num_samples": generated,
         "sample_steps": args.sample_steps,
-        "sample_overlap": args.sample_overlap,
         "token_scale_applied": token_scale is not None,
         "fid": _fid(
             reference["feature_mean"],

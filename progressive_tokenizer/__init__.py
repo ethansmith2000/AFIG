@@ -7,13 +7,10 @@ from .autoregressive_flow import (
     AutoregressiveFlowConfig,
     AutoregressiveRectifiedFlow,
 )
-from .rolling_flow import RollingFlowConfig, RollingRectifiedFlow
 
 __all__ = [
     "JointFlowConfig",
     "JointRectifiedFlow",
-    "RollingFlowConfig",
-    "RollingRectifiedFlow",
     "AutoregressiveFlowConfig",
     "AutoregressiveRectifiedFlow",
     "ProgressiveTokenizer",

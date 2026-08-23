@@ -322,3 +322,72 @@ class JointRectifiedFlow(nn.Module):
             else:
                 values = values + step_size * velocity
         return values
+
+
+# --- per-register conditioning -------------------------------------------
+# Retained from the removed rolling engine: a static per-register timestep
+# offset (t_i = clamp(t + delta_i, 0, 1)) needs an AdaLN condition that varies
+# along the sequence, [B, N, W] rather than [B, W]. The rolling/diffusion-
+# forcing machinery itself is gone; see commit f906d4a.
+
+def _modulate_tokens(
+    values: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor
+) -> torch.Tensor:
+    return values * (1.0 + scale) + shift
+
+
+class PerTokenAdaLNZeroBlock(nn.Module):
+    """AdaLN-Zero block whose condition varies per token ([B, N, W])."""
+
+    def __init__(self, config):
+        super().__init__()
+        self.attention_norm = _norm(config.width)
+        self.attention = QKNormAttention(
+            config.width, config.num_heads, config.qk_norm
+        )
+        self.ffn_norm = _norm(config.width)
+        self.ffn = FeedForward(config.width, config.mlp_ratio)
+        self.causal = config.causal
+        self.modulation = nn.Sequential(
+            nn.SiLU(), nn.Linear(config.width, 6 * config.width)
+        )
+        nn.init.zeros_(self.modulation[-1].weight)
+        nn.init.zeros_(self.modulation[-1].bias)
+
+    def forward(
+        self, values: torch.Tensor, condition: torch.Tensor, rope: Rotary1D
+    ) -> torch.Tensor:
+        (
+            attention_shift,
+            attention_scale,
+            attention_gate,
+            ffn_shift,
+            ffn_scale,
+            ffn_gate,
+        ) = self.modulation(condition).chunk(6, dim=-1)
+        values = values + attention_gate * self.attention(
+            _modulate_tokens(
+                self.attention_norm(values), attention_shift, attention_scale
+            ),
+            rope,
+            causal=self.causal,
+        )
+        return values + ffn_gate * self.ffn(
+            _modulate_tokens(self.ffn_norm(values), ffn_shift, ffn_scale)
+        )
+
+
+class PerTokenFinalLayer(nn.Module):
+    def __init__(self, width: int, token_dim: int):
+        super().__init__()
+        self.norm = _norm(width)
+        self.modulation = nn.Sequential(nn.SiLU(), nn.Linear(width, 2 * width))
+        self.output = nn.Linear(width, token_dim)
+        nn.init.zeros_(self.modulation[-1].weight)
+        nn.init.zeros_(self.modulation[-1].bias)
+        nn.init.zeros_(self.output.weight)
+        nn.init.zeros_(self.output.bias)
+
+    def forward(self, values: torch.Tensor, condition: torch.Tensor) -> torch.Tensor:
+        shift, scale = self.modulation(condition).chunk(2, dim=-1)
+        return self.output(_modulate_tokens(self.norm(values), shift, scale))
