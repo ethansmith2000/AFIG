@@ -33,6 +33,16 @@ from progressive_tokenizer.tracking import WandbTracker
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--latent_cache", required=True)
+    parser.add_argument(
+        "--layout_sequence_length",
+        type=int,
+        default=None,
+        help=(
+            "Present each cached example to the prior with this many tokens by "
+            "an exact consecutive reshape. Sampling is reshaped back before "
+            "the unchanged representation decoder."
+        ),
+    )
     parser.add_argument("--output_dir", default="prior_runs/joint-flow-s1")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--width", type=int, default=512)
@@ -133,6 +143,47 @@ def normalize(
     return (latents.float() - mean) / scale
 
 
+def reshape_latent_layout(
+    values: torch.Tensor, sequence_length: Optional[int]
+) -> tuple[torch.Tensor, Optional[dict]]:
+    """Apply a reversible consecutive reshape without changing scalar order."""
+
+    if sequence_length is None:
+        return values, None
+    if sequence_length <= 0:
+        raise ValueError("layout sequence length must be positive")
+    physical_sequence_length, physical_token_dim = values.shape[1:]
+    scalar_count = physical_sequence_length * physical_token_dim
+    if scalar_count % sequence_length:
+        raise ValueError(
+            "layout sequence length must divide the physical latent scalar count"
+        )
+    token_dim = scalar_count // sequence_length
+    reshaped = values.reshape(values.shape[0], sequence_length, token_dim)
+    layout = {
+        "type": "consecutive_blocks",
+        "physical_sequence_length": int(physical_sequence_length),
+        "physical_token_dim": int(physical_token_dim),
+    }
+    return reshaped, layout
+
+
+def physical_latent_layout(values: torch.Tensor, payload: dict) -> torch.Tensor:
+    """Invert an optional prior-only reshape before representation decoding."""
+
+    layout = payload.get("latent_layout")
+    if not layout:
+        return values
+    if layout.get("type") != "consecutive_blocks":
+        raise ValueError("unsupported latent layout")
+    sequence_length = int(layout["physical_sequence_length"])
+    token_dim = int(layout["physical_token_dim"])
+    expected = sequence_length * token_dim
+    if values.shape[1] * values.shape[2] != expected:
+        raise ValueError("sampled latent layout does not match physical layout")
+    return values.reshape(values.shape[0], sequence_length, token_dim)
+
+
 @torch.no_grad()
 def evaluate(
     model: JointRectifiedFlow,
@@ -197,6 +248,7 @@ def save_preview(
             generator=generator,
         )
         raw = standardized.float() * scale + mean
+        raw = physical_latent_layout(raw, representation_payload)
         # a magnitude-rescaled cache must be inverted before decoding, exactly
         # as the evaluator does -- otherwise previews of a healthy run look
         # broken (register 0 up to 5.6x hot, register 63 down to 0.18x)
@@ -243,6 +295,7 @@ def checkpoint_payload(
         # a rescaled cache carries the per-register magnitude profile; the
         # evaluator must divide it out before handing latents to the decoder
         "token_scale": cache.get("token_scale"),
+        "latent_layout": cache.get("latent_layout"),
     }
     if kind == TOKENIZER_LATENTS:
         payload.update(
@@ -272,10 +325,21 @@ def main() -> None:
     cache = torch.load(args.latent_cache, map_location="cpu", weights_only=False)
     if cache.get("version") != 1:
         raise ValueError("unsupported latent-cache version")
-    train_latents = cache["train_latents"]
-    test_latents = cache["test_latents"]
-    if train_latents.ndim != 3:
+    physical_train_latents = cache["train_latents"]
+    physical_test_latents = cache["test_latents"]
+    if physical_train_latents.ndim != 3:
         raise ValueError("cached train latents must be [N,L,D]")
+    train_latents, latent_layout = reshape_latent_layout(
+        physical_train_latents, args.layout_sequence_length
+    )
+    test_latents, test_layout = reshape_latent_layout(
+        physical_test_latents, args.layout_sequence_length
+    )
+    if latent_layout != test_layout:
+        raise ValueError("train/test physical latent layouts differ")
+    if latent_layout is not None:
+        cache = dict(cache)
+        cache["latent_layout"] = latent_layout
     sequence_length, token_dim = train_latents.shape[1:]
     global_mean = cache["statistics"]["global_mean"].float().to(device)
     global_scale = cache["statistics"]["global_std"].float().to(device)
@@ -364,6 +428,7 @@ def main() -> None:
             "type": kind,
             "config": cache.get("representation_config"),
             "tokenizer_step": tokenizer_step,
+            "latent_layout": latent_layout,
         },
         "latent_cache": {
             "train_examples": int(train_latents.shape[0]),

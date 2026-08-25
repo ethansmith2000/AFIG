@@ -1,0 +1,156 @@
+{
+  "cache": "/workspace/AFIG/pixel_runs/v8-cifar10-patches-original-flip.pt",
+  "examples": 25000,
+  "bands_by_rank": [
+    [
+      0,
+      8
+    ],
+    [
+      8,
+      32
+    ],
+    [
+      32,
+      128
+    ],
+    [
+      128,
+      512
+    ],
+    [
+      512,
+      3072
+    ]
+  ],
+  "effective_rank": 39.67163510699999,
+  "eigen_share_top_8_32_128": [
+    0.6195019997534995,
+    0.7993550403122551,
+    0.9187143882422036
+  ],
+  "latent": {
+    "adjacent_order_consistency": [
+      0.9941200017929077,
+      0.9998000264167786,
+      1.0,
+      1.0
+    ],
+    "band_log_energy_corr": [
+      [
+        1.0,
+        0.2407,
+        0.2108,
+        0.0961,
+        -0.0235
+      ],
+      [
+        0.2407,
+        1.0,
+        0.7466,
+        0.6168,
+        0.3882
+      ],
+      [
+        0.2108,
+        0.7466,
+        1.0,
+        0.8442,
+        0.6041
+      ],
+      [
+        0.0961,
+        0.6168,
+        0.8442,
+        1.0,
+        0.8517
+      ],
+      [
+        -0.0235,
+        0.3882,
+        0.6041,
+        0.8517,
+        1.0
+      ]
+    ],
+    "activity_cv2_median_by_band": [
+      2.6928668373192246,
+      3.055687317039177,
+      2.964079075756486,
+      2.9631652346990784,
+      5.0241654670752185
+    ],
+    "activity_cv2_overall_median": 4.426787378779935,
+    "activity_cv2_frac_above_4": 0.5657551884651184
+  },
+  "gaussian_surrogate": {
+    "adjacent_order_consistency": [
+      0.9962800145149231,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "band_log_energy_corr": [
+      [
+        1.0,
+        -0.0088,
+        0.0076,
+        -0.014,
+        -0.0063
+      ],
+      [
+        -0.0088,
+        1.0,
+        -0.0009,
+        -0.0001,
+        -0.0039
+      ],
+      [
+        0.0076,
+        -0.0009,
+        1.0,
+        -0.0077,
+        0.0002
+      ],
+      [
+        -0.014,
+        -0.0001,
+        -0.0077,
+        1.0,
+        -0.0008
+      ],
+      [
+        -0.0063,
+        -0.0039,
+        0.0002,
+        -0.0008,
+        1.0
+      ]
+    ],
+    "activity_cv2_median_by_band": [
+      2.000039482217435,
+      1.9885939006679518,
+      1.9911508925295123,
+      1.9990056375962713,
+      1.9989485618676965
+    ],
+    "activity_cv2_overall_median": 1.9987987553193416,
+    "activity_cv2_frac_above_4": 0.0
+  },
+  "latent_axes": {
+    "token_energy_cv2_median": 0.7263887397358949,
+    "token_energy_cv2_max": 1.0441791481579825,
+    "token_profile_correlation_mean": 0.14112032020671475,
+    "token_adjacent_log_energy_corr_mean": 0.7260600310954844,
+    "channel_eigen_order_consistency_mean": 0.5390059136329813,
+    "channel_activity_cv2_median": 19.580577490015816
+  },
+  "gaussian_surrogate_axes": {
+    "token_energy_cv2_median": 1.0980928724038088,
+    "token_energy_cv2_max": 1.4830137855196743,
+    "token_profile_correlation_mean": 0.07068959814743533,
+    "token_adjacent_log_energy_corr_mean": 0.5451900901617279,
+    "channel_eigen_order_consistency_mean": 0.5414603327183013,
+    "channel_activity_cv2_median": 2.2308976060583383
+  }
+}

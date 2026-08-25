@@ -1,0 +1,22 @@
+[gpu-claim] job=v9-eval-unordered-vae-n64d48 owner=AFIG -> gpu7
+{"generated": 256}
+{"generated": 512}
+{"generated": 768}
+{"generated": 1024}
+{"generated": 1280}
+{"generated": 1536}
+{"generated": 1792}
+{"generated": 2048}
+{"generated": 2304}
+{"generated": 2560}
+{"generated": 2816}
+{"generated": 3072}
+{"generated": 3328}
+{"generated": 3584}
+{"generated": 3840}
+{"generated": 4096}
+{"generated": 4352}
+{"generated": 4608}
+{"generated": 4864}
+{"generated": 5000}
+{"checkpoint_step": 60000, "decoded_clipping_fraction": 0.006019010416666666, "decoded_max": 1.6015625, "decoded_min": -1.5, "fid": 33.05272913052801, "kid": 0.020860543474555016, "model_type": "progressive_joint_rectified_flow", "num_samples": 5000, "representation_type": "tokenizer_latents", "sample_steps": 50, "standardized_latent_mean": -0.0009109634256259293, "standardized_latent_std": 1.0015214781293245, "token_scale_applied": false}

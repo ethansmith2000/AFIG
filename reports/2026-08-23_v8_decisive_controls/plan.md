@@ -161,7 +161,7 @@ The decisive next rate control is an unordered learned `64x48` tokenizer and
 matched prior, which has the same literal `64x48` prior shape and 3,072 scalar
 dimensions as the pixel arm.
 
-## E4a — unordered learned `64x48` rate control (launched 2026-08-25)
+## E4a — unordered learned `64x48` rate control (complete 2026-08-25)
 
 This is the direct no-dimensional-bottleneck comparison selected by E2. It uses
 the same unordered/full-reconstruction objective as the winning `64x16` learned
@@ -187,6 +187,47 @@ Interpretation is predeclared: reaching the pixel arm supports dimensional rate
 as the residual limitation; remaining materially worse supports learned
 geometry or decoder robustness as an additional tax. This arm cannot identify
 bit-rate compression because the latents remain continuous and unquantized.
+
+- Completed at **FID/KID 33.053 / 0.02086**, worse than both unordered learned
+  `64x16` (29.925) and raw pixels (27.410).
+- Clean reconstruction improved sharply to **FID 3.040** and PSNR 45.30 dB.
+  Decoder sensitivity also improved: FID at sigma
+  `0.05 / 0.1 / 0.2 / 0.4` is `3.262 / 4.092 / 8.097 / 23.975`.
+- The failure is therefore not a reconstruction ceiling or a brittle decoder.
+  Expanding the learned code made the prior's target distribution harder even
+  though prior shape, scalar count, architecture, and training match pixels.
+- Flattened effective rank rose from 241.95 (`64x16`) to **472.79**. About
+  eleven slots are near-idle (RMS approximately 0.093), while active slots are
+  near 0.9--1.1 RMS. The representation does not use nominal capacity evenly.
+- A matched scorecard on raw pixels gives effective rank **39.67**, with 61.95%
+  of variance in the top eight directions, versus only 23.37% for learned
+  `64x48`. Nominal dimension is therefore a poor proxy for generative burden:
+  raw pixels are much more spectrally concentrated than the learned code.
+- Verdict: removing the 1,024-scalar bottleneck does not close the residual gap.
+  Learned coordinate geometry/effective dimensionality remains a material tax.
+
+## E4b — fixed-representation literal-shape controls (queued 2026-08-25)
+
+Train matched joint priors on exact consecutive reshapes of the completed v8
+unordered `64x16` cache:
+
+- `32x32`: fewer, wider tokens.
+- `128x8`: more, narrower tokens.
+- Baseline: existing `64x16` FID 29.925.
+
+The scalar order and all 1,024 values are identical, and sampled outputs are
+reshaped back to `64x16` before the unchanged decoder. Thus any FID or throughput
+change is solely the prior's literal token/feature factorization. Equal 60k
+steps are primary; GPU time and throughput are secondary costs.
+
+## E4c — learned rate/modelability curve (queued 2026-08-25)
+
+Add unordered learned `64x8` and `64x32` arms under the exact v8/v9 recipe.
+Together with completed `64x16` and `64x48`, these estimate the rate-distortion
+tradeoff rather than assuming more coordinates must help. Record clean
+reconstruction, decoder sensitivity, effective rank, slot utilization, and
+decoded FID/KID. The decision target is the Pareto point in reconstruction
+versus generative FID; do not select on PSNR alone.
 
 ## Completion checklist
 
