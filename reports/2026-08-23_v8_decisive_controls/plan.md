@@ -206,7 +206,7 @@ bit-rate compression because the latents remain continuous and unquantized.
 - Verdict: removing the 1,024-scalar bottleneck does not close the residual gap.
   Learned coordinate geometry/effective dimensionality remains a material tax.
 
-## E4b — fixed-representation literal-shape controls (queued 2026-08-25)
+## E4b — fixed-representation literal-shape controls (running 2026-08-25)
 
 Train matched joint priors on exact consecutive reshapes of the completed v8
 unordered `64x16` cache:
@@ -220,7 +220,11 @@ reshaped back to `64x16` before the unchanged decoder. Thus any FID or throughpu
 change is solely the prior's literal token/feature factorization. Equal 60k
 steps are primary; GPU time and throughput are secondary costs.
 
-## E4c — learned rate/modelability curve (queued 2026-08-25)
+Both arms launched through `gpu-claim` at `2026-08-25T06:53:16Z`. The real-batch
+`128x8` path was smoke-tested before launch, including reversible layout and
+checkpoint metadata assertions.
+
+## E4c — learned rate/modelability curve (running 2026-08-25)
 
 Add unordered learned `64x8` and `64x32` arms under the exact v8/v9 recipe.
 Together with completed `64x16` and `64x48`, these estimate the rate-distortion
@@ -228,6 +232,9 @@ tradeoff rather than assuming more coordinates must help. Record clean
 reconstruction, decoder sensitivity, effective rank, slot utilization, and
 decoded FID/KID. The decision target is the Pareto point in reconstruction
 versus generative FID; do not select on PSNR alone.
+
+Both tokenizer-to-prior-to-evaluation chains launched through `gpu-claim` at
+`2026-08-25T06:53:16Z`.
 
 ## Completion checklist
 
