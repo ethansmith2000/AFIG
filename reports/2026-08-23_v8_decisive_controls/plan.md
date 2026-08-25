@@ -206,7 +206,7 @@ bit-rate compression because the latents remain continuous and unquantized.
 - Verdict: removing the 1,024-scalar bottleneck does not close the residual gap.
   Learned coordinate geometry/effective dimensionality remains a material tax.
 
-## E4b — fixed-representation literal-shape controls (running 2026-08-25)
+## E4b — fixed-representation literal-shape controls (complete 2026-08-25)
 
 Train matched joint priors on exact consecutive reshapes of the completed v8
 unordered `64x16` cache:
@@ -224,7 +224,21 @@ Both arms launched through `gpu-claim` at `2026-08-25T06:53:16Z`. The real-batch
 `128x8` path was smoke-tested before launch, including reversible layout and
 checkpoint metadata assertions.
 
-## E4c — learned rate/modelability curve (running 2026-08-25)
+| exact layout | decoded FID | KID | final flow MSE | relative throughput |
+|---|---:|---:|---:|---:|
+| `32x32` | **43.120** | 0.03166 | 0.9185 | fastest (~27 steps/s) |
+| `64x16` baseline | **29.925** | 0.02045 | 0.8931 | intermediate |
+| `128x8` | **32.280** | 0.02229 | 0.8969 | slowest (~11.5 steps/s) |
+
+The exact round-trip was asserted before launch, standardized sample statistics
+are healthy, and visual inspection shows coherent but progressively softer
+decoded samples rather than a permutation/layout failure. Verdict: literal
+factorization matters greatly. Combining two physical registers per prior token
+(`32x32`) is destructive despite equal information and slightly lower attention
+cost; splitting registers (`128x8`) is a smaller but still measurable penalty.
+The native `64x16` register boundary is the best tested layout.
+
+## E4c — learned rate/modelability curve (complete 2026-08-25)
 
 Add unordered learned `64x8` and `64x32` arms under the exact v8/v9 recipe.
 Together with completed `64x16` and `64x48`, these estimate the rate-distortion
@@ -235,6 +249,38 @@ versus generative FID; do not select on PSNR alone.
 
 Both tokenizer-to-prior-to-evaluation chains launched through `gpu-claim` at
 `2026-08-25T06:53:16Z`.
+
+| learned layout | scalars | PSNR | clean rFID | flat effective rank | generated FID | KID |
+|---|---:|---:|---:|---:|---:|---:|
+| `64x8` | 512 | 31.11 | 12.841 | 121.79 | **37.384** | 0.02960 |
+| `64x16` | 1,024 | 35.88 | 6.081 | 241.95 | **29.925** | 0.02045 |
+| `64x32` | 2,048 | 40.68 | 3.803 | 355.84 | **33.897** | 0.02248 |
+| `64x48` | 3,072 | 45.30 | 3.040 | 472.79 | **33.053** | 0.02086 |
+
+This is a U-shaped rate/modelability curve. `64x8` is reconstruction-limited;
+`64x32` and `64x48` reconstruct exceptionally well but spread image variation
+over substantially more active covariance modes and are harder to generate.
+`64x16` is the measured Pareto point under the fixed 60k prior budget.
+
+Final held-out flow MSE decreases monotonically from 0.9464 to 0.8931 to 0.7687
+to 0.7082 as feature width grows `8 / 16 / 32 / 48`, while decoded FID does not.
+Flat velocity MSE is therefore not a reliable selection proxy across
+representations; it increasingly rewards fitting many weak latent directions
+whose aggregate decoder/semantic value differs.
+
+## E4 verdict and next diagnostic
+
+The dimensional bottleneck is not a monotone ceiling. Moderate compression is
+beneficial because it trades a tolerable oracle floor for a substantially easier
+generative distribution. Literal shape also matters, with the tokenizer's native
+register boundary outperforming reversible alternative factorizations.
+
+Before changing the tokenizer objective again, the cleanest next diagnostic is
+a PCA-truncation curve on one fixed high-rate (`64x32` or `64x48`) cache, with
+inverse projection before the unchanged decoder. It will vary effective rate
+without retraining the representation and test directly whether concentrating
+variation into fewer directions recovers the `64x16` generative advantage. Use
+oracle reconstruction to select one or two ranks before paying for prior runs.
 
 ## Completion checklist
 

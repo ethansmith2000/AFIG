@@ -24,9 +24,11 @@ verdicts live under `reports/` and are linked here.
 
 - **2026-08-25 — v9/v10 rate and shape controls:** the no-dimensional-bottleneck
   unordered learned `64x48` arm completed at FID 33.05 despite reconstruction
-  FID 3.04. The next predeclared decomposition adds learned `64x8`/`64x32`
-  rate points and exact `32x32`/`128x8` prior-only reshapes of the unchanged
-  `64x16` code. All chained phases use the shared GPU queue. Live record:
+  FID 3.04. The learned `64x8`/`64x32` rate points and exact
+  `32x32`/`128x8` prior-only reshapes also completed. `64x16` is the measured
+  rate/modelability optimum; exact reshaping shows native token factorization
+  matters independently of scalar count. All chained phases used the shared
+  GPU queue. Full matrix and verdict:
   [v8 decisive-controls plan](reports/2026-08-23_v8_decisive_controls/plan.md).
 - **2026-08-23 — v8 decisive controls:** matched unordered tokenizer, matched
   pixel-space joint RF, direct context ablation, and planned latent rate/shape
