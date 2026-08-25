@@ -22,6 +22,13 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-08-25 — v9 dimensional-rate control:** launched the predeclared
+  unordered learned `64x48` tokenizer and matched joint prior. This removes the
+  `1,024 / 3,072` dimensional bottleneck while exactly matching the pixel arm's
+  literal token/feature shape. The chained launcher also records reconstruction,
+  axis utilization, decoded FID/KID, and decoder sensitivity through the shared
+  GPU queue. Launcher: `scripts/run_v9_unordered_rate_control.sh`; live record:
+  [v8 decisive-controls plan](reports/2026-08-23_v8_decisive_controls/plan.md).
 - **2026-08-23 — v8 decisive controls:** matched unordered tokenizer, matched
   pixel-space joint RF, direct context ablation, and planned latent rate/shape
   decomposition. [Plan and live record](reports/2026-08-23_v8_decisive_controls/plan.md)
@@ -34,4 +41,3 @@ verdicts live under `reports/` and are linked here.
   [Results](reports/2026-08-21_rolling_exposure_diagnosis/results.md)
 - **2026-08-19 — v5 shaping verdict:**
   [Results](reports/2026-08-19_v5_shaping_verdict/results.md)
-
