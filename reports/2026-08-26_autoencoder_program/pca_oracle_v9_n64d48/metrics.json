@@ -1,0 +1,78 @@
+{
+  "basis": "/workspace/AFIG/tokenizer_runs/v9-unordered-vae-n64d48-s1/pca_basis_25k.pt",
+  "cache": "/workspace/AFIG/tokenizer_runs/v9-unordered-vae-n64d48-s1/latents_final_original_flip.pt",
+  "evaluation_examples": 5000,
+  "pca_examples": 25000,
+  "physical_shape": [
+    64,
+    48
+  ],
+  "ranks": {
+    "1024": {
+      "normalized_mse": 0.004216848833362262,
+      "pixel_mse": 0.0010542122083405654,
+      "psnr_db": 29.77071958729826,
+      "reconstruction_fid": 11.561307945197939,
+      "reconstruction_kid": 0.004660992417484522,
+      "retained_variance": 0.9385246508283904
+    },
+    "128": {
+      "normalized_mse": 0.03540291767120361,
+      "pixel_mse": 0.008850729417800903,
+      "psnr_db": 20.53020936186689,
+      "reconstruction_fid": 121.9310273433893,
+      "reconstruction_kid": 0.13784979283809662,
+      "retained_variance": 0.5342380438042803
+    },
+    "1536": {
+      "normalized_mse": 0.0010303864702582359,
+      "pixel_mse": 0.00025759661756455897,
+      "psnr_db": 35.89059843884787,
+      "reconstruction_fid": 4.6523453284775655,
+      "reconstruction_kid": 0.00035025121178478,
+      "retained_variance": 0.9871261558597226
+    },
+    "2048": {
+      "normalized_mse": 0.00011975317605150243,
+      "pixel_mse": 2.9938294012875607e-05,
+      "psnr_db": 45.237729508835294,
+      "reconstruction_fid": 3.0420700419617788,
+      "reconstruction_kid": -2.7904510716325603e-05,
+      "retained_variance": 0.9998953834613494
+    },
+    "256": {
+      "normalized_mse": 0.02239324053923289,
+      "pixel_mse": 0.005598310134808222,
+      "psnr_db": 22.519430461869305,
+      "reconstruction_fid": 82.08521864707814,
+      "reconstruction_kid": 0.08846181631088257,
+      "retained_variance": 0.6589656651858975
+    },
+    "3072": {
+      "normalized_mse": 0.00011953637833551814,
+      "pixel_mse": 2.9884094583879534e-05,
+      "psnr_db": 45.245598977082196,
+      "reconstruction_fid": 3.039596265117325,
+      "reconstruction_kid": -2.759456583589781e-05,
+      "retained_variance": 1.0
+    },
+    "512": {
+      "normalized_mse": 0.011645032049218814,
+      "pixel_mse": 0.0029112580123047036,
+      "psnr_db": 25.35919303199236,
+      "reconstruction_fid": 35.91094735385883,
+      "reconstruction_kid": 0.030831504613161087,
+      "retained_variance": 0.8067983499523382
+    },
+    "768": {
+      "normalized_mse": 0.006949917261799177,
+      "pixel_mse": 0.0017374793154497942,
+      "psnr_db": 27.600803569476252,
+      "reconstruction_fid": 18.779187231052106,
+      "reconstruction_kid": 0.011294693686068058,
+      "retained_variance": 0.8898236487911503
+    }
+  },
+  "seed": 0,
+  "tokenizer_step": 15000
+}

@@ -23,8 +23,9 @@ verdicts live under `reports/` and are linked here.
 ## Campaigns
 
 - **2026-08-26 — autoencoder representation program:** prefix-decoding visual,
-  fixed-cache PCA rate control, and staged encoder/objective/regularization
-  exploration. [Plan](reports/2026-08-26_autoencoder_program/plan.md)
+  completed fixed-cache PCA oracle, and staged encoder/objective/regularization
+  exploration. The selected PCA prior control retains 1,536 dimensions (98.71%
+  variance, clean rFID 4.65). [Plan](reports/2026-08-26_autoencoder_program/plan.md)
 - **2026-08-25 — v9/v10 rate and shape controls:** the no-dimensional-bottleneck
   unordered learned `64x48` arm completed at FID 33.05 despite reconstruction
   FID 3.04. The learned `64x8`/`64x32` rate points and exact

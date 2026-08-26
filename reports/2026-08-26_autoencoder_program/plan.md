@@ -44,16 +44,32 @@ This varies effective rate inside one trained representation. It therefore
 separates the causal effect of spectral truncation from independent tokenizer
 training and tests whether concentrated high-rate codes recover modelability.
 
-Status: queued through the shared GPU launcher at `2026-08-26T00:10Z`
-(detached launcher PID 3167115). It holds no GPU while waiting. The oracle writes
-metrics after every rank so a late failure preserves completed evidence. The
-full-rank point must reproduce the existing `64x48` clean rFID/PSNR before any
-truncated rank is interpreted.
+Status: completed at `2026-08-26T01:31:45Z` through the shared GPU queue. The
+full-rank validation reproduced the existing clean result (rFID 3.040 versus
+3.040 previously; PSNR 45.25 versus 45.30), so the truncation curve is valid.
 
 - Launcher: `scripts/run_e5_pca_oracle.sh`.
 - Evaluator: `scripts/evaluate_pca_truncation_oracle.py`.
 - Output: `pca_oracle_v9_n64d48/metrics.json` and `reconstructions.png`.
 - Basis: `tokenizer_runs/v9-unordered-vae-n64d48-s1/pca_basis_25k.pt`.
+
+| retained rank | variance | PSNR | clean rFID |
+|---:|---:|---:|---:|
+| 128 | 53.42% | 20.53 | 121.93 |
+| 256 | 65.90% | 22.52 | 82.09 |
+| 512 | 80.68% | 25.36 | 35.91 |
+| 768 | 88.98% | 27.60 | 18.78 |
+| 1,024 | 93.85% | 29.77 | 11.56 |
+| 1,536 | 98.71% | 35.89 | 4.65 |
+| 2,048 | 99.99% | 45.24 | 3.04 |
+| 3,072 | 100.00% | 45.25 | 3.04 |
+
+The `64x16` nonlinear tokenizer reaches clean rFID 6.08 with 1,024 scalars,
+substantially better rate-distortion than top-1,024 PCA on the high-rate code.
+The 1,536-PC point is the selected generative control: it preserves a better
+oracle floor than `64x16` while removing half the high-rate coordinates. Train
+it as 64 tokens by 24 coefficients so token count remains native; inverse PCA
+before the unchanged `64x48` decoder.
 
 ## Autoencoder exploration sequence
 
