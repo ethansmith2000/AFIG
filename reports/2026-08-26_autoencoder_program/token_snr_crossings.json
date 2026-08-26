@@ -15,8 +15,28 @@
       "definition": {
         "path": "z_t = (1-t) eps + t z",
         "noise_variance_per_feature": 1.0,
-        "signal": "sample-dependent token content after token-specific mean removal",
-        "snr": "t^2 * token_content_variance / (1-t)^2"
+        "observed_amplitude": "sqrt(mean_d z[x,i,d]^2) after tensor-wide prior normalization",
+        "content_amplitude": "sqrt(mean_d (z[x,i,d]-E_x[z[x,i,d]])^2)",
+        "amplitude_snr": "t * RMS / ((1-t) * noise_std)",
+        "power_snr": "t^2 * power / ((1-t)^2 * noise_variance)",
+        "snr1_equivalence": "amplitude and power definitions have the same crossing"
+      },
+      "observed_token_profile": {
+        "rms_quantiles": {
+          "p05": 0.8629831671714783,
+          "p25": 0.9311884045600891,
+          "p50": 0.992808997631073,
+          "p75": 1.045403242111206,
+          "p95": 1.1335231065750122
+        },
+        "snr1_population_t_quantiles": {
+          "p05": 0.4687158167362213,
+          "p25": 0.48890113830566406,
+          "p50": 0.5018050074577332,
+          "p75": 0.5178160071372986,
+          "p95": 0.5367782711982727
+        },
+        "note": "Includes token-specific population means; literal dim=-1 RMS view."
       },
       "token_profile": {
         "content_variance_quantiles": {
@@ -218,9 +238,18 @@
       "timestep_summary": [
         {
           "t": 0.2,
-          "tokens_above_snr1": 0,
-          "fraction_tokens_above_snr1": 0.0,
-          "token_snr_quantiles": {
+          "observed_tokens_above_snr1": 0,
+          "observed_fraction_tokens_above_snr1": 0.0,
+          "observed_token_power_snr_quantiles": {
+            "p05": 0.04654816910624504,
+            "p25": 0.05419455096125603,
+            "p50": 0.061604730784893036,
+            "p75": 0.06830424815416336,
+            "p95": 0.08030920475721359
+          },
+          "content_tokens_above_snr1": 0,
+          "content_fraction_tokens_above_snr1": 0.0,
+          "content_token_power_snr_quantiles": {
             "p05": 0.040019501000642776,
             "p25": 0.0450405590236187,
             "p50": 0.04918983578681946,
@@ -230,9 +259,18 @@
         },
         {
           "t": 0.35,
-          "tokens_above_snr1": 0,
-          "fraction_tokens_above_snr1": 0.0,
-          "token_snr_quantiles": {
+          "observed_tokens_above_snr1": 0,
+          "observed_fraction_tokens_above_snr1": 0.0,
+          "observed_token_power_snr_quantiles": {
+            "p05": 0.21593941748142242,
+            "p25": 0.2514113783836365,
+            "p50": 0.28578758239746094,
+            "p75": 0.31686705350875854,
+            "p95": 0.37255868315696716
+          },
+          "content_tokens_above_snr1": 0,
+          "content_fraction_tokens_above_snr1": 0.0,
+          "content_token_power_snr_quantiles": {
             "p05": 0.18565259873867035,
             "p25": 0.20894554257392883,
             "p50": 0.22819426655769348,
@@ -242,9 +280,18 @@
         },
         {
           "t": 0.5,
-          "tokens_above_snr1": 3,
-          "fraction_tokens_above_snr1": 0.046875,
-          "token_snr_quantiles": {
+          "observed_tokens_above_snr1": 30,
+          "observed_fraction_tokens_above_snr1": 0.46875,
+          "observed_token_power_snr_quantiles": {
+            "p05": 0.7447707056999207,
+            "p25": 0.8671128153800964,
+            "p50": 0.9856756329536438,
+            "p75": 1.0928679704666138,
+            "p95": 1.2849472761154175
+          },
+          "content_tokens_above_snr1": 3,
+          "content_fraction_tokens_above_snr1": 0.046875,
+          "content_token_power_snr_quantiles": {
             "p05": 0.6403120160102844,
             "p25": 0.7206489443778992,
             "p50": 0.7870373725891113,
@@ -254,9 +301,18 @@
         },
         {
           "t": 0.65,
-          "tokens_above_snr1": 64,
-          "fraction_tokens_above_snr1": 1.0,
-          "token_snr_quantiles": {
+          "observed_tokens_above_snr1": 64,
+          "observed_fraction_tokens_above_snr1": 1.0,
+          "observed_token_power_snr_quantiles": {
+            "p05": 2.5686986446380615,
+            "p25": 2.990654468536377,
+            "p50": 3.3995752334594727,
+            "p75": 3.7692794799804688,
+            "p95": 4.43175745010376
+          },
+          "content_tokens_above_snr1": 64,
+          "content_fraction_tokens_above_snr1": 1.0,
+          "content_token_power_snr_quantiles": {
             "p05": 2.208423376083374,
             "p25": 2.4855034351348877,
             "p50": 2.7144758701324463,
@@ -266,9 +322,18 @@
         },
         {
           "t": 0.8,
-          "tokens_above_snr1": 64,
-          "fraction_tokens_above_snr1": 1.0,
-          "token_snr_quantiles": {
+          "observed_tokens_above_snr1": 64,
+          "observed_fraction_tokens_above_snr1": 1.0,
+          "observed_token_power_snr_quantiles": {
+            "p05": 11.91633129119873,
+            "p25": 13.873805046081543,
+            "p50": 15.770811080932617,
+            "p75": 17.48588752746582,
+            "p95": 20.55915641784668
+          },
+          "content_tokens_above_snr1": 64,
+          "content_fraction_tokens_above_snr1": 1.0,
+          "content_token_power_snr_quantiles": {
             "p05": 10.24499225616455,
             "p25": 11.530383110046387,
             "p50": 12.592597961425781,
@@ -280,6 +345,16 @@
       "per_token": [
         {
           "index": 0,
+          "observed_power_per_feature": 1.5303384065628052,
+          "observed_rms": 1.2370685338974,
+          "observed_snr1_population_t": 0.4470135569572449,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.3925159275531769,
+            "p25": 0.42690977454185486,
+            "p50": 0.45212072134017944,
+            "p75": 0.47767266631126404,
+            "p95": 0.5153374075889587
+          },
           "content_variance_per_feature": 1.034795880317688,
           "content_rms": 1.0172491073608398,
           "mean_vector_rms": 0.7039479613304138,
@@ -296,6 +371,16 @@
         },
         {
           "index": 1,
+          "observed_power_per_feature": 1.4664497375488281,
+          "observed_rms": 1.2109705209732056,
+          "observed_snr1_population_t": 0.4522900879383087,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.39797070622444153,
+            "p25": 0.43091732263565063,
+            "p50": 0.45684003829956055,
+            "p75": 0.4835571050643921,
+            "p95": 0.5240924954414368
+          },
           "content_variance_per_feature": 0.9666133522987366,
           "content_rms": 0.9831649661064148,
           "mean_vector_rms": 0.7069910168647766,
@@ -312,6 +397,16 @@
         },
         {
           "index": 2,
+          "observed_power_per_feature": 1.5916937589645386,
+          "observed_rms": 1.261623501777649,
+          "observed_snr1_population_t": 0.4421602785587311,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.3932073712348938,
+            "p25": 0.422313928604126,
+            "p50": 0.4454948306083679,
+            "p75": 0.46989408135414124,
+            "p95": 0.5073302984237671
+          },
           "content_variance_per_feature": 1.179800033569336,
           "content_rms": 1.0861860513687134,
           "mean_vector_rms": 0.6417893767356873,
@@ -328,6 +423,16 @@
         },
         {
           "index": 3,
+          "observed_power_per_feature": 1.2929980754852295,
+          "observed_rms": 1.1371006965637207,
+          "observed_snr1_population_t": 0.46792367100715637,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4137360751628876,
+            "p25": 0.44840726256370544,
+            "p50": 0.47349298000335693,
+            "p75": 0.4979381561279297,
+            "p95": 0.5313493013381958
+          },
           "content_variance_per_feature": 0.9162145256996155,
           "content_rms": 0.957190990447998,
           "mean_vector_rms": 0.6138269305229187,
@@ -344,6 +449,16 @@
         },
         {
           "index": 4,
+          "observed_power_per_feature": 1.033023476600647,
+          "observed_rms": 1.016377568244934,
+          "observed_snr1_population_t": 0.49593889713287354,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43702495098114014,
+            "p25": 0.47430041432380676,
+            "p50": 0.5017102360725403,
+            "p75": 0.5293412208557129,
+            "p95": 0.5707942843437195
+          },
           "content_variance_per_feature": 0.7209312319755554,
           "content_rms": 0.8490766882896423,
           "mean_vector_rms": 0.5586521029472351,
@@ -360,6 +475,16 @@
         },
         {
           "index": 5,
+          "observed_power_per_feature": 1.2184010744094849,
+          "observed_rms": 1.1038120985031128,
+          "observed_snr1_population_t": 0.47532758116722107,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4225330650806427,
+            "p25": 0.45580241084098816,
+            "p50": 0.4800979495048523,
+            "p75": 0.5045942664146423,
+            "p95": 0.5393307209014893
+          },
           "content_variance_per_feature": 0.848944365978241,
           "content_rms": 0.9213817715644836,
           "mean_vector_rms": 0.6078294515609741,
@@ -376,6 +501,16 @@
         },
         {
           "index": 6,
+          "observed_power_per_feature": 1.23932683467865,
+          "observed_rms": 1.113250494003296,
+          "observed_snr1_population_t": 0.47320467233657837,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4211064875125885,
+            "p25": 0.4532806873321533,
+            "p50": 0.47777438163757324,
+            "p75": 0.5021337270736694,
+            "p95": 0.5378546714782715
+          },
           "content_variance_per_feature": 0.8901665806770325,
           "content_rms": 0.9434863924980164,
           "mean_vector_rms": 0.5908979177474976,
@@ -392,6 +527,16 @@
         },
         {
           "index": 7,
+          "observed_power_per_feature": 1.1640113592147827,
+          "observed_rms": 1.0788935422897339,
+          "observed_snr1_population_t": 0.4810250997543335,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4238514006137848,
+            "p25": 0.45904672145843506,
+            "p50": 0.48636430501937866,
+            "p75": 0.5145885944366455,
+            "p95": 0.553261935710907
+          },
           "content_variance_per_feature": 0.9012474417686462,
           "content_rms": 0.9493405222892761,
           "mean_vector_rms": 0.5126051306724548,
@@ -408,6 +553,16 @@
         },
         {
           "index": 8,
+          "observed_power_per_feature": 1.1454756259918213,
+          "observed_rms": 1.0702688694000244,
+          "observed_snr1_population_t": 0.4830290377140045,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4287951588630676,
+            "p25": 0.46284693479537964,
+            "p50": 0.48803967237472534,
+            "p75": 0.512744665145874,
+            "p95": 0.5502535700798035
+          },
           "content_variance_per_feature": 0.8370712995529175,
           "content_rms": 0.9149160385131836,
           "mean_vector_rms": 0.5553417205810547,
@@ -424,6 +579,16 @@
         },
         {
           "index": 9,
+          "observed_power_per_feature": 1.1359002590179443,
+          "observed_rms": 1.0657862424850464,
+          "observed_snr1_population_t": 0.4840771555900574,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42664414644241333,
+            "p25": 0.4622573256492615,
+            "p50": 0.4897024929523468,
+            "p75": 0.5174255967140198,
+            "p95": 0.5560774207115173
+          },
           "content_variance_per_feature": 0.8672576546669006,
           "content_rms": 0.931266725063324,
           "mean_vector_rms": 0.5183073878288269,
@@ -440,6 +605,16 @@
         },
         {
           "index": 10,
+          "observed_power_per_feature": 0.9107885956764221,
+          "observed_rms": 0.9543524384498596,
+          "observed_snr1_population_t": 0.5116784572601318,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.44875043630599976,
+            "p25": 0.4877256453037262,
+            "p50": 0.5198590755462646,
+            "p75": 0.5504841804504395,
+            "p95": 0.5891401767730713
+          },
           "content_variance_per_feature": 0.7717098593711853,
           "content_rms": 0.8784701824188232,
           "mean_vector_rms": 0.3729327917098999,
@@ -456,6 +631,16 @@
         },
         {
           "index": 11,
+          "observed_power_per_feature": 1.0737804174423218,
+          "observed_rms": 1.0362337827682495,
+          "observed_snr1_population_t": 0.4911027252674103,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43362322449684143,
+            "p25": 0.46881285309791565,
+            "p50": 0.4975515902042389,
+            "p75": 0.525368332862854,
+            "p95": 0.5626272559165955
+          },
           "content_variance_per_feature": 0.8919455409049988,
           "content_rms": 0.9444286823272705,
           "mean_vector_rms": 0.4264209568500519,
@@ -472,6 +657,16 @@
         },
         {
           "index": 12,
+          "observed_power_per_feature": 1.0548796653747559,
+          "observed_rms": 1.0270733833312988,
+          "observed_snr1_population_t": 0.4933220446109772,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43813270330429077,
+            "p25": 0.47230225801467896,
+            "p50": 0.498248815536499,
+            "p75": 0.5251217484474182,
+            "p95": 0.5612069964408875
+          },
           "content_variance_per_feature": 0.799875795841217,
           "content_rms": 0.8943577408790588,
           "mean_vector_rms": 0.5049791932106018,
@@ -488,6 +683,16 @@
         },
         {
           "index": 13,
+          "observed_power_per_feature": 1.093618392944336,
+          "observed_rms": 1.045762062072754,
+          "observed_snr1_population_t": 0.48881539702415466,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4311802387237549,
+            "p25": 0.46613457798957825,
+            "p50": 0.49443942308425903,
+            "p75": 0.5229009985923767,
+            "p95": 0.5638228058815002
+          },
           "content_variance_per_feature": 0.870375394821167,
           "content_rms": 0.9329391121864319,
           "mean_vector_rms": 0.47248610854148865,
@@ -504,6 +709,16 @@
         },
         {
           "index": 14,
+          "observed_power_per_feature": 0.8315603137016296,
+          "observed_rms": 0.9118993282318115,
+          "observed_snr1_population_t": 0.5230401158332825,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.45553058385849,
+            "p25": 0.49802419543266296,
+            "p50": 0.5315146446228027,
+            "p75": 0.564701497554779,
+            "p95": 0.605961799621582
+          },
           "content_variance_per_feature": 0.6963509917259216,
           "content_rms": 0.8344764709472656,
           "mean_vector_rms": 0.3677082657814026,
@@ -520,6 +735,16 @@
         },
         {
           "index": 15,
+          "observed_power_per_feature": 1.096954584121704,
+          "observed_rms": 1.0473560094833374,
+          "observed_snr1_population_t": 0.4884348213672638,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43059244751930237,
+            "p25": 0.4666110873222351,
+            "p50": 0.49371200799942017,
+            "p75": 0.5222353339195251,
+            "p95": 0.5616270303726196
+          },
           "content_variance_per_feature": 0.8588473200798035,
           "content_rms": 0.9267401695251465,
           "mean_vector_rms": 0.48796236515045166,
@@ -536,6 +761,16 @@
         },
         {
           "index": 16,
+          "observed_power_per_feature": 1.0362364053726196,
+          "observed_rms": 1.0179569721221924,
+          "observed_snr1_population_t": 0.4955506920814514,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43197906017303467,
+            "p25": 0.4715728759765625,
+            "p50": 0.5029682517051697,
+            "p75": 0.5342375040054321,
+            "p95": 0.5734768509864807
+          },
           "content_variance_per_feature": 0.8395681381225586,
           "content_rms": 0.9162794947624207,
           "mean_vector_rms": 0.4434729814529419,
@@ -552,6 +787,16 @@
         },
         {
           "index": 17,
+          "observed_power_per_feature": 1.2378835678100586,
+          "observed_rms": 1.1126022338867188,
+          "observed_snr1_population_t": 0.4733498692512512,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42300620675086975,
+            "p25": 0.45164552330970764,
+            "p50": 0.4775257706642151,
+            "p75": 0.5040459632873535,
+            "p95": 0.5394712686538696
+          },
           "content_variance_per_feature": 1.0119444131851196,
           "content_rms": 1.0059545040130615,
           "mean_vector_rms": 0.4753303825855255,
@@ -568,6 +813,16 @@
         },
         {
           "index": 18,
+          "observed_power_per_feature": 1.038325548171997,
+          "observed_rms": 1.0189826488494873,
+          "observed_snr1_population_t": 0.49529895186424255,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43725186586380005,
+            "p25": 0.4728860855102539,
+            "p50": 0.5010312795639038,
+            "p75": 0.529677152633667,
+            "p95": 0.5685741305351257
+          },
           "content_variance_per_feature": 0.8578154444694519,
           "content_rms": 0.9261832237243652,
           "mean_vector_rms": 0.4248647093772888,
@@ -584,6 +839,16 @@
         },
         {
           "index": 19,
+          "observed_power_per_feature": 1.167072057723999,
+          "observed_rms": 1.0803110599517822,
+          "observed_snr1_population_t": 0.4806973338127136,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4254946708679199,
+            "p25": 0.4592016041278839,
+            "p50": 0.4857230484485626,
+            "p75": 0.5126259922981262,
+            "p95": 0.5498868823051453
+          },
           "content_variance_per_feature": 0.8972529172897339,
           "content_rms": 0.9472343921661377,
           "mean_vector_rms": 0.5194412469863892,
@@ -600,6 +865,16 @@
         },
         {
           "index": 20,
+          "observed_power_per_feature": 1.0926178693771362,
+          "observed_rms": 1.0452836751937866,
+          "observed_snr1_population_t": 0.48892971873283386,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42791563272476196,
+            "p25": 0.46599626541137695,
+            "p50": 0.4962158799171448,
+            "p75": 0.5258871912956238,
+            "p95": 0.5616022944450378
+          },
           "content_variance_per_feature": 0.8793695569038391,
           "content_rms": 0.937747061252594,
           "mean_vector_rms": 0.4617880582809448,
@@ -616,6 +891,16 @@
         },
         {
           "index": 21,
+          "observed_power_per_feature": 0.9610874056816101,
+          "observed_rms": 0.9803506731987,
+          "observed_snr1_population_t": 0.5049610733985901,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43785229325294495,
+            "p25": 0.48034292459487915,
+            "p50": 0.5141183137893677,
+            "p75": 0.5468064546585083,
+            "p95": 0.5841666460037231
+          },
           "content_variance_per_feature": 0.8063048720359802,
           "content_rms": 0.8979448080062866,
           "mean_vector_rms": 0.3934241533279419,
@@ -632,6 +917,16 @@
         },
         {
           "index": 22,
+          "observed_power_per_feature": 1.0659844875335693,
+          "observed_rms": 1.0324652194976807,
+          "observed_snr1_population_t": 0.4920133352279663,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43366995453834534,
+            "p25": 0.4698973298072815,
+            "p50": 0.4983139634132385,
+            "p75": 0.5263285636901855,
+            "p95": 0.5637491941452026
+          },
           "content_variance_per_feature": 0.8707779049873352,
           "content_rms": 0.933154821395874,
           "mean_vector_rms": 0.44182196259498596,
@@ -648,6 +943,16 @@
         },
         {
           "index": 23,
+          "observed_power_per_feature": 1.0667915344238281,
+          "observed_rms": 1.0328559875488281,
+          "observed_snr1_population_t": 0.49191877245903015,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43484675884246826,
+            "p25": 0.46995458006858826,
+            "p50": 0.4975277781486511,
+            "p75": 0.5255808234214783,
+            "p95": 0.562165379524231
+          },
           "content_variance_per_feature": 0.8418033719062805,
           "content_rms": 0.9174984693527222,
           "mean_vector_rms": 0.47432923316955566,
@@ -664,6 +969,16 @@
         },
         {
           "index": 24,
+          "observed_power_per_feature": 1.13688063621521,
+          "observed_rms": 1.0662460327148438,
+          "observed_snr1_population_t": 0.48396947979927063,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42750006914138794,
+            "p25": 0.45978617668151855,
+            "p50": 0.4899846613407135,
+            "p75": 0.5202760100364685,
+            "p95": 0.5584939122200012
+          },
           "content_variance_per_feature": 0.9767636656761169,
           "content_rms": 0.9883135557174683,
           "mean_vector_rms": 0.40014633536338806,
@@ -680,6 +995,16 @@
         },
         {
           "index": 25,
+          "observed_power_per_feature": 0.9367145895957947,
+          "observed_rms": 0.9678401947021484,
+          "observed_snr1_population_t": 0.5081713199615479,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4414070248603821,
+            "p25": 0.4827595055103302,
+            "p50": 0.5171138048171997,
+            "p75": 0.5499366521835327,
+            "p95": 0.5915461778640747
+          },
           "content_variance_per_feature": 0.7718110084533691,
           "content_rms": 0.8785277605056763,
           "mean_vector_rms": 0.40608325600624084,
@@ -696,6 +1021,16 @@
         },
         {
           "index": 26,
+          "observed_power_per_feature": 0.7282065749168396,
+          "observed_rms": 0.8533502221107483,
+          "observed_snr1_population_t": 0.5395634174346924,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4631595015525818,
+            "p25": 0.5134175419807434,
+            "p50": 0.5517268180847168,
+            "p75": 0.5873109102249146,
+            "p95": 0.6274842023849487
+          },
           "content_variance_per_feature": 0.6173877120018005,
           "content_rms": 0.7857402563095093,
           "mean_vector_rms": 0.3328947126865387,
@@ -712,6 +1047,16 @@
         },
         {
           "index": 27,
+          "observed_power_per_feature": 0.9904918074607849,
+          "observed_rms": 0.9952345490455627,
+          "observed_snr1_population_t": 0.5011942386627197,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4432198405265808,
+            "p25": 0.47945693135261536,
+            "p50": 0.5069053173065186,
+            "p75": 0.5349223613739014,
+            "p95": 0.5733836889266968
+          },
           "content_variance_per_feature": 0.7725242972373962,
           "content_rms": 0.8789336085319519,
           "mean_vector_rms": 0.46686995029449463,
@@ -728,6 +1073,16 @@
         },
         {
           "index": 28,
+          "observed_power_per_feature": 1.1331205368041992,
+          "observed_rms": 1.0644813776016235,
+          "observed_snr1_population_t": 0.4843831956386566,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42950430512428284,
+            "p25": 0.4609561860561371,
+            "p50": 0.48985573649406433,
+            "p75": 0.5189409255981445,
+            "p95": 0.5552988648414612
+          },
           "content_variance_per_feature": 0.9598947167396545,
           "content_rms": 0.979742169380188,
           "mean_vector_rms": 0.41620418429374695,
@@ -744,6 +1099,16 @@
         },
         {
           "index": 29,
+          "observed_power_per_feature": 1.1538910865783691,
+          "observed_rms": 1.0741932392120361,
+          "observed_snr1_population_t": 0.48211514949798584,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4279530346393585,
+            "p25": 0.4617935121059418,
+            "p50": 0.48741909861564636,
+            "p75": 0.5131957530975342,
+            "p95": 0.5471104383468628
+          },
           "content_variance_per_feature": 0.8483871817588806,
           "content_rms": 0.9210793972015381,
           "mean_vector_rms": 0.5527239441871643,
@@ -760,6 +1125,16 @@
         },
         {
           "index": 30,
+          "observed_power_per_feature": 1.0194065570831299,
+          "observed_rms": 1.0096566677093506,
+          "observed_snr1_population_t": 0.49759742617607117,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4360637068748474,
+            "p25": 0.47425413131713867,
+            "p50": 0.5041592717170715,
+            "p75": 0.5347904562950134,
+            "p95": 0.5752601623535156
+          },
           "content_variance_per_feature": 0.7941848635673523,
           "content_rms": 0.8911705017089844,
           "mean_vector_rms": 0.47457537055015564,
@@ -776,6 +1151,16 @@
         },
         {
           "index": 31,
+          "observed_power_per_feature": 0.9685930609703064,
+          "observed_rms": 0.9841712117195129,
+          "observed_snr1_population_t": 0.5039888024330139,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4415911138057709,
+            "p25": 0.48085081577301025,
+            "p50": 0.5112050175666809,
+            "p75": 0.54132080078125,
+            "p95": 0.5816277861595154
+          },
           "content_variance_per_feature": 0.7465900182723999,
           "content_rms": 0.8640544414520264,
           "mean_vector_rms": 0.4711720645427704,
@@ -792,6 +1177,16 @@
         },
         {
           "index": 32,
+          "observed_power_per_feature": 0.9110407829284668,
+          "observed_rms": 0.9544845819473267,
+          "observed_snr1_population_t": 0.5116438269615173,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4466969966888428,
+            "p25": 0.4866635799407959,
+            "p50": 0.519278883934021,
+            "p75": 0.5520567297935486,
+            "p95": 0.5930163860321045
+          },
           "content_variance_per_feature": 0.7198020219802856,
           "content_rms": 0.848411500453949,
           "mean_vector_rms": 0.43730857968330383,
@@ -808,6 +1203,16 @@
         },
         {
           "index": 33,
+          "observed_power_per_feature": 0.8684595227241516,
+          "observed_rms": 0.9319117665290833,
+          "observed_snr1_population_t": 0.5176219940185547,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4520360231399536,
+            "p25": 0.4921257495880127,
+            "p50": 0.5258556604385376,
+            "p75": 0.559196949005127,
+            "p95": 0.6027258038520813
+          },
           "content_variance_per_feature": 0.7330507636070251,
           "content_rms": 0.8561838269233704,
           "mean_vector_rms": 0.36797913908958435,
@@ -824,6 +1229,16 @@
         },
         {
           "index": 34,
+          "observed_power_per_feature": 0.8302432894706726,
+          "observed_rms": 0.911176860332489,
+          "observed_snr1_population_t": 0.5232378244400024,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4504627585411072,
+            "p25": 0.49554985761642456,
+            "p50": 0.5332698822021484,
+            "p75": 0.5711696743965149,
+            "p95": 0.6162665486335754
+          },
           "content_variance_per_feature": 0.6997591257095337,
           "content_rms": 0.8365160822868347,
           "mean_vector_rms": 0.3612259328365326,
@@ -840,6 +1255,16 @@
         },
         {
           "index": 35,
+          "observed_power_per_feature": 0.9282239079475403,
+          "observed_rms": 0.9634438157081604,
+          "observed_snr1_population_t": 0.5093092322349548,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.44300201535224915,
+            "p25": 0.48424002528190613,
+            "p50": 0.517220139503479,
+            "p75": 0.5505160689353943,
+            "p95": 0.5934410095214844
+          },
           "content_variance_per_feature": 0.7384235262870789,
           "content_rms": 0.8593157529830933,
           "mean_vector_rms": 0.435660719871521,
@@ -856,6 +1281,16 @@
         },
         {
           "index": 36,
+          "observed_power_per_feature": 0.8127678036689758,
+          "observed_rms": 0.9015363454818726,
+          "observed_snr1_population_t": 0.5258905291557312,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.45204323530197144,
+            "p25": 0.4986498951911926,
+            "p50": 0.5365673303604126,
+            "p75": 0.5744062066078186,
+            "p95": 0.6175578236579895
+          },
           "content_variance_per_feature": 0.6868889331817627,
           "content_rms": 0.828787624835968,
           "mean_vector_rms": 0.3547942042350769,
@@ -872,6 +1307,16 @@
         },
         {
           "index": 37,
+          "observed_power_per_feature": 1.0116329193115234,
+          "observed_rms": 1.005799651145935,
+          "observed_snr1_population_t": 0.4985542595386505,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43283358216285706,
+            "p25": 0.47462528944015503,
+            "p50": 0.5061089396476746,
+            "p75": 0.5383142232894897,
+            "p95": 0.5814040303230286
+          },
           "content_variance_per_feature": 0.8055301308631897,
           "content_rms": 0.8975133299827576,
           "mean_vector_rms": 0.45398545265197754,
@@ -888,6 +1333,16 @@
         },
         {
           "index": 38,
+          "observed_power_per_feature": 1.022639274597168,
+          "observed_rms": 1.011256217956543,
+          "observed_snr1_population_t": 0.49720168113708496,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4321209788322449,
+            "p25": 0.4728538990020752,
+            "p50": 0.5050767660140991,
+            "p75": 0.5370805263519287,
+            "p95": 0.5787080526351929
+          },
           "content_variance_per_feature": 0.796929121017456,
           "content_rms": 0.8927088975906372,
           "mean_vector_rms": 0.4750896990299225,
@@ -904,6 +1359,16 @@
         },
         {
           "index": 39,
+          "observed_power_per_feature": 0.9914095997810364,
+          "observed_rms": 0.9956955313682556,
+          "observed_snr1_population_t": 0.5010784268379211,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43645039200782776,
+            "p25": 0.4760921597480774,
+            "p50": 0.5095183253288269,
+            "p75": 0.5412485599517822,
+            "p95": 0.5816025733947754
+          },
           "content_variance_per_feature": 0.7833030223846436,
           "content_rms": 0.8850440382957458,
           "mean_vector_rms": 0.4561869204044342,
@@ -920,6 +1385,16 @@
         },
         {
           "index": 40,
+          "observed_power_per_feature": 0.8542057871818542,
+          "observed_rms": 0.924232542514801,
+          "observed_snr1_population_t": 0.5196877121925354,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4495091736316681,
+            "p25": 0.49373337626457214,
+            "p50": 0.5296726226806641,
+            "p75": 0.5644150972366333,
+            "p95": 0.6040963530540466
+          },
           "content_variance_per_feature": 0.6891093850135803,
           "content_rms": 0.830126166343689,
           "mean_vector_rms": 0.40632063150405884,
@@ -936,6 +1411,16 @@
         },
         {
           "index": 41,
+          "observed_power_per_feature": 1.0268195867538452,
+          "observed_rms": 1.013321042060852,
+          "observed_snr1_population_t": 0.4966917932033539,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43307679891586304,
+            "p25": 0.4716212749481201,
+            "p50": 0.5036348104476929,
+            "p75": 0.5365142822265625,
+            "p95": 0.5808765292167664
+          },
           "content_variance_per_feature": 0.8065075874328613,
           "content_rms": 0.8980576395988464,
           "mean_vector_rms": 0.4693741202354431,
@@ -952,6 +1437,16 @@
         },
         {
           "index": 42,
+          "observed_power_per_feature": 0.9036218523979187,
+          "observed_rms": 0.9505902528762817,
+          "observed_snr1_population_t": 0.512665331363678,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4432619512081146,
+            "p25": 0.4866541922092438,
+            "p50": 0.5222799777984619,
+            "p75": 0.556422770023346,
+            "p95": 0.5965197086334229
+          },
           "content_variance_per_feature": 0.7410202622413635,
           "content_rms": 0.8608253598213196,
           "mean_vector_rms": 0.40323880314826965,
@@ -968,6 +1463,16 @@
         },
         {
           "index": 43,
+          "observed_power_per_feature": 0.833448052406311,
+          "observed_rms": 0.9129337668418884,
+          "observed_snr1_population_t": 0.5227572321891785,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4512696862220764,
+            "p25": 0.4962817430496216,
+            "p50": 0.5328846573829651,
+            "p75": 0.5681874752044678,
+            "p95": 0.6114901304244995
+          },
           "content_variance_per_feature": 0.7077561616897583,
           "content_rms": 0.8412824869155884,
           "mean_vector_rms": 0.3545305132865906,
@@ -984,6 +1489,16 @@
         },
         {
           "index": 44,
+          "observed_power_per_feature": 1.0235077142715454,
+          "observed_rms": 1.0116856098175049,
+          "observed_snr1_population_t": 0.4970955550670624,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4383832514286041,
+            "p25": 0.4753480553627014,
+            "p50": 0.5040938854217529,
+            "p75": 0.5315374135971069,
+            "p95": 0.5665595531463623
+          },
           "content_variance_per_feature": 0.7973760366439819,
           "content_rms": 0.8929591178894043,
           "mean_vector_rms": 0.4755330979824066,
@@ -1000,6 +1515,16 @@
         },
         {
           "index": 45,
+          "observed_power_per_feature": 0.7677138447761536,
+          "observed_rms": 0.8761928081512451,
+          "observed_snr1_population_t": 0.532994270324707,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4578871428966522,
+            "p25": 0.5058950185775757,
+            "p50": 0.544535756111145,
+            "p75": 0.5809202194213867,
+            "p95": 0.6227080821990967
+          },
           "content_variance_per_feature": 0.6455038189888,
           "content_rms": 0.8034325242042542,
           "mean_vector_rms": 0.3495853841304779,
@@ -1016,6 +1541,16 @@
         },
         {
           "index": 46,
+          "observed_power_per_feature": 0.8245197534561157,
+          "observed_rms": 0.9080306887626648,
+          "observed_snr1_population_t": 0.5241005420684814,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4560246467590332,
+            "p25": 0.49834203720092773,
+            "p50": 0.5323910713195801,
+            "p75": 0.5670773983001709,
+            "p95": 0.6111732125282288
+          },
           "content_variance_per_feature": 0.6876213550567627,
           "content_rms": 0.8292294144630432,
           "mean_vector_rms": 0.36999791860580444,
@@ -1032,6 +1567,16 @@
         },
         {
           "index": 47,
+          "observed_power_per_feature": 0.9808594584465027,
+          "observed_rms": 0.9903834462165833,
+          "observed_snr1_population_t": 0.5024157762527466,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4363119602203369,
+            "p25": 0.4765142798423767,
+            "p50": 0.5104631781578064,
+            "p75": 0.5445111989974976,
+            "p95": 0.5857905745506287
+          },
           "content_variance_per_feature": 0.7824810147285461,
           "content_rms": 0.8845795392990112,
           "mean_vector_rms": 0.4453970193862915,
@@ -1048,6 +1593,16 @@
         },
         {
           "index": 48,
+          "observed_power_per_feature": 0.8064466118812561,
+          "observed_rms": 0.8980237245559692,
+          "observed_snr1_population_t": 0.5268638134002686,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4525854289531708,
+            "p25": 0.4999730587005615,
+            "p50": 0.5381172895431519,
+            "p75": 0.5748377442359924,
+            "p95": 0.6152790188789368
+          },
           "content_variance_per_feature": 0.6772101521492004,
           "content_rms": 0.8229278326034546,
           "mean_vector_rms": 0.3594946563243866,
@@ -1064,6 +1619,16 @@
         },
         {
           "index": 49,
+          "observed_power_per_feature": 0.8681921362876892,
+          "observed_rms": 0.9317682981491089,
+          "observed_snr1_population_t": 0.5176604390144348,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4483131170272827,
+            "p25": 0.49061357975006104,
+            "p50": 0.5264253616333008,
+            "p75": 0.5625067949295044,
+            "p95": 0.6102535128593445
+          },
           "content_variance_per_feature": 0.7471007704734802,
           "content_rms": 0.864349901676178,
           "mean_vector_rms": 0.34798187017440796,
@@ -1080,6 +1645,16 @@
         },
         {
           "index": 50,
+          "observed_power_per_feature": 0.6871464252471924,
+          "observed_rms": 0.8289429545402527,
+          "observed_snr1_population_t": 0.5467638969421387,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4653683304786682,
+            "p25": 0.5182886719703674,
+            "p50": 0.5613713264465332,
+            "p75": 0.6005205512046814,
+            "p95": 0.6428605914115906
+          },
           "content_variance_per_feature": 0.5896192789077759,
           "content_rms": 0.7678666710853577,
           "mean_vector_rms": 0.31229329109191895,
@@ -1096,6 +1671,16 @@
         },
         {
           "index": 51,
+          "observed_power_per_feature": 0.93121337890625,
+          "observed_rms": 0.9649940133094788,
+          "observed_snr1_population_t": 0.5089074373245239,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.44333332777023315,
+            "p25": 0.4846169352531433,
+            "p50": 0.5166090726852417,
+            "p75": 0.5488042235374451,
+            "p95": 0.5909075140953064
+          },
           "content_variance_per_feature": 0.7325718998908997,
           "content_rms": 0.8559041023254395,
           "mean_vector_rms": 0.44569215178489685,
@@ -1112,6 +1697,16 @@
         },
         {
           "index": 52,
+          "observed_power_per_feature": 0.9220148324966431,
+          "observed_rms": 0.9602160453796387,
+          "observed_snr1_population_t": 0.5101478695869446,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4417532980442047,
+            "p25": 0.4840261936187744,
+            "p50": 0.5190538167953491,
+            "p75": 0.5537465810775757,
+            "p95": 0.5972651243209839
+          },
           "content_variance_per_feature": 0.7773277163505554,
           "content_rms": 0.8816618919372559,
           "mean_vector_rms": 0.3803776204586029,
@@ -1128,6 +1723,16 @@
         },
         {
           "index": 53,
+          "observed_power_per_feature": 0.8638748526573181,
+          "observed_rms": 0.9294487237930298,
+          "observed_snr1_population_t": 0.5182827711105347,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4541037380695343,
+            "p25": 0.4933314919471741,
+            "p50": 0.5256739854812622,
+            "p75": 0.558495283126831,
+            "p95": 0.6005023121833801
+          },
           "content_variance_per_feature": 0.7254331111907959,
           "content_rms": 0.8517236113548279,
           "mean_vector_rms": 0.3720775842666626,
@@ -1144,6 +1749,16 @@
         },
         {
           "index": 54,
+          "observed_power_per_feature": 0.8531893491744995,
+          "observed_rms": 0.9236825108528137,
+          "observed_snr1_population_t": 0.5198363065719604,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4495084285736084,
+            "p25": 0.49409225583076477,
+            "p50": 0.5296453833580017,
+            "p75": 0.5644181370735168,
+            "p95": 0.6052689552307129
+          },
           "content_variance_per_feature": 0.6860157251358032,
           "content_rms": 0.8282606601715088,
           "mean_vector_rms": 0.4088688790798187,
@@ -1160,6 +1775,16 @@
         },
         {
           "index": 55,
+          "observed_power_per_feature": 0.9438782930374146,
+          "observed_rms": 0.9715339541435242,
+          "observed_snr1_population_t": 0.5072192549705505,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4421708881855011,
+            "p25": 0.4821721315383911,
+            "p50": 0.5148223638534546,
+            "p75": 0.5477760434150696,
+            "p95": 0.5905740261077881
+          },
           "content_variance_per_feature": 0.7574175596237183,
           "content_rms": 0.8702974319458008,
           "mean_vector_rms": 0.43181076645851135,
@@ -1176,6 +1801,16 @@
         },
         {
           "index": 56,
+          "observed_power_per_feature": 0.7407218813896179,
+          "observed_rms": 0.8606520295143127,
+          "observed_snr1_population_t": 0.5374460220336914,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4664918780326843,
+            "p25": 0.5098555088043213,
+            "p50": 0.5476531982421875,
+            "p75": 0.5846103429794312,
+            "p95": 0.6280578374862671
+          },
           "content_variance_per_feature": 0.6467844247817993,
           "content_rms": 0.8042290806770325,
           "mean_vector_rms": 0.30649203062057495,
@@ -1192,6 +1827,16 @@
         },
         {
           "index": 57,
+          "observed_power_per_feature": 0.8745635151863098,
+          "observed_rms": 0.9351810216903687,
+          "observed_snr1_population_t": 0.5167475342750549,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.45118165016174316,
+            "p25": 0.49117645621299744,
+            "p50": 0.5242624282836914,
+            "p75": 0.5577896237373352,
+            "p95": 0.6031039953231812
+          },
           "content_variance_per_feature": 0.7370275259017944,
           "content_rms": 0.8585030436515808,
           "mean_vector_rms": 0.3708585500717163,
@@ -1208,6 +1853,16 @@
         },
         {
           "index": 58,
+          "observed_power_per_feature": 1.016726016998291,
+          "observed_rms": 1.0083283185958862,
+          "observed_snr1_population_t": 0.4979265332221985,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4348706007003784,
+            "p25": 0.47324395179748535,
+            "p50": 0.504713773727417,
+            "p75": 0.5371027588844299,
+            "p95": 0.5796964764595032
+          },
           "content_variance_per_feature": 0.8070495128631592,
           "content_rms": 0.8983593583106995,
           "mean_vector_rms": 0.4579043686389923,
@@ -1224,6 +1879,16 @@
         },
         {
           "index": 59,
+          "observed_power_per_feature": 0.734680712223053,
+          "observed_rms": 0.8571351766586304,
+          "observed_snr1_population_t": 0.5384637713432312,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.45974987745285034,
+            "p25": 0.5091885328292847,
+            "p50": 0.5525060296058655,
+            "p75": 0.5920061469078064,
+            "p95": 0.6334708333015442
+          },
           "content_variance_per_feature": 0.6329811215400696,
           "content_rms": 0.7956011295318604,
           "mean_vector_rms": 0.3189038038253784,
@@ -1240,6 +1905,16 @@
         },
         {
           "index": 60,
+          "observed_power_per_feature": 0.777236819267273,
+          "observed_rms": 0.8816103935241699,
+          "observed_snr1_population_t": 0.531459629535675,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4597364664077759,
+            "p25": 0.5041474103927612,
+            "p50": 0.5410457849502563,
+            "p75": 0.5775917768478394,
+            "p95": 0.6224426031112671
+          },
           "content_variance_per_feature": 0.6498331427574158,
           "content_rms": 0.8061223030090332,
           "mean_vector_rms": 0.35693636536598206,
@@ -1256,6 +1931,16 @@
         },
         {
           "index": 61,
+          "observed_power_per_feature": 0.9471805691719055,
+          "observed_rms": 0.9732320308685303,
+          "observed_snr1_population_t": 0.5067827701568604,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4403199851512909,
+            "p25": 0.4816311299800873,
+            "p50": 0.5145506262779236,
+            "p75": 0.5479185581207275,
+            "p95": 0.5926535725593567
+          },
           "content_variance_per_feature": 0.7907717227935791,
           "content_rms": 0.8892534971237183,
           "mean_vector_rms": 0.3954854905605316,
@@ -1272,6 +1957,16 @@
         },
         {
           "index": 62,
+          "observed_power_per_feature": 0.8512595295906067,
+          "observed_rms": 0.9226372838020325,
+          "observed_snr1_population_t": 0.5201188921928406,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.45663368701934814,
+            "p25": 0.4963611364364624,
+            "p50": 0.5280401110649109,
+            "p75": 0.5583673119544983,
+            "p95": 0.5967309474945068
+          },
           "content_variance_per_feature": 0.6393958330154419,
           "content_rms": 0.7996222972869873,
           "mean_vector_rms": 0.4602867364883423,
@@ -1288,6 +1983,16 @@
         },
         {
           "index": 63,
+          "observed_power_per_feature": 0.9622550010681152,
+          "observed_rms": 0.9809460043907166,
+          "observed_snr1_population_t": 0.5048093199729919,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4453934133052826,
+            "p25": 0.4792667329311371,
+            "p50": 0.5107411742210388,
+            "p75": 0.5437923669815063,
+            "p95": 0.5854552388191223
+          },
           "content_variance_per_feature": 0.7939409613609314,
           "content_rms": 0.8910336494445801,
           "mean_vector_rms": 0.41026097536087036,
@@ -1319,8 +2024,28 @@
       "definition": {
         "path": "z_t = (1-t) eps + t z",
         "noise_variance_per_feature": 1.0,
-        "signal": "sample-dependent token content after token-specific mean removal",
-        "snr": "t^2 * token_content_variance / (1-t)^2"
+        "observed_amplitude": "sqrt(mean_d z[x,i,d]^2) after tensor-wide prior normalization",
+        "content_amplitude": "sqrt(mean_d (z[x,i,d]-E_x[z[x,i,d]])^2)",
+        "amplitude_snr": "t * RMS / ((1-t) * noise_std)",
+        "power_snr": "t^2 * power / ((1-t)^2 * noise_variance)",
+        "snr1_equivalence": "amplitude and power definitions have the same crossing"
+      },
+      "observed_token_profile": {
+        "rms_quantiles": {
+          "p05": 0.1767691969871521,
+          "p25": 1.0417933464050293,
+          "p50": 1.0687329769134521,
+          "p75": 1.0893338918685913,
+          "p95": 1.131327509880066
+        },
+        "snr1_population_t_quantiles": {
+          "p05": 0.46919164061546326,
+          "p25": 0.4786216914653778,
+          "p50": 0.48338764905929565,
+          "p75": 0.4897657632827759,
+          "p95": 0.8497843146324158
+        },
+        "note": "Includes token-specific population means; literal dim=-1 RMS view."
       },
       "token_profile": {
         "content_variance_quantiles": {
@@ -1522,9 +2247,18 @@
       "timestep_summary": [
         {
           "t": 0.2,
-          "tokens_above_snr1": 0,
-          "fraction_tokens_above_snr1": 0.0,
-          "token_snr_quantiles": {
+          "observed_tokens_above_snr1": 0,
+          "observed_fraction_tokens_above_snr1": 0.0,
+          "observed_token_power_snr_quantiles": {
+            "p05": 0.0019529592245817184,
+            "p25": 0.06783346831798553,
+            "p50": 0.0713869035243988,
+            "p75": 0.07416565716266632,
+            "p95": 0.07999420166015625
+          },
+          "content_tokens_above_snr1": 0,
+          "content_fraction_tokens_above_snr1": 0.0,
+          "content_token_power_snr_quantiles": {
             "p05": 0.0017888235161080956,
             "p25": 0.0638066828250885,
             "p50": 0.06834809482097626,
@@ -1534,9 +2268,18 @@
         },
         {
           "t": 0.35,
-          "tokens_above_snr1": 0,
-          "fraction_tokens_above_snr1": 0.0,
-          "token_snr_quantiles": {
+          "observed_tokens_above_snr1": 0,
+          "observed_fraction_tokens_above_snr1": 0.0,
+          "observed_token_power_snr_quantiles": {
+            "p05": 0.009059881791472435,
+            "p25": 0.31468304991722107,
+            "p50": 0.33116763830184937,
+            "p75": 0.34405842423439026,
+            "p95": 0.3710973858833313
+          },
+          "content_tokens_above_snr1": 0,
+          "content_fraction_tokens_above_snr1": 0.0,
+          "content_token_power_snr_quantiles": {
             "p05": 0.008298447355628014,
             "p25": 0.296002596616745,
             "p50": 0.3170704245567322,
@@ -1546,9 +2289,18 @@
         },
         {
           "t": 0.5,
-          "tokens_above_snr1": 50,
-          "fraction_tokens_above_snr1": 0.78125,
-          "token_snr_quantiles": {
+          "observed_tokens_above_snr1": 55,
+          "observed_fraction_tokens_above_snr1": 0.859375,
+          "observed_token_power_snr_quantiles": {
+            "p05": 0.031247347593307495,
+            "p25": 1.0853354930877686,
+            "p50": 1.1421904563903809,
+            "p75": 1.1866505146026611,
+            "p95": 1.2799072265625
+          },
+          "content_tokens_above_snr1": 50,
+          "content_fraction_tokens_above_snr1": 0.78125,
+          "content_token_power_snr_quantiles": {
             "p05": 0.02862117625772953,
             "p25": 1.020906925201416,
             "p50": 1.0935695171356201,
@@ -1558,9 +2310,18 @@
         },
         {
           "t": 0.65,
-          "tokens_above_snr1": 55,
-          "fraction_tokens_above_snr1": 0.859375,
-          "token_snr_quantiles": {
+          "observed_tokens_above_snr1": 55,
+          "observed_fraction_tokens_above_snr1": 0.859375,
+          "observed_token_power_snr_quantiles": {
+            "p05": 0.10777147114276886,
+            "p25": 3.743299722671509,
+            "p50": 3.939391613006592,
+            "p75": 4.092733860015869,
+            "p95": 4.414373874664307
+          },
+          "content_tokens_above_snr1": 55,
+          "content_fraction_tokens_above_snr1": 0.859375,
+          "content_token_power_snr_quantiles": {
             "p05": 0.09871385246515274,
             "p25": 3.521087408065796,
             "p50": 3.7716987133026123,
@@ -1570,9 +2331,18 @@
         },
         {
           "t": 0.8,
-          "tokens_above_snr1": 55,
-          "fraction_tokens_above_snr1": 0.859375,
-          "token_snr_quantiles": {
+          "observed_tokens_above_snr1": 55,
+          "observed_fraction_tokens_above_snr1": 0.859375,
+          "observed_token_power_snr_quantiles": {
+            "p05": 0.4999575614929199,
+            "p25": 17.365367889404297,
+            "p50": 18.275047302246094,
+            "p75": 18.986408233642578,
+            "p95": 20.478515625
+          },
+          "content_tokens_above_snr1": 55,
+          "content_fraction_tokens_above_snr1": 0.859375,
+          "content_token_power_snr_quantiles": {
             "p05": 0.4579388201236725,
             "p25": 16.334510803222656,
             "p50": 17.497112274169922,
@@ -1584,6 +2354,16 @@
       "per_token": [
         {
           "index": 0,
+          "observed_power_per_feature": 1.0801299810409546,
+          "observed_rms": 1.0392930507659912,
+          "observed_snr1_population_t": 0.49036601185798645,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43083980679512024,
+            "p25": 0.46778202056884766,
+            "p50": 0.4970308542251587,
+            "p75": 0.5261439681053162,
+            "p95": 0.564473569393158
+          },
           "content_variance_per_feature": 1.0065668821334839,
           "content_rms": 1.0032780170440674,
           "mean_vector_rms": 0.27122533321380615,
@@ -1600,6 +2380,16 @@
         },
         {
           "index": 1,
+          "observed_power_per_feature": 0.0312426146119833,
+          "observed_rms": 0.17675580084323883,
+          "observed_snr1_population_t": 0.8497939705848694,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.795305073261261,
+            "p25": 0.8373285531997681,
+            "p50": 0.8600789308547974,
+            "p75": 0.8790429830551147,
+            "p95": 0.9020914435386658
+          },
           "content_variance_per_feature": 0.02859637700021267,
           "content_rms": 0.16910463571548462,
           "mean_vector_rms": 0.05144156888127327,
@@ -1616,6 +2406,16 @@
         },
         {
           "index": 2,
+          "observed_power_per_feature": 1.2869865894317627,
+          "observed_rms": 1.134454369544983,
+          "observed_snr1_population_t": 0.46850383281707764,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.40919041633605957,
+            "p25": 0.4470055103302002,
+            "p50": 0.47500622272491455,
+            "p75": 0.5025616884231567,
+            "p95": 0.5442717671394348
+          },
           "content_variance_per_feature": 1.1384971141815186,
           "content_rms": 1.0670037269592285,
           "mean_vector_rms": 0.38534343242645264,
@@ -1632,6 +2432,16 @@
         },
         {
           "index": 3,
+          "observed_power_per_feature": 1.1388880014419556,
+          "observed_rms": 1.067186951637268,
+          "observed_snr1_population_t": 0.4837492108345032,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4227312505245209,
+            "p25": 0.4614618420600891,
+            "p50": 0.4912881553173065,
+            "p75": 0.5204641222953796,
+            "p95": 0.5572736263275146
+          },
           "content_variance_per_feature": 1.088221788406372,
           "content_rms": 1.043178677558899,
           "mean_vector_rms": 0.2250913679599762,
@@ -1648,6 +2458,16 @@
         },
         {
           "index": 4,
+          "observed_power_per_feature": 1.1552714109420776,
+          "observed_rms": 1.0748355388641357,
+          "observed_snr1_population_t": 0.48196589946746826,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42424145340919495,
+            "p25": 0.46020281314849854,
+            "p50": 0.48881995677948,
+            "p75": 0.5156578421592712,
+            "p95": 0.5529038906097412
+          },
           "content_variance_per_feature": 1.1143239736557007,
           "content_rms": 1.0556154251098633,
           "mean_vector_rms": 0.20235483348369598,
@@ -1664,6 +2484,16 @@
         },
         {
           "index": 5,
+          "observed_power_per_feature": 1.033586859703064,
+          "observed_rms": 1.0166547298431396,
+          "observed_snr1_population_t": 0.4958707094192505,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4362221658229828,
+            "p25": 0.473420113325119,
+            "p50": 0.5032576322555542,
+            "p75": 0.5308144092559814,
+            "p95": 0.5703384280204773
+          },
           "content_variance_per_feature": 0.9716818928718567,
           "content_rms": 0.9857392311096191,
           "mean_vector_rms": 0.2488071620464325,
@@ -1680,6 +2510,16 @@
         },
         {
           "index": 6,
+          "observed_power_per_feature": 1.1412526369094849,
+          "observed_rms": 1.0682942867279053,
+          "observed_snr1_population_t": 0.4834901988506317,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42456677556037903,
+            "p25": 0.46202701330184937,
+            "p50": 0.4897432327270508,
+            "p75": 0.5175442099571228,
+            "p95": 0.5577269792556763
+          },
           "content_variance_per_feature": 1.0749530792236328,
           "content_rms": 1.036799430847168,
           "mean_vector_rms": 0.25748690962791443,
@@ -1696,6 +2536,16 @@
         },
         {
           "index": 7,
+          "observed_power_per_feature": 1.1848138570785522,
+          "observed_rms": 1.0884915590286255,
+          "observed_snr1_population_t": 0.4788145124912262,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.419173926115036,
+            "p25": 0.4568718671798706,
+            "p50": 0.48640578985214233,
+            "p75": 0.5139475464820862,
+            "p95": 0.5521127581596375
+          },
           "content_variance_per_feature": 1.1310279369354248,
           "content_rms": 1.0634980201721191,
           "mean_vector_rms": 0.23191756010055542,
@@ -1712,6 +2562,16 @@
         },
         {
           "index": 8,
+          "observed_power_per_feature": 0.03133312985301018,
+          "observed_rms": 0.1770116686820984,
+          "observed_snr1_population_t": 0.8496091961860657,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.7949925661087036,
+            "p25": 0.8371779918670654,
+            "p50": 0.8599516153335571,
+            "p75": 0.8789105415344238,
+            "p95": 0.9021592736244202
+          },
           "content_variance_per_feature": 0.028714755550026894,
           "content_rms": 0.16945429146289825,
           "mean_vector_rms": 0.05117002874612808,
@@ -1728,6 +2588,16 @@
         },
         {
           "index": 9,
+          "observed_power_per_feature": 1.2319223880767822,
+          "observed_rms": 1.1099200248718262,
+          "observed_snr1_population_t": 0.4739516079425812,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4149579405784607,
+            "p25": 0.4533216953277588,
+            "p50": 0.481262743473053,
+            "p75": 0.507437527179718,
+            "p95": 0.5445887446403503
+          },
           "content_variance_per_feature": 1.1122901439666748,
           "content_rms": 1.0546516180038452,
           "mean_vector_rms": 0.34587880969047546,
@@ -1744,6 +2614,16 @@
         },
         {
           "index": 10,
+          "observed_power_per_feature": 1.03903067111969,
+          "observed_rms": 1.0193285942077637,
+          "observed_snr1_population_t": 0.4952141046524048,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43629586696624756,
+            "p25": 0.4732908010482788,
+            "p50": 0.5025359392166138,
+            "p75": 0.5296959280967712,
+            "p95": 0.5655543208122253
+          },
           "content_variance_per_feature": 0.9672675728797913,
           "content_rms": 0.9834976196289062,
           "mean_vector_rms": 0.26788607239723206,
@@ -1760,6 +2640,16 @@
         },
         {
           "index": 11,
+          "observed_power_per_feature": 1.1651585102081299,
+          "observed_rms": 1.0794250965118408,
+          "observed_snr1_population_t": 0.48090213537216187,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4224894642829895,
+            "p25": 0.4599926769733429,
+            "p50": 0.4874953031539917,
+            "p75": 0.5147007703781128,
+            "p95": 0.5515931248664856
+          },
           "content_variance_per_feature": 1.1071178913116455,
           "content_rms": 1.0521966218948364,
           "mean_vector_rms": 0.24091580510139465,
@@ -1776,6 +2666,16 @@
         },
         {
           "index": 12,
+          "observed_power_per_feature": 1.1845269203186035,
+          "observed_rms": 1.0883597135543823,
+          "observed_snr1_population_t": 0.47884467244148254,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.419605016708374,
+            "p25": 0.4571784436702728,
+            "p50": 0.48561161756515503,
+            "p75": 0.513583779335022,
+            "p95": 0.5511646270751953
+          },
           "content_variance_per_feature": 1.1431145668029785,
           "content_rms": 1.0691653490066528,
           "mean_vector_rms": 0.20350025594234467,
@@ -1792,6 +2692,16 @@
         },
         {
           "index": 13,
+          "observed_power_per_feature": 1.1346395015716553,
+          "observed_rms": 1.0651946067810059,
+          "observed_snr1_population_t": 0.4842158555984497,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42468976974487305,
+            "p25": 0.46282610297203064,
+            "p50": 0.49182915687561035,
+            "p75": 0.5191845297813416,
+            "p95": 0.5546107292175293
+          },
           "content_variance_per_feature": 1.0852563381195068,
           "content_rms": 1.0417563915252686,
           "mean_vector_rms": 0.22222310304641724,
@@ -1808,6 +2718,16 @@
         },
         {
           "index": 14,
+          "observed_power_per_feature": 1.1664741039276123,
+          "observed_rms": 1.0800342559814453,
+          "observed_snr1_population_t": 0.48076131939888,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42048364877700806,
+            "p25": 0.458770751953125,
+            "p50": 0.4876638948917389,
+            "p75": 0.5163266658782959,
+            "p95": 0.5546795129776001
+          },
           "content_variance_per_feature": 1.1186643838882446,
           "content_rms": 1.0576692819595337,
           "mean_vector_rms": 0.21865421533584595,
@@ -1824,6 +2744,16 @@
         },
         {
           "index": 15,
+          "observed_power_per_feature": 1.1469807624816895,
+          "observed_rms": 1.0709718465805054,
+          "observed_snr1_population_t": 0.4828650653362274,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42756709456443787,
+            "p25": 0.4619934856891632,
+            "p50": 0.48892080783843994,
+            "p75": 0.5151957869529724,
+            "p95": 0.5511738657951355
+          },
           "content_variance_per_feature": 1.103723168373108,
           "content_rms": 1.0505822896957397,
           "mean_vector_rms": 0.20798446238040924,
@@ -1840,6 +2770,16 @@
         },
         {
           "index": 16,
+          "observed_power_per_feature": 1.1178908348083496,
+          "observed_rms": 1.057303547859192,
+          "observed_snr1_population_t": 0.48607316613197327,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4254968762397766,
+            "p25": 0.46393606066703796,
+            "p50": 0.49381715059280396,
+            "p75": 0.522404134273529,
+            "p95": 0.5576774477958679
+          },
           "content_variance_per_feature": 1.075455904006958,
           "content_rms": 1.0370419025421143,
           "mean_vector_rms": 0.20599761605262756,
@@ -1856,6 +2796,16 @@
         },
         {
           "index": 17,
+          "observed_power_per_feature": 0.03134917467832565,
+          "observed_rms": 0.17705698311328888,
+          "observed_snr1_population_t": 0.8495765328407288,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.7948076725006104,
+            "p25": 0.8370712399482727,
+            "p50": 0.8598127365112305,
+            "p75": 0.8789029717445374,
+            "p95": 0.9022689461708069
+          },
           "content_variance_per_feature": 0.028726838529109955,
           "content_rms": 0.16948993504047394,
           "mean_vector_rms": 0.051208723336458206,
@@ -1872,6 +2822,16 @@
         },
         {
           "index": 18,
+          "observed_power_per_feature": 1.1992383003234863,
+          "observed_rms": 1.0950974225997925,
+          "observed_snr1_population_t": 0.47730475664138794,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.41870564222335815,
+            "p25": 0.45549023151397705,
+            "p50": 0.48316335678100586,
+            "p75": 0.5115939974784851,
+            "p95": 0.5505383014678955
+          },
           "content_variance_per_feature": 1.147871971130371,
           "content_rms": 1.0713878870010376,
           "mean_vector_rms": 0.22664159536361694,
@@ -1888,6 +2848,16 @@
         },
         {
           "index": 19,
+          "observed_power_per_feature": 1.1921606063842773,
+          "observed_rms": 1.0918610095977783,
+          "observed_snr1_population_t": 0.47804322838783264,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.418719083070755,
+            "p25": 0.4565015733242035,
+            "p50": 0.48432278633117676,
+            "p75": 0.5126523375511169,
+            "p95": 0.5512210130691528
+          },
           "content_variance_per_feature": 1.1491761207580566,
           "content_rms": 1.0719963312149048,
           "mean_vector_rms": 0.2073265016078949,
@@ -1904,6 +2874,16 @@
         },
         {
           "index": 20,
+          "observed_power_per_feature": 1.204558253288269,
+          "observed_rms": 1.0975236892700195,
+          "observed_snr1_population_t": 0.4767526686191559,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4153510332107544,
+            "p25": 0.45435503125190735,
+            "p50": 0.483410507440567,
+            "p75": 0.5129516124725342,
+            "p95": 0.5536708831787109
+          },
           "content_variance_per_feature": 1.1585153341293335,
           "content_rms": 1.0763435363769531,
           "mean_vector_rms": 0.21457624435424805,
@@ -1920,6 +2900,16 @@
         },
         {
           "index": 21,
+          "observed_power_per_feature": 1.0900623798370361,
+          "observed_rms": 1.044060468673706,
+          "observed_snr1_population_t": 0.48922231793403625,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42965078353881836,
+            "p25": 0.46747419238090515,
+            "p50": 0.4970957636833191,
+            "p75": 0.5251503586769104,
+            "p95": 0.5596862435340881
+          },
           "content_variance_per_feature": 1.0427733659744263,
           "content_rms": 1.021162748336792,
           "mean_vector_rms": 0.21746020019054413,
@@ -1936,6 +2926,16 @@
         },
         {
           "index": 22,
+          "observed_power_per_feature": 1.077525019645691,
+          "observed_rms": 1.0380390882492065,
+          "observed_snr1_population_t": 0.4906677007675171,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42922815680503845,
+            "p25": 0.4673702120780945,
+            "p50": 0.4993150234222412,
+            "p75": 0.5280759930610657,
+            "p95": 0.563103437423706
+          },
           "content_variance_per_feature": 1.0256869792938232,
           "content_rms": 1.0127620697021484,
           "mean_vector_rms": 0.2276800125837326,
@@ -1952,6 +2952,16 @@
         },
         {
           "index": 23,
+          "observed_power_per_feature": 1.1791125535964966,
+          "observed_rms": 1.085869550704956,
+          "observed_snr1_population_t": 0.4794163703918457,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4185229241847992,
+            "p25": 0.45737603306770325,
+            "p50": 0.4862755537033081,
+            "p75": 0.5149435997009277,
+            "p95": 0.553905189037323
+          },
           "content_variance_per_feature": 1.129928469657898,
           "content_rms": 1.0629808902740479,
           "mean_vector_rms": 0.22177521884441376,
@@ -1968,6 +2978,16 @@
         },
         {
           "index": 24,
+          "observed_power_per_feature": 1.089604377746582,
+          "observed_rms": 1.0438411235809326,
+          "observed_snr1_population_t": 0.4892748296260834,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43184733390808105,
+            "p25": 0.46635761857032776,
+            "p50": 0.4965074360370636,
+            "p75": 0.5234267115592957,
+            "p95": 0.5598928928375244
+          },
           "content_variance_per_feature": 1.0599888563156128,
           "content_rms": 1.0295575857162476,
           "mean_vector_rms": 0.17209087312221527,
@@ -1984,6 +3004,16 @@
         },
         {
           "index": 25,
+          "observed_power_per_feature": 1.258851408958435,
+          "observed_rms": 1.1219854354858398,
+          "observed_snr1_population_t": 0.4712567627429962,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4199736416339874,
+            "p25": 0.451514333486557,
+            "p50": 0.47676756978034973,
+            "p75": 0.4992864727973938,
+            "p95": 0.5358554124832153
+          },
           "content_variance_per_feature": 1.1780329942703247,
           "content_rms": 1.0853722095489502,
           "mean_vector_rms": 0.2842858135700226,
@@ -2000,6 +3030,16 @@
         },
         {
           "index": 26,
+          "observed_power_per_feature": 1.0612298250198364,
+          "observed_rms": 1.0301600694656372,
+          "observed_snr1_population_t": 0.49257203936576843,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43101468682289124,
+            "p25": 0.46955084800720215,
+            "p50": 0.49929115176200867,
+            "p75": 0.5288584232330322,
+            "p95": 0.5710616707801819
+          },
           "content_variance_per_feature": 0.985500156879425,
           "content_rms": 0.9927236437797546,
           "mean_vector_rms": 0.27519020438194275,
@@ -2016,6 +3056,16 @@
         },
         {
           "index": 27,
+          "observed_power_per_feature": 0.031228814274072647,
+          "observed_rms": 0.17671675980091095,
+          "observed_snr1_population_t": 0.8498221635818481,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.7952632904052734,
+            "p25": 0.8372988104820251,
+            "p50": 0.8601288199424744,
+            "p75": 0.8791388869285583,
+            "p95": 0.9023368954658508
+          },
           "content_variance_per_feature": 0.02863244339823723,
           "content_rms": 0.1692112386226654,
           "mean_vector_rms": 0.05095454677939415,
@@ -2032,6 +3082,16 @@
         },
         {
           "index": 28,
+          "observed_power_per_feature": 1.138597011566162,
+          "observed_rms": 1.067050576210022,
+          "observed_snr1_population_t": 0.4837811291217804,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42700812220573425,
+            "p25": 0.4621882140636444,
+            "p50": 0.48955583572387695,
+            "p75": 0.5169793963432312,
+            "p95": 0.5563890337944031
+          },
           "content_variance_per_feature": 1.08097505569458,
           "content_rms": 1.0396995544433594,
           "mean_vector_rms": 0.24004577100276947,
@@ -2048,6 +3108,16 @@
         },
         {
           "index": 29,
+          "observed_power_per_feature": 1.282073736190796,
+          "observed_rms": 1.1322869062423706,
+          "observed_snr1_population_t": 0.46898001432418823,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4118407070636749,
+            "p25": 0.4481871724128723,
+            "p50": 0.47486308217048645,
+            "p75": 0.5009238123893738,
+            "p95": 0.5422672033309937
+          },
           "content_variance_per_feature": 1.1546778678894043,
           "content_rms": 1.0745593309402466,
           "mean_vector_rms": 0.35692572593688965,
@@ -2064,6 +3134,16 @@
         },
         {
           "index": 30,
+          "observed_power_per_feature": 1.1257778406143188,
+          "observed_rms": 1.0610268115997314,
+          "observed_snr1_population_t": 0.4851950407028198,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.424021452665329,
+            "p25": 0.46367472410202026,
+            "p50": 0.49320167303085327,
+            "p75": 0.5214327573776245,
+            "p95": 0.5562399625778198
+          },
           "content_variance_per_feature": 1.0706830024719238,
           "content_rms": 1.0347381830215454,
           "mean_vector_rms": 0.23472252488136292,
@@ -2080,6 +3160,16 @@
         },
         {
           "index": 31,
+          "observed_power_per_feature": 1.2662829160690308,
+          "observed_rms": 1.125292420387268,
+          "observed_snr1_population_t": 0.47052350640296936,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.41222700476646423,
+            "p25": 0.44943860173225403,
+            "p50": 0.4771566390991211,
+            "p75": 0.5034835934638977,
+            "p95": 0.5409326553344727
+          },
           "content_variance_per_feature": 1.1510601043701172,
           "content_rms": 1.072874665260315,
           "mean_vector_rms": 0.33944499492645264,
@@ -2096,6 +3186,16 @@
         },
         {
           "index": 32,
+          "observed_power_per_feature": 1.2175953388214111,
+          "observed_rms": 1.1034469604492188,
+          "observed_snr1_population_t": 0.475410133600235,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4188593924045563,
+            "p25": 0.45425358414649963,
+            "p50": 0.48141199350357056,
+            "p75": 0.5082526803016663,
+            "p95": 0.5450124144554138
+          },
           "content_variance_per_feature": 1.15964674949646,
           "content_rms": 1.076869010925293,
           "mean_vector_rms": 0.24072490632534027,
@@ -2112,6 +3212,16 @@
         },
         {
           "index": 33,
+          "observed_power_per_feature": 1.1680638790130615,
+          "observed_rms": 1.0807700157165527,
+          "observed_snr1_population_t": 0.4805913269519806,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4204705059528351,
+            "p25": 0.45894622802734375,
+            "p50": 0.4877171218395233,
+            "p75": 0.5161066651344299,
+            "p95": 0.5525139570236206
+          },
           "content_variance_per_feature": 1.1238352060317993,
           "content_rms": 1.0601109266281128,
           "mean_vector_rms": 0.21030597388744354,
@@ -2128,6 +3238,16 @@
         },
         {
           "index": 34,
+          "observed_power_per_feature": 1.209989309310913,
+          "observed_rms": 1.0999951362609863,
+          "observed_snr1_population_t": 0.47619158029556274,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.41991910338401794,
+            "p25": 0.4554789066314697,
+            "p50": 0.48276257514953613,
+            "p75": 0.508481502532959,
+            "p95": 0.5446822047233582
+          },
           "content_variance_per_feature": 1.0983526706695557,
           "content_rms": 1.0480232238769531,
           "mean_vector_rms": 0.33412063121795654,
@@ -2144,6 +3264,16 @@
         },
         {
           "index": 35,
+          "observed_power_per_feature": 1.2061569690704346,
+          "observed_rms": 1.0982518196105957,
+          "observed_snr1_population_t": 0.4765872061252594,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.41742581129074097,
+            "p25": 0.45492735505104065,
+            "p50": 0.48269134759902954,
+            "p75": 0.511160135269165,
+            "p95": 0.5493540167808533
+          },
           "content_variance_per_feature": 1.1619855165481567,
           "content_rms": 1.0779542922973633,
           "mean_vector_rms": 0.21017025411128998,
@@ -2160,6 +3290,16 @@
         },
         {
           "index": 36,
+          "observed_power_per_feature": 1.149262547492981,
+          "observed_rms": 1.072036623954773,
+          "observed_snr1_population_t": 0.48261693120002747,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42431125044822693,
+            "p25": 0.4608008563518524,
+            "p50": 0.4887484908103943,
+            "p75": 0.517155647277832,
+            "p95": 0.5539294481277466
+          },
           "content_variance_per_feature": 1.1052358150482178,
           "content_rms": 1.0513019561767578,
           "mean_vector_rms": 0.20982526242733002,
@@ -2176,6 +3316,16 @@
         },
         {
           "index": 37,
+          "observed_power_per_feature": 1.193912148475647,
+          "observed_rms": 1.0926628112792969,
+          "observed_snr1_population_t": 0.47786006331443787,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4175054728984833,
+            "p25": 0.45599421858787537,
+            "p50": 0.4843621253967285,
+            "p75": 0.5132638812065125,
+            "p95": 0.5525990128517151
+          },
           "content_variance_per_feature": 1.1463650465011597,
           "content_rms": 1.0706844329833984,
           "mean_vector_rms": 0.2180522382259369,
@@ -2192,6 +3342,16 @@
         },
         {
           "index": 38,
+          "observed_power_per_feature": 1.159286379814148,
+          "observed_rms": 1.0767016410827637,
+          "observed_snr1_population_t": 0.4815328121185303,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42131635546684265,
+            "p25": 0.4592132866382599,
+            "p50": 0.488473117351532,
+            "p75": 0.517571210861206,
+            "p95": 0.5555611848831177
+          },
           "content_variance_per_feature": 1.1102460622787476,
           "content_rms": 1.0536820888519287,
           "mean_vector_rms": 0.22144995629787445,
@@ -2208,6 +3368,16 @@
         },
         {
           "index": 39,
+          "observed_power_per_feature": 1.1693906784057617,
+          "observed_rms": 1.0813837051391602,
+          "observed_snr1_population_t": 0.4804496169090271,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4193119704723358,
+            "p25": 0.4579264521598816,
+            "p50": 0.4878048300743103,
+            "p75": 0.5167196989059448,
+            "p95": 0.5550996661186218
+          },
           "content_variance_per_feature": 1.1175497770309448,
           "content_rms": 1.0571422576904297,
           "mean_vector_rms": 0.2276860773563385,
@@ -2224,6 +3394,16 @@
         },
         {
           "index": 40,
+          "observed_power_per_feature": 1.1695157289505005,
+          "observed_rms": 1.0814415216445923,
+          "observed_snr1_population_t": 0.4804362952709198,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4209267199039459,
+            "p25": 0.4586273431777954,
+            "p50": 0.48701047897338867,
+            "p75": 0.5152694582939148,
+            "p95": 0.5536433458328247
+          },
           "content_variance_per_feature": 1.1163523197174072,
           "content_rms": 1.0565757751464844,
           "mean_vector_rms": 0.2305718958377838,
@@ -2240,6 +3420,16 @@
         },
         {
           "index": 41,
+          "observed_power_per_feature": 1.0551574230194092,
+          "observed_rms": 1.0272085666656494,
+          "observed_snr1_population_t": 0.49328914284706116,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43400776386260986,
+            "p25": 0.47119608521461487,
+            "p50": 0.4998095631599426,
+            "p75": 0.5275751352310181,
+            "p95": 0.5689562559127808
+          },
           "content_variance_per_feature": 0.9881826043128967,
           "content_rms": 0.994073748588562,
           "mean_vector_rms": 0.258794903755188,
@@ -2256,6 +3446,16 @@
         },
         {
           "index": 42,
+          "observed_power_per_feature": 1.2882294654846191,
+          "observed_rms": 1.1350020170211792,
+          "observed_snr1_population_t": 0.4683836102485657,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4088265299797058,
+            "p25": 0.44639116525650024,
+            "p50": 0.47519809007644653,
+            "p75": 0.5035311579704285,
+            "p95": 0.5430304408073425
+          },
           "content_variance_per_feature": 1.1416172981262207,
           "content_rms": 1.068464994430542,
           "mean_vector_rms": 0.38289931416511536,
@@ -2272,6 +3472,16 @@
         },
         {
           "index": 43,
+          "observed_power_per_feature": 0.031203052029013634,
+          "observed_rms": 0.17664386332035065,
+          "observed_snr1_population_t": 0.8498748540878296,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.7955290675163269,
+            "p25": 0.8374036550521851,
+            "p50": 0.8601140975952148,
+            "p75": 0.87916100025177,
+            "p95": 0.902446985244751
+          },
           "content_variance_per_feature": 0.02857859805226326,
           "content_rms": 0.16905206441879272,
           "mean_vector_rms": 0.051229387521743774,
@@ -2288,6 +3498,16 @@
         },
         {
           "index": 44,
+          "observed_power_per_feature": 1.296487808227539,
+          "observed_rms": 1.138634204864502,
+          "observed_snr1_population_t": 0.4675881564617157,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.41575220227241516,
+            "p25": 0.4477424621582031,
+            "p50": 0.47273266315460205,
+            "p75": 0.49599117040634155,
+            "p95": 0.533983588218689
+          },
           "content_variance_per_feature": 1.192757487297058,
           "content_rms": 1.0921343564987183,
           "mean_vector_rms": 0.3220716416835785,
@@ -2304,6 +3524,16 @@
         },
         {
           "index": 45,
+          "observed_power_per_feature": 1.1356587409973145,
+          "observed_rms": 1.0656728744506836,
+          "observed_snr1_population_t": 0.4841037690639496,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.424188494682312,
+            "p25": 0.46203285455703735,
+            "p50": 0.4914485812187195,
+            "p75": 0.5196380615234375,
+            "p95": 0.5550757646560669
+          },
           "content_variance_per_feature": 1.0934712886810303,
           "content_rms": 1.045691728591919,
           "mean_vector_rms": 0.2053958773612976,
@@ -2320,6 +3550,16 @@
         },
         {
           "index": 46,
+          "observed_power_per_feature": 1.0911860466003418,
+          "observed_rms": 1.0445984601974487,
+          "observed_snr1_population_t": 0.4890935719013214,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4293161630630493,
+            "p25": 0.4667586088180542,
+            "p50": 0.49551600217819214,
+            "p75": 0.5241258144378662,
+            "p95": 0.5643560290336609
+          },
           "content_variance_per_feature": 1.0053298473358154,
           "content_rms": 1.0026613473892212,
           "mean_vector_rms": 0.29301217198371887,
@@ -2336,6 +3576,16 @@
         },
         {
           "index": 47,
+          "observed_power_per_feature": 1.1805603504180908,
+          "observed_rms": 1.086535930633545,
+          "observed_snr1_population_t": 0.4792632460594177,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.41887378692626953,
+            "p25": 0.45728030800819397,
+            "p50": 0.48604583740234375,
+            "p75": 0.5149759650230408,
+            "p95": 0.5533319711685181
+          },
           "content_variance_per_feature": 1.135910987854004,
           "content_rms": 1.0657912492752075,
           "mean_vector_rms": 0.21130453050136566,
@@ -2352,6 +3602,16 @@
         },
         {
           "index": 48,
+          "observed_power_per_feature": 1.0951083898544312,
+          "observed_rms": 1.0464742183685303,
+          "observed_snr1_population_t": 0.4886452853679657,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4264843463897705,
+            "p25": 0.4662764370441437,
+            "p50": 0.49706149101257324,
+            "p75": 0.5256461501121521,
+            "p95": 0.5616405606269836
+          },
           "content_variance_per_feature": 1.0383412837982178,
           "content_rms": 1.0189902782440186,
           "mean_vector_rms": 0.23825819790363312,
@@ -2368,6 +3628,16 @@
         },
         {
           "index": 49,
+          "observed_power_per_feature": 1.0405181646347046,
+          "observed_rms": 1.0200579166412354,
+          "observed_snr1_population_t": 0.495035320520401,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.43140625953674316,
+            "p25": 0.47187069058418274,
+            "p50": 0.5033669471740723,
+            "p75": 0.5330795645713806,
+            "p95": 0.5733785629272461
+          },
           "content_variance_per_feature": 0.961125373840332,
           "content_rms": 0.980370044708252,
           "mean_vector_rms": 0.281767338514328,
@@ -2384,6 +3654,16 @@
         },
         {
           "index": 50,
+          "observed_power_per_feature": 1.2124568223953247,
+          "observed_rms": 1.1011161804199219,
+          "observed_snr1_population_t": 0.47593751549720764,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4157717525959015,
+            "p25": 0.4537006616592407,
+            "p50": 0.4822653830051422,
+            "p75": 0.5118162035942078,
+            "p95": 0.5514498949050903
+          },
           "content_variance_per_feature": 1.1654853820800781,
           "content_rms": 1.0795764923095703,
           "mean_vector_rms": 0.216729074716568,
@@ -2400,6 +3680,16 @@
         },
         {
           "index": 51,
+          "observed_power_per_feature": 1.123565912246704,
+          "observed_rms": 1.0599838495254517,
+          "observed_snr1_population_t": 0.485440731048584,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.42787566781044006,
+            "p25": 0.4637776017189026,
+            "p50": 0.4924091100692749,
+            "p75": 0.51936936378479,
+            "p95": 0.5534955859184265
+          },
           "content_variance_per_feature": 1.0747435092926025,
           "content_rms": 1.036698341369629,
           "mean_vector_rms": 0.2209579199552536,
@@ -2416,6 +3706,16 @@
         },
         {
           "index": 52,
+          "observed_power_per_feature": 0.031283799558877945,
+          "observed_rms": 0.17687226831912994,
+          "observed_snr1_population_t": 0.8497098684310913,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.7951204180717468,
+            "p25": 0.8373080492019653,
+            "p50": 0.8600029945373535,
+            "p75": 0.8790283799171448,
+            "p95": 0.9022654294967651
+          },
           "content_variance_per_feature": 0.02867257595062256,
           "content_rms": 0.16932979226112366,
           "mean_vector_rms": 0.05110014230012894,
@@ -2432,6 +3732,16 @@
         },
         {
           "index": 53,
+          "observed_power_per_feature": 1.0870705842971802,
+          "observed_rms": 1.0426267385482788,
+          "observed_snr1_population_t": 0.4895656704902649,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.434693843126297,
+            "p25": 0.46822041273117065,
+            "p50": 0.4950439929962158,
+            "p75": 0.5205039978027344,
+            "p95": 0.5603280663490295
+          },
           "content_variance_per_feature": 1.0330541133880615,
           "content_rms": 1.016392707824707,
           "mean_vector_rms": 0.2324143946170807,
@@ -2448,6 +3758,16 @@
         },
         {
           "index": 54,
+          "observed_power_per_feature": 1.2676308155059814,
+          "observed_rms": 1.125891089439392,
+          "observed_snr1_population_t": 0.4703909456729889,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4112924337387085,
+            "p25": 0.4492557644844055,
+            "p50": 0.4773334860801697,
+            "p75": 0.5037038922309875,
+            "p95": 0.5444852113723755
+          },
           "content_variance_per_feature": 1.146194577217102,
           "content_rms": 1.0706048011779785,
           "mean_vector_rms": 0.34847697615623474,
@@ -2464,6 +3784,16 @@
         },
         {
           "index": 55,
+          "observed_power_per_feature": 1.1431282758712769,
+          "observed_rms": 1.0691717863082886,
+          "observed_snr1_population_t": 0.483285129070282,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.422559916973114,
+            "p25": 0.4616732597351074,
+            "p50": 0.49098044633865356,
+            "p75": 0.5185438394546509,
+            "p95": 0.5561681389808655
+          },
           "content_variance_per_feature": 1.0864887237548828,
           "content_rms": 1.0423476696014404,
           "mean_vector_rms": 0.23799099028110504,
@@ -2480,6 +3810,16 @@
         },
         {
           "index": 56,
+          "observed_power_per_feature": 1.1241612434387207,
+          "observed_rms": 1.0602647066116333,
+          "observed_snr1_population_t": 0.4853745400905609,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4314899444580078,
+            "p25": 0.46445223689079285,
+            "p50": 0.49169856309890747,
+            "p75": 0.5161324143409729,
+            "p95": 0.5517582893371582
+          },
           "content_variance_per_feature": 1.0858423709869385,
           "content_rms": 1.0420376062393188,
           "mean_vector_rms": 0.19575153291225433,
@@ -2496,6 +3836,16 @@
         },
         {
           "index": 57,
+          "observed_power_per_feature": 0.03127417340874672,
+          "observed_rms": 0.17684505879878998,
+          "observed_snr1_population_t": 0.8497295379638672,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.7950988411903381,
+            "p25": 0.8372556567192078,
+            "p50": 0.8600176572799683,
+            "p75": 0.8789781928062439,
+            "p95": 0.9021941423416138
+          },
           "content_variance_per_feature": 0.028618838638067245,
           "content_rms": 0.1691710352897644,
           "mean_vector_rms": 0.05152995139360428,
@@ -2512,6 +3862,16 @@
         },
         {
           "index": 58,
+          "observed_power_per_feature": 0.0312403105199337,
+          "observed_rms": 0.17674928903579712,
+          "observed_snr1_population_t": 0.8497987389564514,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.7953218221664429,
+            "p25": 0.837287425994873,
+            "p50": 0.8600972890853882,
+            "p75": 0.8790854811668396,
+            "p95": 0.9023666977882385
+          },
           "content_variance_per_feature": 0.02861918695271015,
           "content_rms": 0.16917206346988678,
           "mean_vector_rms": 0.0511968620121479,
@@ -2528,6 +3888,16 @@
         },
         {
           "index": 59,
+          "observed_power_per_feature": 1.1589773893356323,
+          "observed_rms": 1.0765581130981445,
+          "observed_snr1_population_t": 0.48156610131263733,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4221603572368622,
+            "p25": 0.46005067229270935,
+            "p50": 0.48850470781326294,
+            "p75": 0.5163052082061768,
+            "p95": 0.5531312823295593
+          },
           "content_variance_per_feature": 1.1031007766723633,
           "content_rms": 1.050286054611206,
           "mean_vector_rms": 0.23638233542442322,
@@ -2544,6 +3914,16 @@
         },
         {
           "index": 60,
+          "observed_power_per_feature": 1.1576886177062988,
+          "observed_rms": 1.0759594440460205,
+          "observed_snr1_population_t": 0.481704980134964,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4267686903476715,
+            "p25": 0.46034419536590576,
+            "p50": 0.4880385100841522,
+            "p75": 0.5138439536094666,
+            "p95": 0.5510465502738953
+          },
           "content_variance_per_feature": 1.1230252981185913,
           "content_rms": 1.0597288608551025,
           "mean_vector_rms": 0.18618075549602509,
@@ -2560,6 +3940,16 @@
         },
         {
           "index": 61,
+          "observed_power_per_feature": 1.140637755393982,
+          "observed_rms": 1.0680063962936401,
+          "observed_snr1_population_t": 0.48355746269226074,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4264937937259674,
+            "p25": 0.4628385305404663,
+            "p50": 0.4900428056716919,
+            "p75": 0.5156471133232117,
+            "p95": 0.5539551973342896
+          },
           "content_variance_per_feature": 1.0936676263809204,
           "content_rms": 1.045785665512085,
           "mean_vector_rms": 0.21672633290290833,
@@ -2576,6 +3966,16 @@
         },
         {
           "index": 62,
+          "observed_power_per_feature": 1.1230998039245605,
+          "observed_rms": 1.05976402759552,
+          "observed_snr1_population_t": 0.4854925274848938,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.4323124885559082,
+            "p25": 0.4642983376979828,
+            "p50": 0.4908778667449951,
+            "p75": 0.5157246589660645,
+            "p95": 0.5537806153297424
+          },
           "content_variance_per_feature": 1.0567864179611206,
           "content_rms": 1.0280011892318726,
           "mean_vector_rms": 0.25751355290412903,
@@ -2592,6 +3992,16 @@
         },
         {
           "index": 63,
+          "observed_power_per_feature": 0.03132828325033188,
+          "observed_rms": 0.17699797451496124,
+          "observed_snr1_population_t": 0.8496190905570984,
+          "observed_snr1_per_sample_t": {
+            "p05": 0.7950175404548645,
+            "p25": 0.8371553421020508,
+            "p50": 0.8599319458007812,
+            "p75": 0.8788929581642151,
+            "p95": 0.9022584557533264
+          },
           "content_variance_per_feature": 0.028678130358457565,
           "content_rms": 0.1693461835384369,
           "mean_vector_rms": 0.051479633897542953,

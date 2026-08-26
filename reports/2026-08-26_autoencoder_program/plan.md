@@ -240,14 +240,19 @@ per-sample order.
 The learned-token result is qualitatively different:
 
 - The progressive v5 representation's per-token population crossings occupy
-  only `t*=0.503..0.555` over the 5th-95th percentile. The first token crosses
-  at 0.496 and the final 32-token block averages 0.540. Only 3/64 tokens are
-  above SNR 1 at `t=0.5`, but all 64 are above it by `t=0.65`. Adjacent token
-  energy is descending only 50.4% of the time.
+  only `t*=0.503..0.555` over the 5th-95th percentile after removing each
+  token's population mean. The literal `sqrt(mean_dim(z^2))` statistic requested
+  in the discussion, including token-specific means after tensor-wide prior
+  normalization, gives `t*=0.469..0.537`. The first content-centered token
+  crosses at 0.496 and the final 32-token block averages 0.540. Only 3/64 tokens
+  are above content SNR 1 at `t=0.5` (30/64 under literal observed RMS), but all
+  64 are above it by `t=0.65`. Adjacent token energy is descending only 50.4%
+  of the time.
 - The unordered v8 representation has 55 active tokens crossing tightly near
-  `t=0.48..0.505` and nine nearly dead tokens crossing near 0.855 (indices
-  `1,8,17,27,43,52,57,58,63`). The dead-slot pattern is highly consistent
-  across samples, but not progressive order; adjacent descent is 51.1%.
+  `t=0.469..0.494` under literal observed RMS and nine nearly dead tokens
+  crossing near 0.850 (indices `1,8,17,27,43,52,57,58,63`). The dead-slot
+  pattern is highly consistent across samples, but not progressive order;
+  adjacent descent is 51.1%.
 - Within-token effective rank is retained in the artifact so aggregate token
   energy cannot hide a single active feature direction.
 
@@ -257,6 +262,52 @@ noise-floor schedule resembling image spectra. Per-token SNR is the correct
 primary semantic view for a token schedule; flattened PCA remains the
 rotation-invariant view of total prior difficulty, and within-token spectra are
 the required guardrail.
+
+### Schedule gauge: rescaling versus per-token noise
+
+For token RMS `r_i`, noise standard deviation `sigma_i`, and the RF path above,
+the amplitude form is
+
+`SNRamp_i(t) = t r_i / ((1-t) sigma_i)`.
+
+Its square is the conventional power SNR based on variance. Both reach one at
+the same time:
+
+`t_i* = sigma_i / (sigma_i + r_i)`.
+
+There are two equivalent ways to impose target crossings after per-token scalar
+RMS normalization:
+
+1. Scale token `i` by `a_i`, retain unit noise, and invert `a_i` before decoding.
+2. Leave the token unchanged and use noise standard deviation
+   `sigma_i = 1/a_i`.
+
+For a desired crossing `t_i*`, the required amplitude ratio is
+`a_i = (1-t_i*)/t_i*` under unit noise. A final tensor-wide standard deviation
+does preserve all relative token scales, but changes their common absolute
+gauge. To retain exact target crossings, normalize the target amplitude vector
+to global RMS one before declaring the final schedule, or absorb the common
+factor into the base noise scale.
+
+Full `d x d` whitening inside every token is a stronger intervention than
+needed: it destroys within-token eigenvalue structure. Start with token-specific
+centering and one scalar RMS per token; retain the internal feature covariance.
+
+The completed power-law rescale sweep already applied static per-token scaling,
+recomputed the final tensor-wide mean/std, and inverted the scale before decode.
+It was negative relative to the same v5 joint baseline (FID 35.85): alpha
+0.25/0.50/0.83 produced FID 39.95/40.93/47.18. This instrument welded together
+the desired SNR shift and the scale-induced loss allocation. It does **not**
+answer whether a schedule shift with separately chosen loss weights helps.
+
+The clean next instrument is either a static scale with per-token loss weight
+`w_i=1/a_i^2`, which expresses loss in the original decoded units, or a smooth
+per-token log-SNR/time warp with common noise/data endpoints and explicit
+tokenwise time conditioning. Avoid clamped time offsets: prior rolling results
+already show that tokens freezing at endpoints creates exposure and
+degenerate-gradient problems. If the goal is to reproduce image-like coupling
+rather than isolate the schedule, retain an additional uncompensated or
+timestep-aware weighting arm; do not conflate that with the pure-schedule arm.
 
 ### Resulting experimental order
 

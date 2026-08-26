@@ -13,9 +13,11 @@ crossing time are
     SNR_i(t) = t^2 v_i / (1-t)^2,
     t_i* = 1 / (1 + sqrt(v_i)).
 
-Token-specific means are excluded because they are fixed dataset parameters,
-not image content.  Within-token eigenspectra are reported as a guard against
-an aggregate token SNR hiding one active direction and many dead features.
+Both the literal observed RMS after tensor-wide prior normalization and a
+content-centered version are reported. The latter excludes token-specific
+means because they are fixed dataset parameters rather than sample-dependent
+content. Within-token eigenspectra guard against an aggregate token SNR hiding
+one active direction and many dead features.
 """
 
 from __future__ import annotations
@@ -65,6 +67,15 @@ def analyze_cache(path: Path, max_examples: int) -> dict:
         raise ValueError(f"{path}: invalid global standard deviation")
     values = (values - global_mean) / global_scale
 
+    # Literal statistic requested for the architectural token unit:
+    # sqrt(mean_d z[x,i,d]^2), after the exact normalization used by the prior.
+    # Its square is observed signal power per feature.
+    observed_sample_token_power = values.square().mean(dim=2)
+    observed_token_power = observed_sample_token_power.mean(dim=0)
+    observed_token_rms = observed_token_power.sqrt()
+    observed_token_crossing = _crossing(observed_token_power)
+    observed_sample_token_crossing = _crossing(observed_sample_token_power)
+
     # Remove a separate mean vector at every token.  This makes the signal
     # energy describe sample-dependent content rather than a learned constant.
     token_mean = values.mean(dim=0)
@@ -86,6 +97,14 @@ def analyze_cache(path: Path, max_examples: int) -> dict:
         per_token.append(
             {
                 "index": index,
+                "observed_power_per_feature": float(observed_token_power[index]),
+                "observed_rms": float(observed_token_rms[index]),
+                "observed_snr1_population_t": float(
+                    observed_token_crossing[index]
+                ),
+                "observed_snr1_per_sample_t": _quantiles(
+                    observed_sample_token_crossing[:, index]
+                ),
                 "content_variance_per_feature": float(token_variance[index]),
                 "content_rms": float(token_variance[index].sqrt()),
                 "mean_vector_rms": float(token_mean[index].square().mean().sqrt()),
@@ -139,12 +158,24 @@ def analyze_cache(path: Path, max_examples: int) -> dict:
     timestep_summary = []
     for timestep in TIMESTEPS:
         snr = timestep**2 * token_variance / (1.0 - timestep) ** 2
+        observed_snr = (
+            timestep**2 * observed_token_power / (1.0 - timestep) ** 2
+        )
         timestep_summary.append(
             {
                 "t": timestep,
-                "tokens_above_snr1": int((snr >= 1.0).sum()),
-                "fraction_tokens_above_snr1": float((snr >= 1.0).float().mean()),
-                "token_snr_quantiles": _quantiles(snr),
+                "observed_tokens_above_snr1": int(
+                    (observed_snr >= 1.0).sum()
+                ),
+                "observed_fraction_tokens_above_snr1": float(
+                    (observed_snr >= 1.0).float().mean()
+                ),
+                "observed_token_power_snr_quantiles": _quantiles(observed_snr),
+                "content_tokens_above_snr1": int((snr >= 1.0).sum()),
+                "content_fraction_tokens_above_snr1": float(
+                    (snr >= 1.0).float().mean()
+                ),
+                "content_token_power_snr_quantiles": _quantiles(snr),
             }
         )
 
@@ -160,8 +191,18 @@ def analyze_cache(path: Path, max_examples: int) -> dict:
         "definition": {
             "path": "z_t = (1-t) eps + t z",
             "noise_variance_per_feature": 1.0,
-            "signal": "sample-dependent token content after token-specific mean removal",
-            "snr": "t^2 * token_content_variance / (1-t)^2",
+            "observed_amplitude": "sqrt(mean_d z[x,i,d]^2) after tensor-wide prior normalization",
+            "content_amplitude": "sqrt(mean_d (z[x,i,d]-E_x[z[x,i,d]])^2)",
+            "amplitude_snr": "t * RMS / ((1-t) * noise_std)",
+            "power_snr": "t^2 * power / ((1-t)^2 * noise_variance)",
+            "snr1_equivalence": "amplitude and power definitions have the same crossing",
+        },
+        "observed_token_profile": {
+            "rms_quantiles": _quantiles(observed_token_rms),
+            "snr1_population_t_quantiles": _quantiles(
+                observed_token_crossing
+            ),
+            "note": "Includes token-specific population means; literal dim=-1 RMS view.",
         },
         "token_profile": {
             "content_variance_quantiles": _quantiles(token_variance),
