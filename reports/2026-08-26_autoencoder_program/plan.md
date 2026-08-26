@@ -44,10 +44,11 @@ This varies effective rate inside one trained representation. It therefore
 separates the causal effect of spectral truncation from independent tokenizer
 training and tests whether concentrated high-rate codes recover modelability.
 
-Status: launcher prepared for the shared GPU queue. The oracle writes metrics
-after every rank so a late failure preserves completed evidence. The full-rank
-point must reproduce the existing `64x48` clean rFID/PSNR before any truncated
-rank is interpreted.
+Status: queued through the shared GPU launcher at `2026-08-26T00:10Z`
+(detached launcher PID 3167115). It holds no GPU while waiting. The oracle writes
+metrics after every rank so a late failure preserves completed evidence. The
+full-rank point must reproduce the existing `64x48` clean rFID/PSNR before any
+truncated rank is interpreted.
 
 - Launcher: `scripts/run_e5_pca_oracle.sh`.
 - Evaluator: `scripts/evaluate_pca_truncation_oracle.py`.
