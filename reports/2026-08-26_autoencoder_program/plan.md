@@ -122,3 +122,152 @@ statistics. Only arms that improve the distortion/robustness frontier receive a
 prior screen. Final selection uses decoded FID/KID under the matched prior recipe,
 followed by a larger-sample evaluation and another training seed for claimed
 improvements.
+
+## Architecture and SNR review (2026-08-26)
+
+### Patch resolution is currently coupled across encoder and decoder
+
+`patch_size=4` gives an `8x8` grid: 64 encoder patch tokens and 64 decoder
+output queries. A `2x2` patch is a sensible CIFAR stem candidate, but changing
+the existing flag naively would produce 256 tokens on **both** sides. That
+quadruples tokenwise work and makes each self-attention matrix 16 times larger,
+while simultaneously changing the encoder, decoder, output factorization, and
+parameter-to-token compute balance.
+
+The `4x4 -> width` convolution is not itself a scalar information bottleneck:
+each 48-scalar RGB patch is linearly lifted to width 512. Its possible weakness
+is loss of within-patch interaction granularity. Therefore the controlled test
+is to separate `encoder_patch_size` from `decoder_patch_size`: compare a `2x2`
+encoder stem against the existing `4x4` stem while retaining 64 latent tokens,
+the `8x8` decoder query grid, decoder, objective, and training budget. A local
+convolutional stem that converts the `16x16` fine grid to an `8x8` transformer
+grid is an additional compute-matched alternative.
+
+### Letting latent registers participate throughout the encoder
+
+Concatenating learned latent registers with image-patch tokens before the
+encoder blocks is a valid architecture. At `patch_size=4`, the transformer
+would process 128 tokens and the final 64 register states would be projected to
+the bottleneck. This gives registers repeated image reads, mutual communication,
+and iterative write/refinement instead of the selected model's single terminal
+cross-attention read.
+
+There is already a narrower version of this hypothesis in the code:
+`pool_type=residual` repeatedly performs register-to-patch cross-attention,
+register self-attention, and an FFN. The selected `cross_only` pool performs one
+cross-attention and has no register communication. The clean first comparison
+is therefore `cross_only` versus a depth-matched residual Perceiver pool. Full
+patch/register concatenation is the follow-up if bidirectional patch-register
+updates add value beyond iterative register pooling.
+
+A causal mask over registers alone does **not** create successive information:
+if every register can read every image patch, every register can still encode
+the complete image independently. Causality becomes meaningful only when paired
+with an innovation constraint, a residual reconstruction path, explicit band
+targets, or a token-specific rate/noise budget.
+
+### Ways to impose order besides random-prefix reconstruction
+
+1. **Nested dropout/prefix reconstruction (current):** establishes functional
+   partial decodability but allows the nonlinear decoder to rewrite the whole
+   image at every prefix. It has already shown a full-generation tax.
+2. **Grouped successive refinement:** group tokens into a small number of
+   stages; each group predicts an additive residual after the previous groups.
+   This supplies actual innovation semantics and avoids 64 serial stages.
+3. **Explicit frequency supervision:** match successive reconstructions to
+   cumulative low-pass targets, or match additive decoder increments to a
+   lossless low-pass/band-pass pyramid. Keep phase and orientation.
+4. **Block-causal register formation:** later groups may use earlier register
+   groups while forming innovations. Image-patch memory should remain globally
+   bidirectional.
+5. **Hierarchical variational/rate constraints:** allocate KL, noise, dropout,
+   or dimensional capacity by group so later groups cannot cheaply duplicate
+   earlier information.
+6. **Monotonic/leave-one-group-out constraints:** penalize regressions in
+   prefix distortion and measure the unique contribution of each group. These
+   are weaker than additive residual decoding but useful diagnostics.
+
+### Relation to FAR, VAR, NFIG, and the local blur/DoG evidence
+
+- FAR uses cumulative filtered images `x_i = LP_i(x)`, bidirectional modeling
+  within a frequency level, and autoregression across levels. In its continuous
+  version it predicts the full clean token distribution conditional on `x_i`
+  and filters that prediction to obtain the next level. This is closer to
+  cumulative low-pass conditioning than to assigning independent DoG bands to
+  latent tokens.
+- VAR performs residual multi-scale quantization in the encoder feature map:
+  quantize a coarse residual, subtract its upsampled decoded contribution, and
+  add all scale contributions during reconstruction. This is close to the
+  proposed grouped additive latent decoder, but discrete and organized by
+  spatial resolution.
+- NFIG is the closest explicit frequency construction: FFT masks split the
+  encoder feature map into disjoint bands, residual quantization uses increasing
+  token-map resolutions, and a block-causal transformer predicts low-to-high
+  frequency groups.
+- The neighboring `joint_diffusion` project already tested the exact telescoping
+  input basis `[x-G1x, G1x-G2x, G2x-G4x, G4x]`. It reached FID 22.57, near its
+  RGB baseline, while the redundant cumulative blur input
+  `[x, G1x, G2x, G4x]` reached 19.26. This was input conditioning rather than
+  tokenizer design, but it warns that an invertible DoG basis is not
+  optimization-neutral and supports testing cumulative targets alongside
+  additive bands.
+
+### Measured noise-floor crossings
+
+New CPU-only diagnostics use the exact rectified-flow convention
+`z_t=(1-t)eps+t z` and exact tensor-wide scalar normalization used by the
+matched priors. The artifacts are:
+
+- `scripts/analyze_image_spectral_snr.py` and `image_spectral_snr.json`;
+- `scripts/analyze_token_snr_crossings.py` and `token_snr_crossings.json`.
+
+For raw CIFAR images, an orthonormal FFT and frequency-specific 3x3 RGB
+cross-spectral covariance make unit isotropic pixel noise remain variance 1 in
+every unit color/frequency direction. Radial average-direction crossings are:
+
+| radial band | r1-2 | r3-4 | r5-6 | r7-8 | r9-12 | r13-16 |
+|---|---:|---:|---:|---:|---:|---:|
+| population `t*` | 0.175 | 0.383 | 0.526 | 0.628 | 0.743 | 0.847 |
+| strongest color mode `t*` | 0.112 | 0.270 | 0.398 | 0.500 | 0.630 | 0.766 |
+| strongest-mode variance share | 93.7% | 93.9% | 94.2% | 94.8% | 95.5% | 95.8% |
+
+Adjacent radial-energy ordering holds for
+`99.984%, 99.796%, 99.514%, 99.972%, 99.994%` of individual images. This
+simultaneously quantifies the broad coarse-to-fine SNR schedule, strong RGB
+covariance (one dominant luma-like color direction at every band), and stable
+per-sample order.
+
+The learned-token result is qualitatively different:
+
+- The progressive v5 representation's per-token population crossings occupy
+  only `t*=0.503..0.555` over the 5th-95th percentile. The first token crosses
+  at 0.496 and the final 32-token block averages 0.540. Only 3/64 tokens are
+  above SNR 1 at `t=0.5`, but all 64 are above it by `t=0.65`. Adjacent token
+  energy is descending only 50.4% of the time.
+- The unordered v8 representation has 55 active tokens crossing tightly near
+  `t=0.48..0.505` and nine nearly dead tokens crossing near 0.855 (indices
+  `1,8,17,27,43,52,57,58,63`). The dead-slot pattern is highly consistent
+  across samples, but not progressive order; adjacent descent is 51.1%.
+- Within-token effective rank is retained in the artifact so aggregate token
+  energy cannot hide a single active feature direction.
+
+Thus the progressive tokenizer's blurry-to-fine prefix decoding is currently
+mostly a **decoder/content-allocation property**, not a magnitude-driven
+noise-floor schedule resembling image spectra. Per-token SNR is the correct
+primary semantic view for a token schedule; flattened PCA remains the
+rotation-invariant view of total prior difficulty, and within-token spectra are
+the required guardrail.
+
+### Resulting experimental order
+
+1. Audit additive prefix increments
+   `D(z_{<=k})-D(z_{<=k-1})` by radial and oriented spectrum; current prefix
+   images alone do not prove additive residual semantics.
+2. Run the isolated register-communication control: full-only `64x16`, existing
+   `4x4` image grid and decoder, residual Perceiver pool, matched parameter and
+   15k budget.
+3. Decouple encoder and decoder patch sizes and test a `2x2` encoder stem without
+   changing the bottleneck or output grid.
+4. Only then introduce 4-8 explicit progressive groups, comparing cumulative
+   low-pass supervision against additive band/residual supervision. Promote by
+   clean rFID/PSNR and robustness first, then matched-prior FID.
