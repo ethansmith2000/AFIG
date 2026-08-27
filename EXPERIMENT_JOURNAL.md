@@ -31,7 +31,12 @@ verdicts live under `reports/` and are linked here.
   selected rank-1,536 PCA cache (`64x24`, unchanged `64x48` decoder after exact
   inverse projection) and the progressive alpha-0.50 token-scale cache with
   mean-one `1/a_i^2` flow-loss compensation. The PCA gate is FID 29.93 +/- 2;
-  the schedule gate is the flat progressive FID 35.85 +/- 2. Artifacts and live
+  the schedule gate is the flat progressive FID 35.85 +/- 2. A parameter-exact
+  Stage-A tokenizer control is also queued: it reallocates one of eight patch
+  transformer blocks to one residual register-refinement block (`e7+p1`),
+  retaining 60,056,784 parameters and every other v8 setting. It stops after
+  the 15k distortion/robustness screen unless it moves the measured frontier.
+  Artifacts and live
   status: [autoencoder program](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-08-26 — autoencoder representation program:** prefix-decoding visual,
   completed fixed-cache PCA oracle, staged encoder/objective/regularization

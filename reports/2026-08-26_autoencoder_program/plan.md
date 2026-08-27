@@ -388,3 +388,24 @@ implicit squared-error allocation. The 64 weights have mean 1 and range
   positive schedule signal, `33.85..37.85` requires another seed, and
   `>=37.85` rejects the isolated alpha-0.50 schedule. The historical
   uncompensated alpha-0.50 result is FID 40.93.
+
+### Stage A parameter-matched register communication
+
+The v8 control has eight patch-encoder blocks followed by one terminal
+cross-attention read. A one-block residual pool adds register self-attention and
+an FFN as well as the image read; that extra work is exactly one transformer
+block. The controlled arm therefore uses seven patch blocks plus one residual
+register block. It has exactly the same 60,056,784 parameters as v8 and keeps
+the decoder, `4x4` patches, `64x16` bottleneck, full-only objective, variational
+settings, seed, batch size, and 15k budget fixed.
+
+- Launcher: `scripts/run_stage_a_residual_pool_control.sh`.
+- Output: `tokenizer_runs/v12-unordered-vae-residual-e7p1-n64d16-s1`.
+- Hypothesis: moving one encoder block from patch-only computation to iterative
+  register communication improves the distortion/robustness frontier.
+- Baseline: PSNR 35.88 dB; sensitivity rFID at sigma
+  `0/.05/.10/.20/.40 = 6.08/6.30/7.20/11.86/35.54`.
+- Promotion gate: train a matched prior only if the arm improves at least one of
+  clean, sigma-0.10, or sigma-0.20 rFID by 0.5 without worsening another by more
+  than 0.5. A uniformly near-tied arm is not promoted because it does not
+  justify the topology change.
