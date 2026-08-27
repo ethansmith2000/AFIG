@@ -22,6 +22,17 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-08-27 — first autoencoder-program decisions:** the raw rank-1,536 PCA
+  prior is rejected at FID 170.53/KID 0.1692 despite its 4.65 reconstruction
+  FID oracle. Its retained coefficients have a 14.9x token-RMS range (221.8x
+  first/last token power), and the trained flow remains at MSE 1.192; this is a
+  representation/modelability failure, not an inverse-decoder bug. The
+  compensated alpha-0.50 schedule is also rejected at FID 39.89, only 1.04
+  better than its uncompensated version and 4.04 worse than the flat progressive
+  prior. Conversely, the parameter-matched residual-pool tokenizer clears its
+  promotion gate: PSNR 37.20 versus 35.88 and rFID improves by
+  0.73/0.71/0.59 at sigma 0/.10/.20. Its matched 60k prior is now running.
+  [Full record](reports/2026-08-26_autoencoder_program/plan.md)
 - **2026-08-27 — prefix increments and isolated representation controls:** the
   512-example decoder-increment audit is complete. Progressive prefix training
   makes additions reliably useful but does not create a monotonic frequency

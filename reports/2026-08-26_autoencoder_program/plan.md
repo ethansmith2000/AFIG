@@ -409,3 +409,61 @@ settings, seed, batch size, and 15k budget fixed.
   clean, sigma-0.10, or sigma-0.20 rFID by 0.5 without worsening another by more
   than 0.5. A uniformly near-tied arm is not promoted because it does not
   justify the topology change.
+
+## First control results and decisions (2026-08-27)
+
+### Rank-1,536 PCA: rejected in its raw tensor-wide gauge
+
+The completed matched prior reaches FID **170.53** and KID **0.16918**, far
+outside the loss gate. Samples are locally textured but globally incoherent;
+the failure is also visible in the final flow MSE of 1.192 versus 0.893 for the
+unordered `64x16` baseline. The inverse transform was independently validated
+before training at 35.81 dB on 512 held-out examples, so this is not an inverse
+projection or decoder-shape error.
+
+The retained PCA coordinates create a severe token gauge under the standard
+tensor-wide normalization: token RMS ranges from 5.52 to 0.37 (14.9x), and the
+first/last token power ratio is 221.8x. Thus the raw result rejects the claim
+that concentrating 1,536 leading PCs is automatically easy for the matched
+prior. It does not distinguish high scalar rate from the ordered variance
+hierarchy; a per-token scalar-standardized PCA cache would be the clean follow-up
+if that distinction remains decision-relevant.
+
+- Evaluation: `prior_evals/e5-joint-pca-r1536-n64d24-060000/metrics.json`.
+- Verdict: do not repeat this raw gauge or promote a second seed.
+
+### Compensated alpha-0.50 schedule: rejected
+
+The inverse-square compensated arm reaches FID **39.89** and KID **0.03001**.
+Compensation recovers only 1.04 FID from the uncompensated alpha-0.50 result
+(40.93) and remains 4.04 worse than the flat progressive baseline (35.85). The
+predeclared rejection threshold was 37.85.
+
+This says the earlier negative result was not primarily caused by implicit MSE
+allocation. Static magnitude scheduling itself is harmful in this instrument;
+do not run alpha 0.83. A future schedule test should use an explicit smooth
+tokenwise time/noise parameterization rather than another static rescale.
+
+- Evaluation: `prior_evals/v11-joint-pow05-compensated-vae-060000/metrics.json`.
+- Verdict: reject the static token-scale family.
+
+### Residual register pool: promoted
+
+The parameter-exact `e7+p1` reallocation improves the entire measured
+distortion/robustness curve:
+
+| metric | cross-only v8 | residual pool v12 | change |
+|---|---:|---:|---:|
+| PSNR | 35.88 | **37.20** | +1.32 dB |
+| rFID, sigma 0 | 6.08 | **5.35** | -0.73 |
+| rFID, sigma .05 | 6.30 | **5.56** | -0.74 |
+| rFID, sigma .10 | 7.20 | **6.49** | -0.71 |
+| rFID, sigma .20 | 11.86 | **11.27** | -0.59 |
+| rFID, sigma .40 | 35.54 | **34.22** | -1.33 |
+
+Effective rank rises from 241.95 to 314.34 and top-128 variance share falls
+from 66.66% to 60.37%. This is acceptable at the promotion stage because rank
+is diagnostic and the arm improves both distortion and off-manifold robustness.
+The matched prior is running through
+`scripts/run_stage_a_residual_pool_prior.sh`; decoded FID determines whether the
+better representation is also more modelable.
