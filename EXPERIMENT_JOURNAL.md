@@ -22,6 +22,17 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-08-27 — prefix increments and isolated representation controls:** the
+  512-example decoder-increment audit is complete. Progressive prefix training
+  makes additions reliably useful but does not create a monotonic frequency
+  ladder: token-index/spectral-centroid Spearman is 0.070, adjacent centroids
+  ascend 49.2% of the time, and the decoder path length is 8.01x its direct
+  displacement. Two matched 60k priors are running through `gpu-claim`: the
+  selected rank-1,536 PCA cache (`64x24`, unchanged `64x48` decoder after exact
+  inverse projection) and the progressive alpha-0.50 token-scale cache with
+  mean-one `1/a_i^2` flow-loss compensation. The PCA gate is FID 29.93 +/- 2;
+  the schedule gate is the flat progressive FID 35.85 +/- 2. Artifacts and live
+  status: [autoencoder program](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-08-26 — autoencoder representation program:** prefix-decoding visual,
   completed fixed-cache PCA oracle, staged encoder/objective/regularization
   exploration, and CPU-only image/latent SNR crossing maps. Raw-image radial

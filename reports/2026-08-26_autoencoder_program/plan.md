@@ -322,3 +322,69 @@ timestep-aware weighting arm; do not conflate that with the pure-schedule arm.
 4. Only then introduce 4-8 explicit progressive groups, comparing cumulative
    low-pass supervision against additive band/residual supervision. Promote by
    clean rFID/PSNR and robustness first, then matched-prior FID.
+
+## Prefix-increment audit (completed 2026-08-27)
+
+The one-token image-space increments
+`Delta_k = D(z_<=k) - D(z_<=k-1)` were measured for all 64 slots on the first
+512 held-out CIFAR-10 images. The audit records absolute increment RMS,
+population MSE gain, the fraction of individual examples improved, residual
+alignment, radial/oriented FFT power, and the decoder path length. The fixed
+examples are dataset-order examples, not selected outcomes.
+
+- Script: `scripts/analyze_prefix_increments.py`.
+- Metrics: `prefix_increment_audit/metrics.json`.
+- Overview: `prefix_increment_audit/prefix_increment_overview.png`.
+- All 64 signed increments: `prefix_increment_audit/prefix_increment_contact_sheet.png`.
+
+| measurement | progressive v5 | unordered v8 |
+|---|---:|---:|
+| population-positive token steps | 64/64 | 64/64 |
+| mean fraction of examples improved | 98.98% | 97.38% |
+| tokens for 50% / 90% total error reduction | 31 / 57 | 30 / 55 |
+| centroid-index Spearman | 0.070 | 0.378 |
+| adjacent centroids ascending | 49.2% | 44.4% |
+| decoder path/direct-displacement ratio | 8.01x | 6.75x |
+| energy-weighted centroid, token quartiles | 4.10, 3.17, 3.74, 3.88 | 2.41, 2.28, 2.42, 2.47 |
+
+The unordered unweighted centroid correlation is driven by very small/dead-slot
+increments late in the sequence; energy-weighted quartiles are essentially
+flat. The progressive representation is also not a clean low-to-high ladder:
+its first quartile is spectrally broad, the per-token order is indistinguishable
+from alternating at the adjacent level, and later increments revise spatially
+localized content. Prefix training therefore supplies **useful successive
+decoder refinement**, but not additive frequency semantics. If explicit
+spectral roles are pursued, use 4-8 supervised groups and an additive/cumulative
+comparison rather than assigning 64 individual frequency bands.
+
+## Running matched-prior controls (launched 2026-08-27)
+
+### E5 rank-1,536 PCA prior
+
+`scripts/build_pca_prior_cache.py` produced an exact-transform prior cache with
+shape `64x24`; generated coefficients are inverse-projected to `64x48` before
+the unchanged v9 decoder. The cache retains 98.7126% variance and a 512-example
+validation gives 35.81 dB PSNR, consistent with the oracle. The matched 60k
+prior and 5k evaluation are running via `scripts/run_e5_pca_prior.sh`.
+
+- Cache: `tokenizer_runs/v9-unordered-vae-n64d48-s1/latents_pca_r1536_n64d24_original_flip.pt`.
+- Prior: `prior_runs/e5-joint-pca-r1536-n64d24-s1`.
+- Evaluation: `prior_evals/e5-joint-pca-r1536-n64d24-060000`.
+- Decision gate: relative to unordered `64x16` FID 29.93, `<=27.93` is a clear
+  win, `27.93..31.93` requires another seed, and `>=31.93` is a clear loss at
+  the current 5k evaluation resolution.
+
+### Compensated alpha-0.50 token-SNR control
+
+The existing power-law token-scale cache is trained with normalized
+`w_i = 1/a_i^2`, separating the imposed crossing schedule from the scale's
+implicit squared-error allocation. The 64 weights have mean 1 and range
+`0.03077..1.96923`. The matched 60k prior and 5k evaluation are running via
+`scripts/run_compensated_token_scale_prior.sh 05`.
+
+- Prior: `prior_runs/v11-joint-pow05-compensated-vae-s1`.
+- Evaluation: `prior_evals/v11-joint-pow05-compensated-vae-060000`.
+- Decision gate: relative to flat progressive FID 35.85, `<=33.85` is a clear
+  positive schedule signal, `33.85..37.85` requires another seed, and
+  `>=37.85` rejects the isolated alpha-0.50 schedule. The historical
+  uncompensated alpha-0.50 result is FID 40.93.

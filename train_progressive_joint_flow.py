@@ -24,6 +24,8 @@ from progressive_tokenizer.representations import (
     PIXEL_PATCHES,
     TOKENIZER_LATENTS,
     decode_representation,
+    invert_latent_transform,
+    latent_transform_fingerprint,
     representation_type,
 )
 from progressive_tokenizer.training import count_parameters, optimizer_parameter_groups
@@ -73,6 +75,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--adam_beta1", type=float, default=0.9)
     parser.add_argument("--adam_beta2", type=float, default=0.995)
     parser.add_argument("--weight_decay", type=float, default=0.05)
+    parser.add_argument(
+        "--token_loss_weighting",
+        choices=["uniform", "inverse_token_scale_squared"],
+        default="uniform",
+        help=(
+            "Optional per-token flow loss gauge. inverse_token_scale_squared "
+            "cancels the implicit squared-error allocation introduced by a "
+            "cache's token_scale, with weights normalized to mean one."
+        ),
+    )
     parser.add_argument("--max_grad_norm", type=float, default=1.0)
     parser.add_argument("--mixed_precision", choices=["no", "bf16"], default="bf16")
     parser.add_argument("--log_every", type=int, default=25)
@@ -168,6 +180,47 @@ def reshape_latent_layout(
     return reshaped, layout
 
 
+def build_token_loss_weights(
+    cache: dict,
+    mode: str,
+    sequence_length: int,
+    latent_layout: Optional[dict],
+    device: torch.device,
+) -> tuple[Optional[torch.Tensor], dict]:
+    """Build a mean-one token loss gauge and JSON-safe provenance."""
+
+    if mode == "uniform":
+        return None, {"type": "uniform", "mean": 1.0}
+    if mode != "inverse_token_scale_squared":
+        raise ValueError(f"unsupported token loss weighting: {mode}")
+    if latent_layout is not None:
+        raise ValueError(
+            "inverse token-scale weighting cannot be combined with a prior-only layout reshape"
+        )
+    token_scale = cache.get("token_scale")
+    if token_scale is None:
+        raise ValueError(
+            "inverse_token_scale_squared requires a cache carrying token_scale"
+        )
+    token_scale = token_scale.float().flatten()
+    if token_scale.numel() != sequence_length:
+        raise ValueError("token_scale length does not match prior sequence length")
+    if not bool(torch.isfinite(token_scale).all()) or bool((token_scale <= 0).any()):
+        raise ValueError("token_scale must be finite and strictly positive")
+    weights = token_scale.pow(-2)
+    weights = weights / weights.mean()
+    payload = {
+        "type": mode,
+        "normalization": "mean_one",
+        "mean": float(weights.mean()),
+        "minimum": float(weights.min()),
+        "maximum": float(weights.max()),
+        "values": weights.tolist(),
+        "token_scale_config": cache.get("token_scale_config"),
+    }
+    return weights.to(device), payload
+
+
 def physical_latent_layout(values: torch.Tensor, payload: dict) -> torch.Tensor:
     """Invert an optional prior-only reshape before representation decoding."""
 
@@ -192,9 +245,11 @@ def evaluate(
     scale: torch.Tensor,
     device: torch.device,
     args: argparse.Namespace,
+    token_loss_weights: Optional[torch.Tensor],
 ) -> dict:
     model.eval()
     loss_total = 0.0
+    unweighted_loss_total = 0.0
     token_total = torch.zeros(model.config.sequence_length, device=device)
     examples = 0
     generator = torch.Generator(device=device).manual_seed(20260810)
@@ -210,8 +265,14 @@ def evaluate(
             generator=generator,
         )
         with autocast_context(args, device):
-            output = model(clean, time=time_values, noise=noise)
+            output = model(
+                clean,
+                time=time_values,
+                noise=noise,
+                token_loss_weights=token_loss_weights,
+            )
         loss_total += float(output["loss"]) * clean.shape[0]
+        unweighted_loss_total += float(output["unweighted_loss"]) * clean.shape[0]
         token_total += output["per_token_mse"] * clean.shape[0]
         examples += clean.shape[0]
     model.train()
@@ -219,6 +280,7 @@ def evaluate(
     return {
         "examples": examples,
         "flow_mse": loss_total / max(examples, 1),
+        "unweighted_flow_mse": unweighted_loss_total / max(examples, 1),
         "per_token_mse": per_token.cpu().tolist(),
         "per_token_min": float(per_token.min()),
         "per_token_max": float(per_token.max()),
@@ -254,6 +316,7 @@ def save_preview(
         # broken (register 0 up to 5.6x hot, register 63 down to 0.18x)
         if token_scale is not None:
             raw = raw / token_scale
+        raw = invert_latent_transform(raw, representation_payload)
         images = decode_representation(
             raw, representation_payload, tokenizer=tokenizer
         )
@@ -281,6 +344,7 @@ def checkpoint_payload(
     cache: dict,
     mean: torch.Tensor,
     scale: torch.Tensor,
+    loss_weighting: dict,
 ) -> dict:
     kind = representation_type(cache)
     payload = {
@@ -296,6 +360,8 @@ def checkpoint_payload(
         # evaluator must divide it out before handing latents to the decoder
         "token_scale": cache.get("token_scale"),
         "latent_layout": cache.get("latent_layout"),
+        "latent_transform": cache.get("latent_transform"),
+        "training_objective": {"token_loss_weighting": loss_weighting},
     }
     if kind == TOKENIZER_LATENTS:
         payload.update(
@@ -345,6 +411,13 @@ def main() -> None:
     global_scale = cache["statistics"]["global_std"].float().to(device)
     if not bool(torch.isfinite(global_scale)) or float(global_scale) <= 0:
         raise ValueError("invalid global latent scale")
+    token_loss_weights, loss_weighting_payload = build_token_loss_weights(
+        cache,
+        args.token_loss_weighting,
+        sequence_length,
+        latent_layout,
+        device,
+    )
 
     train_loader = DataLoader(
         TensorDataset(train_latents),
@@ -424,11 +497,15 @@ def main() -> None:
             "scale": float(global_scale),
         },
         "parameters": count_parameters(model.parameters()),
+        "training_objective": {
+            "token_loss_weighting": loss_weighting_payload,
+        },
         "representation": {
             "type": kind,
             "config": cache.get("representation_config"),
             "tokenizer_step": tokenizer_step,
             "latent_layout": latent_layout,
+            "latent_transform": latent_transform_fingerprint(cache),
         },
         "latent_cache": {
             "train_examples": int(train_latents.shape[0]),
@@ -450,7 +527,12 @@ def main() -> None:
     )
 
     iterator = iter(train_loader)
-    rolling = {"loss": 0.0, "prediction_rms": 0.0, "target_rms": 0.0}
+    rolling = {
+        "loss": 0.0,
+        "unweighted_loss": 0.0,
+        "prediction_rms": 0.0,
+        "target_rms": 0.0,
+    }
     rolling_count = 0
     window_start = time.monotonic()
     history = output_dir / "history.jsonl"
@@ -466,12 +548,13 @@ def main() -> None:
         )
         optimizer.zero_grad(set_to_none=True)
         with autocast_context(args, device):
-            output = model(clean)
+            output = model(clean, token_loss_weights=token_loss_weights)
         output["loss"].backward()
         gradient_norm = clip_grad_norm_(model.parameters(), args.max_grad_norm)
         optimizer.step()
         completed_step = step + 1
         rolling["loss"] += float(output["loss"].detach())
+        rolling["unweighted_loss"] += float(output["unweighted_loss"])
         rolling["prediction_rms"] += float(output["prediction_rms"])
         rolling["target_rms"] += float(output["target_rms"])
         rolling_count += 1
@@ -482,6 +565,7 @@ def main() -> None:
             record = {
                 "step": completed_step,
                 "loss": rolling["loss"] / rolling_count,
+                "unweighted_loss": rolling["unweighted_loss"] / rolling_count,
                 "prediction_rms": rolling["prediction_rms"] / rolling_count,
                 "target_rms": rolling["target_rms"] / rolling_count,
                 "gradient_norm": float(gradient_norm),
@@ -504,6 +588,7 @@ def main() -> None:
                 global_scale,
                 device,
                 args,
+                token_loss_weights,
             )
             metrics["step"] = completed_step
             (output_dir / "metrics_latest.json").write_text(
@@ -548,6 +633,7 @@ def main() -> None:
                     cache,
                     global_mean,
                     global_scale,
+                    loss_weighting_payload,
                 ),
                 latest,
             )
@@ -567,6 +653,7 @@ def main() -> None:
         cache,
         global_mean,
         global_scale,
+        loss_weighting_payload,
     )
     final_payload.pop("optimizer")
     atomic_save(final_payload, output_dir / "checkpoint_final.pt")

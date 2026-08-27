@@ -25,6 +25,7 @@ from progressive_tokenizer.representations import (
     PIXEL_PATCHES,
     TOKENIZER_LATENTS,
     decode_representation,
+    invert_latent_transform,
     representation_type,
 )
 
@@ -178,6 +179,7 @@ def main() -> None:
             )
             if token_scale is not None:
                 raw_latents = raw_latents / token_scale
+            raw_latents = invert_latent_transform(raw_latents, payload)
             decoded = decode_representation(
                 raw_latents, payload, tokenizer=tokenizer
             ).float()

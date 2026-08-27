@@ -268,6 +268,7 @@ class JointRectifiedFlow(nn.Module):
         *,
         time: Optional[torch.Tensor] = None,
         noise: Optional[torch.Tensor] = None,
+        token_loss_weights: Optional[torch.Tensor] = None,
     ) -> dict[str, torch.Tensor]:
         batch = clean_latents.shape[0]
         if time is None:
@@ -279,8 +280,21 @@ class JointRectifiedFlow(nn.Module):
         target = clean_latents - noise
         prediction = self.predict_velocity(noisy, time)
         squared_error = (prediction.float() - target.float()).square()
+        unweighted_loss = squared_error.mean()
+        if token_loss_weights is None:
+            loss = unweighted_loss
+        else:
+            if token_loss_weights.ndim != 1 or token_loss_weights.shape[0] != self.config.sequence_length:
+                raise ValueError(
+                    "token_loss_weights must have shape [sequence_length]"
+                )
+            loss = (
+                squared_error
+                * token_loss_weights.to(squared_error)[None, :, None]
+            ).mean()
         return {
-            "loss": squared_error.mean(),
+            "loss": loss,
+            "unweighted_loss": unweighted_loss.detach(),
             "per_token_mse": squared_error.mean(dim=(0, 2)).detach(),
             "prediction_rms": prediction.float().square().mean().sqrt().detach(),
             "target_rms": target.float().square().mean().sqrt().detach(),

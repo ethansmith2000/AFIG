@@ -74,3 +74,63 @@ def decode_representation(
     if kind == PIXEL_PATCHES:
         return unpatchify(tokens, payload["representation_config"])
     raise ValueError(f"unsupported representation type: {kind}")
+
+
+def invert_latent_transform(
+    tokens: torch.Tensor, payload: Mapping[str, Any]
+) -> torch.Tensor:
+    """Invert an optional prior-space transform before representation decoding.
+
+    This is separate from ``latent_layout`` and ``token_scale``. Callers first
+    restore the physical token layout, then undo any per-token scale, and only
+    then invoke this transform.
+    """
+
+    transform = payload.get("latent_transform")
+    if transform is None:
+        return tokens
+    if not isinstance(transform, Mapping):
+        raise ValueError("latent_transform must be a mapping")
+    kind = transform.get("type")
+    if kind != "pca_inverse":
+        raise ValueError(f"unsupported latent transform: {kind}")
+    if tokens.ndim != 3:
+        raise ValueError("PCA coefficients must have shape [B,L,D]")
+    mean = transform.get("mean")
+    basis = transform.get("basis")
+    physical_shape = transform.get("physical_shape")
+    if not torch.is_tensor(mean) or not torch.is_tensor(basis):
+        raise ValueError("PCA transform requires tensor mean and basis")
+    if not isinstance(physical_shape, (list, tuple)) or len(physical_shape) != 2:
+        raise ValueError("PCA transform requires a two-dimensional physical_shape")
+    rank = tokens.shape[1] * tokens.shape[2]
+    physical_count = int(physical_shape[0]) * int(physical_shape[1])
+    if tuple(basis.shape) != (physical_count, rank) or mean.numel() != physical_count:
+        raise ValueError("PCA transform tensors do not match prior/physical shapes")
+    coefficients = tokens.float().flatten(1)
+    physical = coefficients @ basis.to(tokens.device, dtype=torch.float32).T
+    physical = physical + mean.to(tokens.device, dtype=torch.float32)
+    return physical.reshape(
+        tokens.shape[0], int(physical_shape[0]), int(physical_shape[1])
+    )
+
+
+def latent_transform_fingerprint(payload: Mapping[str, Any]) -> Optional[dict]:
+    """Return JSON-safe transform metadata without serializing tensor values."""
+
+    transform = payload.get("latent_transform")
+    if transform is None:
+        return None
+    if not isinstance(transform, Mapping):
+        raise ValueError("latent_transform must be a mapping")
+    if transform.get("type") != "pca_inverse":
+        raise ValueError("unsupported latent transform")
+    basis = transform.get("basis")
+    if not torch.is_tensor(basis):
+        raise ValueError("PCA transform is missing its basis")
+    return {
+        "type": "pca_inverse",
+        "physical_shape": [int(value) for value in transform["physical_shape"]],
+        "rank": int(basis.shape[1]),
+        "source": transform.get("source"),
+    }

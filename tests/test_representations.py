@@ -11,6 +11,8 @@ from progressive_tokenizer.representations import (
     PIXEL_PATCHES,
     TOKENIZER_LATENTS,
     decode_representation,
+    invert_latent_transform,
+    latent_transform_fingerprint,
     patchify,
     representation_type,
     unpatchify,
@@ -43,6 +45,30 @@ def test_legacy_payload_defaults_to_tokenizer_latents() -> None:
 def test_pixel_decode_rejects_wrong_layout() -> None:
     with pytest.raises(ValueError, match="pixel tokens"):
         decode_representation(torch.randn(2, 3, 48), pixel_payload())
+
+
+def test_invert_pca_latent_transform() -> None:
+    coefficients = torch.tensor([[[2.0, -1.0]]])
+    payload = {
+        "latent_transform": {
+            "type": "pca_inverse",
+            "physical_shape": [2, 2],
+            "mean": torch.tensor([1.0, 2.0, 3.0, 4.0]),
+            "basis": torch.tensor(
+                [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.5, -0.5]]
+            ),
+            "source": "basis.pt",
+        }
+    }
+    reconstructed = invert_latent_transform(coefficients, payload)
+    expected = torch.tensor([[[3.0, 1.0], [4.0, 5.5]]])
+    torch.testing.assert_close(reconstructed, expected)
+    assert latent_transform_fingerprint(payload) == {
+        "type": "pca_inverse",
+        "physical_shape": [2, 2],
+        "rank": 2,
+        "source": "basis.pt",
+    }
 
 
 def test_eigen_context_ablation_changes_only_selected_subspace() -> None:
