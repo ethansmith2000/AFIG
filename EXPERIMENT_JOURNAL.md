@@ -22,6 +22,15 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-08-28 — residual-pool generative promotion:** the parameter-matched
+  residual register pool improves matched-prior FID from 29.93 to **27.13** at
+  5k samples and from 27.38 to **24.85** in a paired 10k evaluation. The
+  2.53-point larger-sample gain clears the predeclared modelability gate, while
+  KID improves from 0.02040 to 0.01910. This is now the leading tokenizer
+  architecture. Paired prior seed-2 confirmations on the frozen residual and
+  cross-only caches are running; they test prior-training stochasticity before
+  spending compute on a second tokenizer seed.
+  [Full record](reports/2026-08-26_autoencoder_program/plan.md)
 - **2026-08-27 — first autoencoder-program decisions:** the raw rank-1,536 PCA
   prior is rejected at FID 170.53/KID 0.1692 despite its 4.65 reconstruction
   FID oracle. Its retained coefficients have a 14.9x token-RMS range (221.8x

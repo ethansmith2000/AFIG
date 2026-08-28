@@ -467,3 +467,34 @@ is diagnostic and the arm improves both distortion and off-manifold robustness.
 The matched prior is running through
 `scripts/run_stage_a_residual_pool_prior.sh`; decoded FID determines whether the
 better representation is also more modelable.
+
+### Residual register pool: generative gate cleared (2026-08-28)
+
+The matched seed-1 prior improves the 5k evaluation from FID 29.93/KID 0.02045
+to **FID 27.13/KID 0.01885**, a 2.79-point FID gain. This clears the
+predeclared `<=27.93` strong-win threshold.
+
+A paired 10k evaluation using the same solver, 50 steps, and random seed reduces
+sampling uncertainty and preserves the result:
+
+| tokenizer/prior | samples | FID | KID | clipping |
+|---|---:|---:|---:|---:|
+| cross-only v8 | 10,000 | 27.38 | 0.02040 | 0.405% |
+| residual pool v12 | 10,000 | **24.85** | **0.01910** | 0.462% |
+| difference | | **-2.53** | **-0.00130** | +0.057 pp |
+
+The architecture therefore improves all three selected criteria at fixed
+parameter count: distortion, decoder robustness, and matched-prior modelability.
+This supports repeated register reads and register communication, specifically
+the parameter reallocation tested here; it does not yet establish that full
+patch-register concatenation or a deeper pool is better.
+
+- 5k result: `prior_evals/v12-joint-unordered-vae-residual-e7p1-n64d16-060000/metrics.json`.
+- Paired 10k results:
+  `prior_evals/v12-joint-unordered-vae-residual-e7p1-n64d16-060000-n10k/metrics.json`
+  and `prior_evals/v8-joint-unordered-vae-060000-n10k/metrics.json`.
+- Next confirmation: paired seed-2 priors on both frozen tokenizer caches via
+  `scripts/run_stage_a_prior_seed2.sh` and `scripts/run_v8_prior_seed2.sh`.
+  A repeated advantage larger than 2 FID is the confirmation gate. This tests
+  prior stochasticity only; a second paired tokenizer seed remains necessary
+  before treating the architecture effect size as seed-robust.
