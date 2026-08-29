@@ -498,3 +498,10 @@ patch-register concatenation or a deeper pool is better.
   A repeated advantage larger than 2 FID is the confirmation gate. This tests
   prior stochasticity only; a second paired tokenizer seed remains necessary
   before treating the architecture effect size as seed-robust.
+
+Seed-2 recovery note (2026-08-29): both prior processes were externally stopped
+near step 23k before evaluation. Each has a valid optimizer-bearing step-22,500
+checkpoint. The two launchers now resume automatically, skip already completed
+training/evaluation phases, and are managed as persistent supervisor jobs. They
+remain ordinary `gpu-claim --wait` clients and will not contend with the GPUs
+currently held by other projects.

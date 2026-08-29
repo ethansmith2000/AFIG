@@ -31,6 +31,12 @@ verdicts live under `reports/` and are linked here.
   cross-only caches are running; they test prior-training stochasticity before
   spending compute on a second tokenizer seed.
   [Full record](reports/2026-08-26_autoencoder_program/plan.md)
+- **2026-08-29 — seed-2 confirmation recovery:** both paired prior confirmations
+  were externally interrupted after step 23k; neither produced an evaluation.
+  Their optimizer-bearing step-22,500 checkpoints are valid. Launchers now
+  auto-resume and skip completed phases, and supervisor owns persistent queue
+  waiters so the jobs continue when GPUs become available without bypassing
+  `/workspace/GPU_QUEUEING.md`.
 - **2026-08-27 — first autoencoder-program decisions:** the raw rank-1,536 PCA
   prior is rejected at FID 170.53/KID 0.1692 despite its 4.65 reconstruction
   FID oracle. Its retained coefficients have a 14.9x token-RMS range (221.8x
