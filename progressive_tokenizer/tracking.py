@@ -7,6 +7,18 @@ from pathlib import Path
 from typing import Any, Mapping, Optional
 
 
+def generate_wandb_run_id(wandb_module) -> str:
+    """Generate a run id across the public layouts used by W&B releases."""
+
+    legacy = getattr(getattr(wandb_module, "util", None), "generate_id", None)
+    if legacy is not None:
+        return legacy()
+    # W&B 0.29 removed wandb.util.generate_id but retains the generator here.
+    from wandb.sdk.lib.runid import generate_id
+
+    return generate_id()
+
+
 def flatten_metrics(
     values: Mapping[str, Any], prefix: str = ""
 ) -> dict[str, int | float]:
@@ -45,7 +57,7 @@ class WandbTracker:
             if metadata_path.exists():
                 run_id = json.loads(metadata_path.read_text()).get("id")
             if not run_id:
-                run_id = wandb.util.generate_id()
+                run_id = generate_wandb_run_id(wandb)
             self.run = wandb.init(
                 project=project,
                 name=name,
