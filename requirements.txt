@@ -6,3 +6,5 @@ torchvision
 wandb
 datasets  # optional: local HuggingFace CIFAR arrow loading
 lpips==0.1.4  # optional: perceptual spatial-autoencoder objective
+scipy  # FID covariance square root
+torch-fidelity  # canonical Inception features for FID/KID

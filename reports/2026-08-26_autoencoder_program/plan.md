@@ -505,3 +505,60 @@ checkpoint. The two launchers now resume automatically, skip already completed
 training/evaluation phases, and are managed as persistent supervisor jobs. They
 remain ordinary `gpu-claim --wait` clients and will not contend with the GPUs
 currently held by other projects.
+
+Seed-2 final result (2026-08-29): both resumptions reached step 60,000 and the
+paired 5k evaluations completed with the same evaluation seed and solver:
+
+| frozen tokenizer / prior seed 2 | samples | FID | KID | clipping |
+|---|---:|---:|---:|---:|
+| cross-only v8 | 5,000 | 27.21 | 0.01891 | 0.489% |
+| residual pool v12 | 5,000 | **25.48** | **0.01634** | 0.482% |
+| difference | | **-1.73** | **-0.00257** | -0.007 pp |
+
+The effect replicates directionally across prior-training seeds. Averaging the
+two paired 5k comparisons gives FID 28.57 for cross-only and **26.31** for the
+residual pool, a mean paired advantage of **2.26 FID**. However, the seed-2 gap
+itself is 1.73 rather than the predeclared greater-than-2 confirmation
+threshold, so record this as a strong directional replication rather than a
+literal clearance of that gate. Together with the paired 10k seed-1 gain of
+2.53, it is enough to keep the residual pool promoted. The next useful
+uncertainty is tokenizer-training stochasticity: train a second parameter-matched
+v8/v12 tokenizer pair, screen distortion and robustness, and only then train
+matched priors if the representation-side gain repeats.
+
+- Seed-2 metrics:
+  `prior_evals/v12-joint-residual-e7p1-n64d16-prior-s2-060000/metrics.json`
+  and
+  `prior_evals/v8-joint-unordered-vae-prior-s2-060000/metrics.json`.
+- The evaluation artifacts are committed in `8668d96`. After migration to a
+  fresh non-volume-backed machine, neither checkpoint is local. W&B retained
+  the cross-only seed-2 prior artifact, while the residual upload run crashed
+  before registering an artifact; no retraining is required to recover the
+  completed verdict.
+
+### Tokenizer-seed-2 representation confirmation (2026-08-31)
+
+This is the next predeclared uncertainty after the two frozen-cache prior
+comparisons. Train a fresh parameter-matched tokenizer pair with seed 2, holding
+the 15k budget and every non-topology setting fixed:
+
+| arm | patch encoder | register pool | parameters | output |
+|---|---:|---|---:|---|
+| v8 cross-only | 8 blocks | one terminal cross read | 60,056,784 | `tokenizer_runs/v8-unordered-vae-s2` |
+| v12 residual | 7 blocks | one residual read/refinement block | 60,056,784 | `tokenizer_runs/v12-unordered-vae-residual-e7p1-n64d16-s2` |
+
+- Shared recipe: CIFAR-10, full-only objective, `64x16`, variational posterior,
+  KL weight `1e-4`, historical hard log-variance clamp, batch 512, LR `1e-4`,
+  1k warmup, 15k steps, BF16, and identical seed 2.
+- Launcher: `scripts/run_stage_a_tokenizer_seed2_arm.sh {v8|v12}`. Each training,
+  cache, and decoder-sensitivity phase obtains a lifetime GPU lock through
+  `gpu-claim`; optimizer checkpoints make the jobs resumable.
+- Evidence: full-test PSNR and latent statistics from `metrics_final.json`, plus
+  reconstruction FID at sigma `0/.05/.10/.20/.40` from
+  `decoder_sensitivity.json`. Axis scorecards remain diagnostic rather than
+  selection metrics.
+- Decision gate: apply the original within-seed Stage-A rule unchanged. Promote
+  seed-2 caches to matched priors only if residual pooling improves at least one
+  of clean, sigma-0.10, or sigma-0.20 rFID by 0.5 without worsening another by
+  more than 0.5. A directionally consistent but sub-threshold screen is
+  suggestive, not sufficient for another 120k prior-training steps.

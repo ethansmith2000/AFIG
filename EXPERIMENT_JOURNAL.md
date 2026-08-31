@@ -22,6 +22,21 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-08-29 — seed-2 prior confirmation complete:** after resuming from the
+  optimizer-bearing step-22,500 checkpoints, both frozen-tokenizer priors
+  reached step 60,000 and completed paired 5k evaluations. The residual pool
+  again wins: FID **25.48**/KID **0.01634** versus cross-only FID 27.21/KID
+  0.01891, a 1.73-point FID and 0.00257 KID improvement. Across the two paired
+  5k prior seeds, mean FID is **26.31** versus 28.57 (mean paired gain 2.26).
+  The seed-2 direction replicates, but its 1.73-point gap narrowly misses the
+  predeclared greater-than-2 single-run confirmation gate. The residual pool
+  remains the leading architecture; the next discriminating test is a second
+  paired tokenizer seed rather than another prior seed on the same caches.
+  Final metrics are durable in Git commit `8668d96`. W&B retained the cross-only
+  seed-2 prior checkpoint but the residual upload crashed; neither checkpoint
+  was transferred locally, and the missing residual weights do not affect the
+  completed verdict.
+  [Full record](reports/2026-08-26_autoencoder_program/plan.md)
 - **2026-08-28 — residual-pool generative promotion:** the parameter-matched
   residual register pool improves matched-prior FID from 29.93 to **27.13** at
   5k samples and from 27.38 to **24.85** in a paired 10k evaluation. The
