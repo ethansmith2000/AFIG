@@ -666,6 +666,30 @@ Launcher: `scripts/run_stage_a_tokenizer_seed2_prior_arm.sh {v8|v12}`. The
 primary comparison is paired decoded FID/KID; a difference below roughly two
 FID remains unresolved and a promising result receives a paired 10k evaluation.
 
+### Seed-3 tokenizer results: all healthy, all advance to priors
+
+All three arms reached step 15,000 and completed cache, axis, sensitivity, and
+checkpoint-backup phases. The results reinforce the gate correction because
+reconstruction improves monotonically while flattened effective rank worsens
+monotonically:
+
+| metric | v8 cross-only | v12 residual | v13 register tokens |
+|---|---:|---:|---:|
+| PSNR | 31.763 | 33.835 | **36.395** |
+| rFID, sigma 0 | 10.588 | 7.645 | **5.766** |
+| rFID, sigma .05 | 10.996 | 7.914 | **6.099** |
+| rFID, sigma .10 | 12.255 | 9.022 | **7.293** |
+| rFID, sigma .20 | 18.329 | 13.925 | **12.919** |
+| rFID, sigma .40 | 44.065 | **36.514** | 40.007 |
+| flattened effective rank | **137.96** | 196.06 | 344.02 |
+
+Every arm is finite, semantically reconstructive, and comfortably inside the
+codec-health envelope. Train paired prior-seed-1 60k joint flows for all three;
+do not infer the ordering from either reconstruction or rank. Launcher:
+`scripts/run_stage_a_tokenizer_seed3_prior_arm.sh {v8|v12|v13}`. Outputs use
+`prior_runs/{v8,v12,v13}-joint-*-tokenizer-s3-prior-s1` with corresponding
+`prior_evals/*-060000` directories and the same evaluation seed 54321.
+
 ### Clean tokenwise-SNR follow-on (specified, not launched)
 
 Keep the clean latent cache and tensor-wide normalization unchanged. For group

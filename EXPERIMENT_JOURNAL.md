@@ -33,6 +33,14 @@ verdicts live under `reports/` and are linked here.
   generative comparison previously skipped.
   [Current roadmap](ROADMAP.md) and
   [full record](reports/2026-08-26_autoencoder_program/plan.md).
+- **2026-09-01 — seed-3 tokenizers complete and all pass codec health:** v8,
+  v12, and v13 reached 15k and completed caches, axis diagnostics, sensitivity,
+  and W&B checkpoint backup. PSNR is 31.76/33.84/36.39 and clean rFID is
+  10.59/7.65/5.77 respectively. Flattened effective rank moves in the opposite
+  direction at 137.96/196.06/344.02, illustrating why reconstruction cannot
+  select latent quality. All three therefore advance to paired prior-seed-1
+  60k joint flows under the corrected protocol.
+  [Full record](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-01 — seed-3 register-formation screen predeclared:** the next
   Stage-A screen compares three parameter-exact `64x16` full-only tokenizers:
   v8 cross-only (`e8`), v12 residual pooling (`e7+p1`), and a new true

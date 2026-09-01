@@ -75,6 +75,12 @@ were both healthy but stopped because v12 did not improve reconstruction. A
 paired prior-seed-1 comparison now tests whether latent modelability differed
 despite the reconstruction tie.
 
+**Tokenizer status:** complete. The seed-3 v8/v12/v13 PSNR values are
+31.76/33.84/36.39 and clean rFID values are 10.59/7.65/5.77. All are healthy.
+Flattened effective rank is 137.96/196.06/344.02, moving opposite to
+reconstruction quality and making the matched-prior comparison especially
+diagnostic. All three prior-seed-1 runs are authorized under the rule above.
+
 ### A2. Fine/local image stem
 
 After A1 selects the latent-formation baseline, decouple encoder and decoder
