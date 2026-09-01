@@ -34,6 +34,10 @@ verdicts live under `reports/` and are linked here.
   token/group time warp with unchanged clean magnitudes, per-token log-SNR
   conditioning, base-displacement prediction, and independently controlled
   loss weights; it is not part of this representation screen.
+  All three resumable arms launched at `2026-09-01T18:59:32Z` through
+  `gpu-claim` under supervisor. W&B runs are `38zmd550` (v8), `qn4em7zo`
+  (v12), and `etkl1hma` (v13); each completed compilation and entered steady
+  training before handoff.
   [Current roadmap](ROADMAP.md) and
   [full record](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-08-31 — tokenizer-seed-2 architecture confirmation fails:** the

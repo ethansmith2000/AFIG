@@ -634,6 +634,11 @@ embeddings are a later isolated control, not bundled into v13.
   claim. A passing v12/v13 receives one matched 60k joint prior on its seed-3
   cache. A v13 architecture claim additionally requires a second tokenizer
   seed and larger-sample paired evaluation.
+- Launch status: all three supervisor-owned launchers acquired lifetime GPU
+  claims at `2026-09-01T18:59:32Z` and entered training. W&B runs are
+  `38zmd550` (v8), `qn4em7zo` (v12), and `etkl1hma` (v13). The mixed v13 arm
+  completed its longer first compile and reached the same approximately 4.2k
+  images/s steady-state throughput as the established arms.
 
 ### Clean tokenwise-SNR follow-on (specified, not launched)
 
