@@ -31,6 +31,10 @@ verdicts live under `reports/` and are linked here.
   joint prior; paired decoded FID/KID makes the architecture decision. This
   correction reopens the healthy tokenizer-seed-2 v8/v12 caches for the paired
   generative comparison previously skipped.
+  The paired seed-2 priors launched as W&B `oytltgh0` (v8) and `4um6874y`
+  (v12). The three healthy seed-3 priors launched as `kir5jvch` (v8),
+  `gtoqstp3` (v12), and `hj15kjc0` (v13). All five are supervisor-owned,
+  resumable, and hold lifetime GPU claims.
   [Current roadmap](ROADMAP.md) and
   [full record](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-01 — seed-3 tokenizers complete and all pass codec health:** v8,

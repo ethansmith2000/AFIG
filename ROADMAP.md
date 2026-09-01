@@ -79,7 +79,8 @@ despite the reconstruction tie.
 31.76/33.84/36.39 and clean rFID values are 10.59/7.65/5.77. All are healthy.
 Flattened effective rank is 137.96/196.06/344.02, moving opposite to
 reconstruction quality and making the matched-prior comparison especially
-diagnostic. All three prior-seed-1 runs are authorized under the rule above.
+diagnostic. All three prior-seed-1 runs are active under the rule above, in
+parallel with the reopened paired tokenizer-seed-2 priors.
 
 ### A2. Fine/local image stem
 

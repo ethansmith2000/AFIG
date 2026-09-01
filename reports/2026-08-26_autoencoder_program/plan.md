@@ -690,6 +690,12 @@ do not infer the ordering from either reconstruction or rank. Launcher:
 `prior_runs/{v8,v12,v13}-joint-*-tokenizer-s3-prior-s1` with corresponding
 `prior_evals/*-060000` directories and the same evaluation seed 54321.
 
+Launch record: the tokenizer-seed-2 priors acquired GPU claims at
+`2026-09-01T19:39:21Z`; W&B runs are `oytltgh0` (v8) and `4um6874y` (v12).
+The tokenizer-seed-3 priors acquired claims at `2026-09-01T19:41:00Z`; W&B
+runs are `kir5jvch` (v8), `gtoqstp3` (v12), and `hj15kjc0` (v13). All are
+supervisor-owned and resumable through optimizer-bearing checkpoints.
+
 ### Clean tokenwise-SNR follow-on (specified, not launched)
 
 Keep the clean latent cache and tensor-wide normalization unchanged. For group
