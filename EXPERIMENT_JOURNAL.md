@@ -22,6 +22,16 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-01 — five matched priors complete; two comparisons remain close:**
+  on tokenizer seed 2, v8 reaches FID/KID 30.31/0.02019 versus v12
+  31.97/0.02270, so residual pooling is 1.66 FID worse. On tokenizer seed 3,
+  v8/v12/v13 reach FID 42.60/37.74/36.35 and KID
+  0.03427/0.02704/0.02777. Both alternative encoders clearly beat the poor v8
+  seed, but v13's 1.38-FID advantage over v12 is below the decision threshold
+  and KID slightly favors v12. All checkpoints are backed up to W&B. Paired
+  10k evaluations are therefore running for seed-2 v8/v12 and seed-3 v12/v13;
+  no architecture winner is declared from the 5k results.
+  [Full record](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-01 — reconstruction gate corrected before seed-3 results:** clean
   reconstruction and decoder sensitivity are codec-health diagnostics, not
   selectors for latent quality. The former `>=0.5` rFID-improvement promotion

@@ -79,8 +79,14 @@ despite the reconstruction tie.
 31.76/33.84/36.39 and clean rFID values are 10.59/7.65/5.77. All are healthy.
 Flattened effective rank is 137.96/196.06/344.02, moving opposite to
 reconstruction quality and making the matched-prior comparison especially
-diagnostic. All three prior-seed-1 runs are active under the rule above, in
-parallel with the reopened paired tokenizer-seed-2 priors.
+diagnostic. All three prior-seed-1 runs and the reopened paired
+tokenizer-seed-2 priors completed under the corrected rule.
+
+**Prior status:** the five 60k/5k evaluations are complete. Tokenizer seed 2
+slightly favors v8 over v12 (30.31 versus 31.97 FID). Tokenizer seed 3 clearly
+favors both v12/v13 over v8 (37.74/36.35 versus 42.60), but v13 versus v12 is
+only a 1.38-FID gap and KID slightly favors v12. Paired 10k evaluations are the
+active decision step for seed-2 v8/v12 and seed-3 v12/v13.
 
 ### A2. Fine/local image stem
 

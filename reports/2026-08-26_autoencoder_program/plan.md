@@ -696,6 +696,30 @@ The tokenizer-seed-3 priors acquired claims at `2026-09-01T19:41:00Z`; W&B
 runs are `kir5jvch` (v8), `gtoqstp3` (v12), and `hj15kjc0` (v13). All are
 supervisor-owned and resumable through optimizer-bearing checkpoints.
 
+### Matched-prior 5k results and paired 10k decision
+
+All five priors reached step 60,000, completed the fixed-seed 5k evaluation,
+and uploaded final checkpoint artifacts:
+
+| tokenizer seed | architecture | FID | KID | clipping |
+|---:|---|---:|---:|---:|
+| 2 | v8 cross-only | **30.311** | **0.02019** | 0.754% |
+| 2 | v12 residual | 31.970 | 0.02270 | 0.484% |
+| 3 | v8 cross-only | 42.596 | 0.03427 | 0.413% |
+| 3 | v12 residual | 37.737 | **0.02704** | 0.823% |
+| 3 | v13 register tokens | **36.355** | 0.02777 | 0.379% |
+
+The seed-2 residual arm loses by 1.66 FID and 0.00252 KID, reversing the seed-1
+direction but remaining inside the approximately two-FID unresolved region. At
+seed 3, v12 and v13 beat v8 by 4.86 and 6.24 FID respectively. The v13-v12 gap
+is only 1.38 FID and KID changes sign, so their ordering is unresolved.
+
+Run paired 10k evaluations with the same 50-step Heun solver and sample seed for
+seed-2 v8/v12 and seed-3 v12/v13. Launcher:
+`scripts/run_stage_a_paired_10k_eval.sh {s2_v8|s2_v12|s3_v12|s3_v13}`.
+Treat v8 as clearly rejected only within tokenizer seed 3; do not infer a
+general architecture order until the two close comparisons complete.
+
 ### Clean tokenwise-SNR follow-on (specified, not launched)
 
 Keep the clean latent cache and tensor-wide normalization unchanged. For group
