@@ -745,6 +745,26 @@ supervisor program `afig_stage_a_v13_register_s2_confirmation`. The tokenizer
 has 60,056,784 parameters as expected and is active at W&B run
 [`m49qqabv`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/m49qqabv).
 
+### Parallel robustness block
+
+Available GPUs permit two independent checks without waiting for the seed-2
+tokenizer chain:
+
+1. Freeze the existing tokenizer-seed-3 v12/v13 caches and train both matched
+   priors with prior seed 2. Evaluate both at 10k with the same seed, 50-step
+   Heun solver, and decoder. This measures whether the 2.01-FID v13 advantage is
+   stable to prior optimization stochasticity.
+2. Train the parameter-exact v13 arm at tokenizer seed 1 and run its matched
+   prior-seed-1 10k evaluation. Compare with the durable seed-1 v8/v12 controls
+   (27.38/24.85 FID). Together with active tokenizer seed 2 and completed seed 3,
+   this gives v13 all three tokenizer seeds used by the controls.
+
+Launchers are resumable and queue-compliant:
+`scripts/run_stage_a_seed3_prior_seed2_arm.sh {v12|v13}` and
+`scripts/run_stage_a_register_seed1_confirmation.sh`. Reconstruction remains a
+permissive health veto; only matched-prior generation determines architecture
+selection.
+
 ### Clean tokenwise-SNR follow-on (specified, not launched)
 
 Keep the clean latent cache and tensor-wide normalization unchanged. For group

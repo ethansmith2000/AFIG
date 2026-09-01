@@ -95,6 +95,13 @@ architecture claim. The active confirmation trains only v13 at tokenizer seed
 controls. This chain is running under `gpu-claim` as
 `v13-unordered-vae-register-e7j1-n64d16-s2` (W&B `m49qqabv`).
 
+Open-GPU robustness block: use two additional GPUs to repeat the frozen
+tokenizer-seed-3 v12/v13 comparison with prior seed 2 and paired 10k evaluation.
+Use one more GPU for a v13 tokenizer-seed-1 end-to-end arm, which can be compared
+against the durable seed-1 v8/v12 controls. This separates prior optimization
+variance from tokenizer/architecture variance while leaving two GPUs free for
+other projects.
+
 ### A2. Fine/local image stem
 
 After A1 selects the latent-formation baseline, decouple encoder and decoder
