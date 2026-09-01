@@ -22,6 +22,16 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-01 — open GPUs assigned to architecture robustness:** v13 tokenizer
+  seed 2 completed its 15k tokenizer phase at PSNR 34.68 and is in artifact/
+  diagnostic processing before its matched prior. In parallel, frozen
+  tokenizer-seed-3 v12/v13 priors are training with prior seed 2 at W&B
+  [`6pnsnulc`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/6pnsnulc)
+  and [`1lxjnhll`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/1lxjnhll),
+  while v13 tokenizer seed 1 is training at
+  [`hh07ajxg`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/hh07ajxg).
+  These jobs use three additional `gpu-claim` locks and leave GPUs 5--7 free.
+  [Full design](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-01 — larger-sample architecture verdict:** paired 10k evaluation
   preserves the seed-2 reversal: v8 FID/KID 28.07/0.02046 versus v12
   29.59/0.02255, so residual loses by 1.52 FID. At tokenizer seed 3, v13

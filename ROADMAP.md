@@ -102,6 +102,11 @@ against the durable seed-1 v8/v12 controls. This separates prior optimization
 variance from tokenizer/architecture variance while leaving two GPUs free for
 other projects.
 
+Launch status: both prior-seed-2 replications and v13 tokenizer seed 1 are
+active (`6pnsnulc`, `1lxjnhll`, and `hh07ajxg`). V13 tokenizer seed 2 has
+completed tokenizer training at 34.68 dB PSNR and is advancing through the
+resumable diagnostic/prior chain.
+
 ### A2. Fine/local image stem
 
 After A1 selects the latent-formation baseline, decouple encoder and decoder

@@ -765,6 +765,16 @@ Launchers are resumable and queue-compliant:
 permissive health veto; only matched-prior generation determines architecture
 selection.
 
+Launch record (2026-09-01 21:44 UTC): the prior-seed-2 v12 and v13 runs are
+active at W&B [`6pnsnulc`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/6pnsnulc)
+and [`1lxjnhll`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/1lxjnhll).
+V13 tokenizer seed 1 is active at
+[`hh07ajxg`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/hh07ajxg).
+The earlier v13 tokenizer seed 2 reached step 15,000 with PSNR 34.68 and is
+currently uploading its artifact before cache construction and diagnostics.
+GPU assignments are dynamic lifetime locks; at launch the three new jobs used
+GPUs 0, 1, and 4, leaving GPUs 5--7 free for later phases or other projects.
+
 ### Clean tokenwise-SNR follow-on (specified, not launched)
 
 Keep the clean latent cache and tensor-wide normalization unchanged. For group
