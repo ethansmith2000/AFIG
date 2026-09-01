@@ -1,0 +1,62 @@
+{
+  "arms": {
+    "cross_only_v8": {
+      "checkpoint_artifact": "ethansmith2000/afig-progressive-tokenizer/v8-unordered-vae-s2-tokenizer:v0",
+      "effective_rank": 241.18020593602262,
+      "parameters": 60056784,
+      "psnr_db": 35.26741040891446,
+      "rfid": {
+        "0.0": 6.397575370306299,
+        "0.05": 6.644661192270007,
+        "0.1": 7.471712919705908,
+        "0.2": 11.741264942166993,
+        "0.4": 32.29457229273277
+      },
+      "seed": 2,
+      "wandb_run_id": "7qrfzjq9"
+    },
+    "residual_v12": {
+      "checkpoint_artifact": "ethansmith2000/afig-progressive-tokenizer/v12-unordered-vae-residual-e7p1-n64d16-s2-tokenizer:v0",
+      "effective_rank": 253.64883358334188,
+      "parameters": 60056784,
+      "psnr_db": 35.15340808149417,
+      "rfid": {
+        "0.0": 6.464240207526245,
+        "0.05": 6.698696579101238,
+        "0.1": 7.585171879136794,
+        "0.2": 11.866378454774292,
+        "0.4": 32.11023095571181
+      },
+      "seed": 2,
+      "wandb_run_id": "pl5hyam0"
+    }
+  },
+  "completed_at_utc": "2026-08-31T23:10:52Z",
+  "decision": {
+    "gate_cleared": false,
+    "matched_prior_action": "stop",
+    "reason": "Residual pooling did not improve clean, sigma-0.10, or sigma-0.20 rFID by the predeclared 0.5 threshold.",
+    "verdict": "The seed-1 residual checkpoint remains strong, but an architecture-level residual-pool advantage is not tokenizer-seed robust."
+  },
+  "delta_residual_minus_cross_only": {
+    "effective_rank": 12.468627647319264,
+    "psnr_db": -0.11400232742028749,
+    "rfid": {
+      "0.0": 0.0666648372199461,
+      "0.05": 0.05403538683123088,
+      "0.1": 0.11345895943088635,
+      "0.2": 0.12511351260729953,
+      "0.4": -0.18434133702095323
+    }
+  },
+  "gate": {
+    "allowed_worsening_rfid": 0.5,
+    "minimum_improvement_rfid": 0.5,
+    "primary_sigmas": [
+      0.0,
+      0.1,
+      0.2
+    ]
+  },
+  "schema_version": 1
+}

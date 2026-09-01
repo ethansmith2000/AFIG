@@ -562,3 +562,33 @@ the 15k budget and every non-topology setting fixed:
   of clean, sigma-0.10, or sigma-0.20 rFID by 0.5 without worsening another by
   more than 0.5. A directionally consistent but sub-threshold screen is
   suggestive, not sufficient for another 120k prior-training steps.
+
+#### Tokenizer-seed-2 result: gate not cleared
+
+Both arms reached step 15,000 and completed the full cache, axis, and decoder
+sensitivity phases. Values below are residual minus cross-only, so positive rFID
+is worse:
+
+| metric | v8 cross-only | v12 residual | residual change |
+|---|---:|---:|---:|
+| PSNR | **35.267** | 35.153 | -0.114 dB |
+| rFID, sigma 0 | **6.398** | 6.464 | +0.067 |
+| rFID, sigma .05 | **6.645** | 6.699 | +0.054 |
+| rFID, sigma .10 | **7.472** | 7.585 | +0.113 |
+| rFID, sigma .20 | **11.741** | 11.866 | +0.125 |
+| rFID, sigma .40 | 32.295 | **32.110** | -0.184 |
+| flattened effective rank | 241.18 | 253.65 | +12.47 |
+
+This does not satisfy the 0.5-rFID promotion rule on clean, sigma .10, or sigma
+.20; residual pooling is slightly behind on all three. Stop before matched-prior
+training, as predeclared. The seed-1 residual checkpoint's large gains and its
+two successful prior comparisons remain valid checkpoint-level observations,
+but the topology effect is not tokenizer-seed robust: all generative evidence so
+far uses that one tokenizer cache. Do not describe residual pooling itself as a
+confirmed architecture improvement without another independent tokenizer seed.
+
+- Durable comparison: `tokenizer_seed2_comparison.json` in this report folder.
+- Training runs: W&B `7qrfzjq9` (v8) and `pl5hyam0` (v12).
+- Checkpoint artifacts:
+  `v8-unordered-vae-s2-tokenizer:v0` and
+  `v12-unordered-vae-residual-e7p1-n64d16-s2-tokenizer:v0`.

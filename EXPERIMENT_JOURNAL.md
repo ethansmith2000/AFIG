@@ -22,6 +22,17 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-08-31 — tokenizer-seed-2 architecture confirmation fails:** the
+  parameter-matched v8/v12 pair completed 15k steps plus full-test
+  reconstruction and latent-noise sensitivity. Residual pooling is essentially
+  tied but slightly worse at seed 2: PSNR 35.15 versus 35.27, and rFID is worse
+  by 0.07/0.05/0.11/0.13 at sigma 0/.05/.10/.20 (0.18 better only at sigma
+  .40). It therefore does not clear the unchanged 0.5-rFID Stage-A gate, and no
+  matched priors will be trained on these caches. The strong seed-1 checkpoint
+  and its prior results remain real, but the improvement cannot yet be assigned
+  robustly to the residual-pool architecture. Both seed-2 tokenizer checkpoints
+  are preserved as W&B artifacts.
+  [Full record](reports/2026-08-26_autoencoder_program/plan.md)
 - **2026-08-29 — seed-2 prior confirmation complete:** after resuming from the
   optimizer-bearing step-22,500 checkpoints, both frozen-tokenizer priors
   reached step 60,000 and completed paired 5k evaluations. The residual pool
