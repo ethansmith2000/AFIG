@@ -720,6 +720,26 @@ seed-2 v8/v12 and seed-3 v12/v13. Launcher:
 Treat v8 as clearly rejected only within tokenizer seed 3; do not infer a
 general architecture order until the two close comparisons complete.
 
+### Paired 10k results and next confirmation
+
+| tokenizer seed | architecture | FID-10k | KID-10k |
+|---:|---|---:|---:|
+| 2 | v8 cross-only | **28.073** | **0.02046** |
+| 2 | v12 residual | 29.588 | 0.02255 |
+| 3 | v12 residual | 35.750 | 0.02762 |
+| 3 | v13 register tokens | **33.740** | **0.02743** |
+
+The seed-2 residual loss remains 1.52 FID and 0.00209 KID, consistent with its
+5k direction. At seed 3, the register-token arm improves 2.01 FID over residual
+and now also improves KID slightly. Thus v13 is the selected seed-3 architecture
+checkpoint, while residual pooling remains strongly tokenizer-seed dependent.
+
+Do not yet call v13 architecture-robust. Train the parameter-exact v13 tokenizer
+with seed 2, using the unchanged historical recipe, then train its prior-seed-1
+joint flow if it passes only the permissive codec-health check. Compare against
+the completed seed-2 v8/v12 priors above. End-to-end resumable launcher:
+`scripts/run_stage_a_register_seed2_confirmation.sh`.
+
 ### Clean tokenwise-SNR follow-on (specified, not launched)
 
 Keep the clean latent cache and tensor-wide normalization unchanged. For group

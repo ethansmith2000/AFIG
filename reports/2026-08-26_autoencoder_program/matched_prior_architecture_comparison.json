@@ -1,0 +1,54 @@
+{
+  "protocol": {
+    "prior_seed": 1,
+    "prior_steps": 60000,
+    "sample_steps": 50,
+    "solver": "heun",
+    "evaluation_seed": 54321
+  },
+  "tokenizer_seed_2": {
+    "v8_cross_only": {
+      "fid_5k": 30.31140777800431,
+      "kid_5k": 0.020187925547361374,
+      "fid_10k": 28.07275285843508,
+      "kid_10k": 0.020457793027162552
+    },
+    "v12_residual": {
+      "fid_5k": 31.970390583176822,
+      "kid_5k": 0.022703023627400398,
+      "fid_10k": 29.588492661663338,
+      "kid_10k": 0.022549204528331757
+    },
+    "v12_minus_v8": {
+      "fid_5k": 1.6589828051725135,
+      "kid_5k": 0.0025150980800390244,
+      "fid_10k": 1.5157398032282572,
+      "kid_10k": 0.0020914115011692047
+    }
+  },
+  "tokenizer_seed_3": {
+    "v12_residual": {
+      "fid_5k": 37.737260274987705,
+      "kid_5k": 0.027035469189286232,
+      "fid_10k": 35.74953908042306,
+      "kid_10k": 0.02762223221361637
+    },
+    "v13_register_tokens": {
+      "fid_5k": 36.354760482733354,
+      "kid_5k": 0.02777051366865635,
+      "fid_10k": 33.740361191636225,
+      "kid_10k": 0.02742793969810009
+    },
+    "v13_minus_v12": {
+      "fid_5k": -1.3824997922543503,
+      "kid_5k": 0.0007350444793701172,
+      "fid_10k": -2.0091778887868372,
+      "kid_10k": -0.00019429251551628113
+    }
+  },
+  "verdict": {
+    "residual_pool": "seed-dependent: wins tokenizer seeds 1 and 3 but loses seed 2",
+    "register_tokens": "wins within tokenizer seed 3; requires a second tokenizer seed",
+    "next_test": "train v13 register tokens at tokenizer seed 2 and compare with the completed seed-2 v8/v12 priors"
+  }
+}

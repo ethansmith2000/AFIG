@@ -85,8 +85,14 @@ tokenizer-seed-2 priors completed under the corrected rule.
 **Prior status:** the five 60k/5k evaluations are complete. Tokenizer seed 2
 slightly favors v8 over v12 (30.31 versus 31.97 FID). Tokenizer seed 3 clearly
 favors both v12/v13 over v8 (37.74/36.35 versus 42.60), but v13 versus v12 is
-only a 1.38-FID gap and KID slightly favors v12. Paired 10k evaluations are the
-active decision step for seed-2 v8/v12 and seed-3 v12/v13.
+only a 1.38-FID gap and KID slightly favors v12 at 5k.
+
+**10k verdict:** seed 2 retains the v8 advantage over v12, 28.07 versus 29.59
+FID. Seed 3 favors v13 register tokens over v12, 33.74 versus 35.75 FID, with
+KID also slightly better. V13 is the seed-3 winner but not yet a robust
+architecture claim. The active confirmation trains only v13 at tokenizer seed
+2 and compares its matched prior with the already completed seed-2 v8/v12
+controls.
 
 ### A2. Fine/local image stem
 
