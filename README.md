@@ -62,8 +62,10 @@ parameters per arm:
 3. v13: seven patch blocks plus one joint patch/register block and a matched
    register-only adapter.
 
-Only an arm that clears the predeclared reconstruction-FID robustness gate
-receives a matched prior. Details and stop rules are in
+Reconstruction is now only a permissive codec-health check. Every healthy arm
+receives a matched prior, and decoded FID/KID selects latent quality. This avoids
+discarding a representation that reconstructs slightly worse but has a simpler
+or more useful generative distribution. Details and stop rules are in
 `reports/2026-08-26_autoencoder_program/plan.md`.
 
 ## Running safely

@@ -22,14 +22,25 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-01 — reconstruction gate corrected before seed-3 results:** clean
+  reconstruction and decoder sensitivity are codec-health diagnostics, not
+  selectors for latent quality. The former `>=0.5` rFID-improvement promotion
+  rule could reject a representation with slightly worse distortion but a much
+  easier prior distribution. Every finite, semantically coherent arm in the
+  permissive historical health envelope will therefore receive a matched 60k
+  joint prior; paired decoded FID/KID makes the architecture decision. This
+  correction reopens the healthy tokenizer-seed-2 v8/v12 caches for the paired
+  generative comparison previously skipped.
+  [Current roadmap](ROADMAP.md) and
+  [full record](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-01 — seed-3 register-formation screen predeclared:** the next
   Stage-A screen compares three parameter-exact `64x16` full-only tokenizers:
   v8 cross-only (`e8`), v12 residual pooling (`e7+p1`), and a new true
   register-token arm (`e7+j1`) in which patches and learned registers share a
   bidirectional block before register-only refinement. All have 60,056,784
-  parameters, seed 3, and a 15k budget. A candidate advances only by improving
-  clean/sigma-.10/sigma-.20 rFID by at least 0.5 without a greater-than-.5
-  regression on another selected point. Failed arms stop before priors. The
+  parameters, seed 3, and a 15k budget. The original reconstruction-improvement
+  gate in this entry was superseded before results by the codec-health rule
+  above; every healthy arm receives a matched prior. The
   follow-on prior experiment is now specified as an endpoint-preserving
   token/group time warp with unchanged clean magnitudes, per-token log-SNR
   conditioning, base-displacement prediction, and independently controlled

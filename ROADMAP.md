@@ -55,15 +55,25 @@ The v13 mixed block uses learned patch positions and learned register identities
 without a shared RoPE: patch position is 2-D, while register position is a
 learned/scale axis. This changes only the reallocated eighth encoder block.
 
-**Representation gate.** A candidate advances only if it improves at least one
-of clean, sigma-0.10, or sigma-0.20 reconstruction FID by at least 0.5 without
-worsening another by more than 0.5 against the within-seed v8 control. PSNR,
-effective rank, slot RMS, and posterior statistics are diagnostics.
+**Codec-health gate, corrected before results.** Reconstruction does not select
+latent quality. It only vetoes a broken codec. Every arm with finite training,
+semantically coherent reconstructions, and metrics in a permissive historical
+envelope receives a matched prior. `PSNR < 28 dB` together with clean
+`rFID > 25`, non-finite statistics, or visibly corrupted decoding triggers a
+manual failure review; no sub-threshold advantage over v8 is required.
+Clean/noisy rFID, PSNR, effective rank, slot RMS, and posterior statistics are
+diagnostics used to interpret the generative result.
 
-**Stop/continue rule.** Do not train a matched prior for a failed arm. If v12
-fails again, retire residual pooling as a general architecture claim. If v12 or
-v13 passes, train a matched 60k joint prior only on that seed-3 cache; require a
-larger 10k evaluation and another tokenizer seed before claiming v13 robust.
+**Selection rule.** Latent quality is selected by paired matched-prior decoded
+FID/KID. Train a 60k joint prior for every healthy v8/v12/v13 seed-3 cache. Use
+the same prior seed and generated-sample seed within the three-way comparison;
+require a larger 10k evaluation and another tokenizer seed before an
+architecture-level v13 claim.
+
+This correction also reopens the completed tokenizer-seed-2 v8/v12 caches. They
+were both healthy but stopped because v12 did not improve reconstruction. A
+paired prior-seed-1 comparison now tests whether latent modelability differed
+despite the reconstruction tie.
 
 ### A2. Fine/local image stem
 
@@ -150,9 +160,10 @@ standalone promotion criteria.
 
 ## Promotion protocol
 
-1. 15k tokenizer representation screen.
+1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality
+   ranking metric.
 2. Full-test clean rFID/PSNR and sigma `0/.05/.10/.20/.40` sensitivity.
-3. Matched 60k bidirectional joint prior only for a passing representation.
+3. Matched 60k bidirectional joint prior for every healthy planned arm.
 4. Paired FID/KID-5k screen, then 10k for a promising difference.
 5. Independent tokenizer and prior seeds before an architecture-level claim.
 6. Preserve optimizer-bearing resumes, final metrics, and W&B checkpoint

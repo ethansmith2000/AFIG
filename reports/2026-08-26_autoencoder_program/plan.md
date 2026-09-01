@@ -627,18 +627,44 @@ embeddings are a later isolated control, not bundled into v13.
 - Evidence: full-test PSNR/rFID, sigma `0/.05/.10/.20/.40` decoder sensitivity,
   flattened effective rank, slot RMS, coordinate spread, and posterior
   statistics.
-- Gate: against within-seed v8, a candidate must improve at least one of clean,
-  sigma-.10, or sigma-.20 rFID by at least 0.5 without worsening another by more
-  than 0.5. Otherwise stop before a matched prior.
-- Decision: a second v12 miss retires residual pooling as a general topology
-  claim. A passing v12/v13 receives one matched 60k joint prior on its seed-3
-  cache. A v13 architecture claim additionally requires a second tokenizer
-  seed and larger-sample paired evaluation.
+- Corrected gate, declared before seed-3 results: reconstruction and sensitivity
+  establish only that the codec is healthy. They do not select latent quality.
+  Every finite arm with semantically coherent reconstructions in the permissive
+  historical envelope receives a matched 60k joint prior. `PSNR < 28 dB`
+  together with clean `rFID > 25`, non-finite statistics, or visibly corrupted
+  decoding triggers manual failure review; no improvement over v8 is required.
+- Decision: compare paired decoded FID/KID using the same prior seed and sample
+  seed. Reconstruction, robustness, rank, and utilization explain the result
+  but cannot promote or reject a healthy representation. A v13 architecture
+  claim additionally requires a second tokenizer seed and larger-sample paired
+  evaluation.
 - Launch status: all three supervisor-owned launchers acquired lifetime GPU
   claims at `2026-09-01T18:59:32Z` and entered training. W&B runs are
   `38zmd550` (v8), `qn4em7zo` (v12), and `etkl1hma` (v13). The mixed v13 arm
   completed its longer first compile and reached the same approximately 4.2k
   images/s steady-state throughput as the established arms.
+
+### Reconstruction-gate correction and tokenizer-seed-2 recovery
+
+The original Stage-A `0.5` rFID rule was too strong: it treated reconstruction
+quality as a proxy for latent modelability. The rate sweep already shows why
+that inference is unsafe—reconstruction and generated FID can move in opposite
+directions. Reconstruction should veto a broken codec, not rank healthy latent
+distributions.
+
+This correction occurs before seed-3 results and therefore does not select an
+outcome post hoc. It also changes the earlier tokenizer-seed-2 stop decision.
+Both v8 and v12 seed-2 codecs are healthy despite being tied on reconstruction,
+so train matched prior-seed-1 joint flows on both frozen caches and evaluate
+with the same 5k sample seed. Outputs:
+
+- `prior_runs/v8-joint-unordered-vae-tokenizer-s2-prior-s1`;
+- `prior_runs/v12-joint-residual-e7p1-n64d16-tokenizer-s2-prior-s1`;
+- corresponding `prior_evals/*-060000` directories.
+
+Launcher: `scripts/run_stage_a_tokenizer_seed2_prior_arm.sh {v8|v12}`. The
+primary comparison is paired decoded FID/KID; a difference below roughly two
+FID remains unresolved and a promising result receives a paired 10k evaluation.
 
 ### Clean tokenwise-SNR follow-on (specified, not launched)
 
