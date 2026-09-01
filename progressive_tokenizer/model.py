@@ -1,4 +1,4 @@
-"""Deterministic whole-image tokenizer with Perceiver pooling.
+"""Deterministic whole-image tokenizer with learned whole-image registers.
 
 The encoder maps a CIFAR image to an ordered sequence of continuous registers.
 The decoder uses spatial output queries to reconstruct an image from either the
@@ -56,10 +56,14 @@ class TokenizerConfig:
             raise ValueError("all model depths must be positive")
         if self.mlp_ratio <= 0:
             raise ValueError("mlp_ratio must be positive")
-        if self.pool_type not in {"residual", "cross_only"}:
-            raise ValueError("pool_type must be residual or cross_only")
-        if self.pool_type == "cross_only" and self.pool_depth != 1:
-            raise ValueError("cross_only pooling requires pool_depth=1")
+        if self.pool_type not in {"residual", "cross_only", "register_tokens"}:
+            raise ValueError(
+                "pool_type must be residual, cross_only, or register_tokens"
+            )
+        if self.pool_type in {"cross_only", "register_tokens"} and self.pool_depth != 1:
+            raise ValueError(
+                f"{self.pool_type} pooling requires pool_depth=1"
+            )
         if self.qk_norm not in {"rms", "l2_temperature"}:
             raise ValueError("qk_norm must be rms or l2_temperature")
 
@@ -305,9 +309,39 @@ class EncoderBlock(nn.Module):
             config.width, config.mlp_ratio, config.projection_dropout
         )
 
-    def forward(self, x: torch.Tensor, rope: Rotary2D) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, rope: Optional[Rotary2D]) -> torch.Tensor:
         x = x + self.attention(self.attention_norm(x), rope)
         return x + self.ffn(self.ffn_norm(x))
+
+
+class RegisterAdapter(nn.Module):
+    """Register-only refinement matched to one terminal cross-attention.
+
+    The two bias choices match the projection parameters of ``CrossAttention``
+    when cross-attention Q/K/V projections have no bias. Two identity-initialized
+    head-coordinate scales match its affine RMS-QK parameters in the selected
+    RMS-QK Stage-A configuration and give the adapter a non-spatial channel
+    calibration rather than leaving unused parameter padding.
+    """
+
+    def __init__(self, width: int, head_dim: int):
+        super().__init__()
+        if width % head_dim:
+            raise ValueError("register-adapter width must be divisible by head_dim")
+        self.input_scale = nn.Parameter(torch.ones(head_dim))
+        self.hidden_scale = nn.Parameter(torch.ones(head_dim))
+        self.input = nn.Linear(width, 2 * width, bias=False)
+        self.output = nn.Linear(2 * width, width, bias=True)
+
+    def forward(self, values: torch.Tensor) -> torch.Tensor:
+        input_scale = self.input_scale.repeat(
+            values.shape[-1] // self.input_scale.numel()
+        )
+        hidden = F.gelu(self.input(values * input_scale), approximate="tanh")
+        hidden_scale = self.hidden_scale.repeat(
+            hidden.shape[-1] // self.hidden_scale.numel()
+        )
+        return self.output(hidden * hidden_scale)
 
 
 class PerceiverPoolBlock(nn.Module):
@@ -410,6 +444,9 @@ class ProgressiveTokenizer(nn.Module):
         self.pool_queries = nn.Parameter(
             torch.empty(1, config.num_latents, config.width)
         )
+        self.register_joint_block: Optional[EncoderBlock] = None
+        self.register_adapter_norm: Optional[nn.LayerNorm] = None
+        self.register_adapter: Optional[RegisterAdapter] = None
         if config.pool_type == "residual":
             self.pool_blocks = nn.ModuleList(
                 PerceiverPoolBlock(config) for _ in range(config.pool_depth)
@@ -417,7 +454,7 @@ class ProgressiveTokenizer(nn.Module):
             self.pool_query_norm = None
             self.pool_memory_norm = None
             self.pool_attention = None
-        else:
+        elif config.pool_type == "cross_only":
             self.pool_blocks = nn.ModuleList()
             self.pool_query_norm = _norm(config.width)
             self.pool_memory_norm = _norm(config.width)
@@ -429,6 +466,19 @@ class ProgressiveTokenizer(nn.Module):
                 config.qk_norm,
                 config.cross_attention_bias,
             )
+        else:
+            # A true register-token alternative to Perceiver pooling. Patches
+            # and learned registers share a bidirectional block, after which a
+            # register-only adapter replaces the baseline terminal cross read.
+            # The launcher reallocates one patch-only encoder block here
+            # (e7+j1), keeping the v8/v12 parameter count exact.
+            self.pool_blocks = nn.ModuleList()
+            self.pool_query_norm = None
+            self.pool_memory_norm = None
+            self.pool_attention = None
+            self.register_joint_block = EncoderBlock(config)
+            self.register_adapter_norm = _norm(config.width)
+            self.register_adapter = RegisterAdapter(config.width, config.head_dim)
         self.latent_norm = _norm(config.width)
         projection_dim = (
             2 * config.latent_dim if config.variational else config.latent_dim
@@ -495,7 +545,7 @@ class ProgressiveTokenizer(nn.Module):
         if self.config.pool_type == "residual":
             for block in self.pool_blocks:
                 queries = block(queries, patches)
-        else:
+        elif self.config.pool_type == "cross_only":
             if (
                 self.pool_attention is None
                 or self.pool_query_norm is None
@@ -504,6 +554,23 @@ class ProgressiveTokenizer(nn.Module):
                 raise RuntimeError("cross-only pooling modules were not constructed")
             queries = self.pool_attention(
                 self.pool_query_norm(queries), self.pool_memory_norm(patches)
+            )
+        else:
+            if (
+                self.register_joint_block is None
+                or self.register_adapter_norm is None
+                or self.register_adapter is None
+            ):
+                raise RuntimeError("register-token pooling modules were not constructed")
+            # The patch tokens already carry learned 2-D positions and have
+            # passed through the 2-D-RoPE patch trunk. The mixed block uses no
+            # shared RoPE because patches and registers inhabit different
+            # geometries (2-D space versus a learned register/scale axis).
+            joint = torch.cat((patches, queries), dim=1)
+            joint = self.register_joint_block(joint, None)
+            queries = joint[:, self.config.num_patches :]
+            queries = queries + self.register_adapter(
+                self.register_adapter_norm(queries)
             )
         projected = self.latent_projection(self.latent_norm(queries))
         if not self.config.variational:

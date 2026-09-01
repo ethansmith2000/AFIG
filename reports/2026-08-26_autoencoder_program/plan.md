@@ -592,3 +592,62 @@ confirmed architecture improvement without another independent tokenizer seed.
 - Checkpoint artifacts:
   `v8-unordered-vae-s2-tokenizer:v0` and
   `v12-unordered-vae-residual-e7p1-n64d16-s2-tokenizer:v0`.
+
+## Seed-3 register-formation screen (predeclared 2026-09-01)
+
+The mixed seed-1/seed-2 residual result leaves encoder allocation unresolved.
+Use a third within-seed control to close that question while adding the
+previously untested alternative of learned registers participating directly in
+the encoder sequence.
+
+| arm | patch-only blocks | register formation | parameters | output |
+|---|---:|---|---:|---|
+| v8 | 8 | terminal cross-attention | 60,056,784 | `tokenizer_runs/v8-unordered-vae-s3` |
+| v12 | 7 | residual Perceiver read + register self-attention + FFN | 60,056,784 | `tokenizer_runs/v12-unordered-vae-residual-e7p1-n64d16-s3` |
+| v13 | 7 | one joint patch/register block + matched register adapter | 60,056,784 | `tokenizer_runs/v13-unordered-vae-register-e7j1-n64d16-s3` |
+
+The v13 arm is an alternative to Perceiver pooling. After seven ordinary
+2-D-RoPE patch blocks and the existing affine-free patch norm, concatenate the
+64 learned register tokens with the 64 patch tokens. One bidirectional
+self-attention/FFN block lets both modalities update each other. Its mixed block
+does not apply one shared RoPE because patch coordinates are spatial while
+register coordinates are a learned scale/identity axis. Retain the register
+states and apply a register-only ratio-2 adapter whose parameter count exactly
+matches the removed terminal cross-attention. Learned register queries retain
+the historical random truncated-normal initialization; structured scale
+embeddings are a later isolated control, not bundled into v13.
+
+- Shared recipe: seed 3, CIFAR-10, full-only objective, `64x16`, historical
+  hard-clamped variational settings and KL `1e-4`, batch 512, LR `1e-4`, 1k
+  warmup, 15k steps, BF16, identical decoder and data order.
+- Launcher: `scripts/run_stage_a_tokenizer_seed3_arm.sh {v8|v12|v13}`. Every
+  training/cache/sensitivity phase obtains a lifetime lock through `gpu-claim`;
+  checkpoint-bearing training is resumable and final weights are backed up to
+  W&B.
+- Evidence: full-test PSNR/rFID, sigma `0/.05/.10/.20/.40` decoder sensitivity,
+  flattened effective rank, slot RMS, coordinate spread, and posterior
+  statistics.
+- Gate: against within-seed v8, a candidate must improve at least one of clean,
+  sigma-.10, or sigma-.20 rFID by at least 0.5 without worsening another by more
+  than 0.5. Otherwise stop before a matched prior.
+- Decision: a second v12 miss retires residual pooling as a general topology
+  claim. A passing v12/v13 receives one matched 60k joint prior on its seed-3
+  cache. A v13 architecture claim additionally requires a second tokenizer
+  seed and larger-sample paired evaluation.
+
+### Clean tokenwise-SNR follow-on (specified, not launched)
+
+Keep the clean latent cache and tensor-wide normalization unchanged. For group
+`i`, use `phi_i(t)=a_i*t/(1-t+a_i*t)` and noised state
+`(1-phi_i)eps_i + phi_i*z_i`. Condition each token on its own `phi_i` or
+log-SNR, predict the comparable base displacement `z_i-eps_i`, and sample with
+`Delta phi_i`. This avoids asking shared pre-LayerNorm token projections and a
+shared output head to span artificial orders of magnitude.
+
+Compare common schedule/uniform loss, groupwise warp/uniform loss, and the same
+warp with a separately declared normalized importance profile. Begin with 4-8
+semantic groups. Static cache magnitude scaling, clamped offsets, and
+global-time derivative targets are not controls for this experiment: the first
+was already negative, the second recreates rolling exposure, and the third
+reintroduces the output-scale problem the clean parameterization is intended to
+remove.

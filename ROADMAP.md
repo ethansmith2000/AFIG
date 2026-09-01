@@ -1,128 +1,159 @@
-# AFIG roadmap — 2026-08-16
+# AFIG roadmap — 2026-09-01
 
-Working plan following the box loss and the diffusability-theory thread.
-Companion docs: `TOKENIZER_DESIGN.md` (Gates A–H),
-`reports/2026-08-16_wandb_recovery/runs.md` (lost-campaign inventory and
-reimplementation specs), `reports/2026-08-16_diffusability_theory/notes.md`
-(theory + instruments).
+This is the current decision roadmap. Historical campaigns and corrected
+premises remain in `EXPERIMENT_JOURNAL.md`, `REVIEW_BRIEF.md`, and `reports/`.
 
-Standing rules (unchanged): decoded FID decides model selection; teacher-forced
-/ cross-representation latent MSE is diagnostic only; ±0.3 FID protocol noise;
-two seeds for any selection decision; eager/compiled results never pooled.
+## Goal
 
-New operational rules (the box loss must not repeat):
+Learn a compact continuous whole-image representation that jointly optimizes:
 
-- Every trainer/eval run ends by syncing `prior_evals/` + `metrics_final.json`
-  into git and uploading the checkpoint + cache to W&B artifacts (or HF Hub).
-- Code lands in git **before** its first multi-hour run, not after.
+1. **Distortion:** clean reconstruction FID and PSNR.
+2. **Modelability:** decoded FID/KID under one matched joint prior recipe.
+3. **Robustness:** decoder sensitivity to realistic off-manifold latent error.
 
-## Current state (recovered)
+Progressive/variable-rate decoding is a separate product objective. It is not
+assumed to improve full-length generation.
 
-| item | status |
-|---|---|
-| v2 `64x16` cross-only tokenizer | spec + final evals recovered; weights lost (34.06 dB full, rFID ~7.2) |
-| Joint prior @60k | FID 39.37 (reference ceiling); weights lost |
-| One-at-a-time AR @60k | FID 81.68; weights lost |
-| Block-concat AR | negative (109.66), closed |
-| Rolling o8 / o64 / o8-b768 | trained on lost box; **no decoded FID anywhere**; code lost, spec recovered |
-| history-robust (+reliability), headpos, tokenwise-centered | same — undecided, spec recovered |
-| v3 VAE kl sweep / cross-causal / 128x8 (+ 60k AR each) | tokenizer evals recovered; AR verdicts undecided; code lost, spec recovered |
-| Audit E1 (recipe ceiling) / E2 (matched pixel baseline) | never run |
+## Established decisions
 
-## Phase 0 — rebuild and harden (unblocks everything)
+- The reproducible baseline is an unordered/full-only `64x16` tokenizer with a
+  terminal cross-attention pool and a bidirectional joint rectified-flow prior.
+- Nested-prefix training provides coherent partial decoding but taxes full
+  generation: FID 35.85 versus 29.93 for the matched unordered control.
+- Joint generation is the retained engine. Rolling and causal AR generation
+  lose through exposure to self-generated clean context.
+- `64x16` is the best tested rate point. Wider `64x32/48` codes reconstruct
+  better but generate worse; exact `32x32/128x8` reshapes prove literal token
+  factorization matters independently of scalar count.
+- Raw PCA concentration and static token-magnitude schedules are rejected in
+  their tested gauges. The loss-compensated alpha-0.50 scale still reached FID
+  39.89 versus the flat progressive control's 35.85.
+- The residual register pool is checkpoint-promising but not tokenizer-seed
+  robust. Seed 1 improved distortion, robustness, and two matched-prior seeds;
+  tokenizer seed 2 was tied/slightly worse and did not advance to a prior.
+- The historical hard-clamped "VAE" is effectively deterministic plus tiny
+  fixed jitter and a mean penalty. A clean posterior/noise study remains open.
 
-- [ ] Reimplement the lost features from the recovered specs, with tests,
-      committed as they land: `variational` (+`kl_weight`) and `cross_causal`
-      pooling in the tokenizer; rolling prior trainer (headless per-token-time
-      model, `local_data_time = clamp(frontier - idx/overlap, 0, 1)`, loss on
-      active registers); history-noise + per-token reliability conditioning;
-      `head_position_conditioning`; tokenwise boundary projections.
-- [ ] Retrain v2 `64x16` cross-only tokenizer (15k x 512) and rebuild the
-      100k/10k caches. **Validation gate:** final prefix PSNRs match the
-      recovered W&B numbers within noise; then upload weights + caches.
-- [ ] Retrain the two reference priors on that cache: joint 60k and
-      one-at-a-time AR 60k. **Validation gate:** FID within ~1–2 of 39.37 /
-      81.68. These are the comparison anchors for everything below.
-- [ ] Wire the artifact-sync step into the trainers (or a post-run script).
+Decoded FID decides model selection. FID-5k gaps below roughly two points are
+unresolved. Every exclusive GPU phase uses `/workspace/GPU_QUEUEING.md` and
+`gpu-claim`; code and predeclared gates land in Git before long runs.
 
-## Phase 1 — decide the undecided (highest information per GPU-hour)
+## Phase A — encoder formation (active)
 
-Ordered by expected information value; all evaluated with decoded FID at
-matched steps, plus the standard extras (oracle-prefix sweep, slot-wise
-temperature probe, per-token conditional MSE) where applicable.
+### A1. Seed-3 three-arm register screen
 
-1. [ ] **Rolling o8 vs o64 vs AR vs joint** at matched 60k. The headline
-       question: does schedule-causal generation with full attention close the
-       joint–AR gap? Sweep frontier steepness at inference on the o64 model
-       (one model gives the whole joint↔AR curve).
-2. [ ] **history-robust (+reliability) vs plain AR** — the exposure fix,
-       cheap and already half-validated (unlabeled variant was killed early).
-3. [ ] **v3 tokenizer shaping under a matched prior**: VAE-kl1e4 first (it
-       matched the deterministic recon ceiling), then cross-causal if VAE is
-       positive. Run each cache under the *joint* prior for the cleanest
-       modelability verdict, plus the better of {AR, rolling} from step 1.
-4. [ ] headpos / tokenwise-centered as small controls if step 1–2 results
-       leave the trunk+head AR track alive.
+Train three full-only `64x16` tokenizers with seed 3, 15k steps, and exactly
+`60,056,784` parameters each:
 
-## Phase 2 — ceiling anchors (can run in parallel with Phase 1 on this box)
+| arm | patch-only trunk | latent formation | purpose |
+|---|---:|---|---|
+| v8 | 8 blocks | one terminal cross read | reproducible control |
+| v12 | 7 blocks | cross read + register self-attention + FFN | final residual-pool replication |
+| v13 | 7 blocks | patches and registers share one bidirectional block, then a matched register adapter | true register-token alternative |
 
-- [ ] **E1 recipe run**: joint prior on the selected cache with EMA (~0.9995),
-      LR decay, logit-normal t, 150–200k steps. Establishes the real ceiling;
-      every "gap" statement is provisional until this exists.
-- [ ] **E2 matched pixel baseline**: same 512-wide DiT, optimizer, budget,
-      solver, eval protocol, on pixels. Pins the representation tax.
-- [ ] CNF-NLL diagnostic: exact per-token NLL through the existing RF head
-      (ODE + Hutchinson divergence) added to the eval battery — restores a
-      principled cross-arm metric at zero retraining cost.
+The v13 mixed block uses learned patch positions and learned register identities
+without a shared RoPE: patch position is 2-D, while register position is a
+learned/scale axis. This changes only the reallocated eighth encoder block.
 
-## Phase 3 — latent shaping (theory → practice)
+**Representation gate.** A candidate advances only if it improves at least one
+of clean, sigma-0.10, or sigma-0.20 reconstruction FID by at least 0.5 without
+worsening another by more than 0.5 against the within-seed v8 control. PSNR,
+effective rank, slot RMS, and posterior statistics are diagnostics.
 
-- [ ] **Axis-A/B scorecard tooling** run on every cache as a standard
-      tokenizer eval: eigenband per-sample ordering consistency
-      (margin-normalized), per-direction activity CV, energy-covariance minus
-      Gaussian prediction, conditioning-gain (nonlinear prefix predictability
-      at matched noise levels). Prediction on record: current latents are
-      audio-like on axis A.
-- [ ] **Energy-consistency regularizer arm**: per-coordinate kurtosis→3 and/or
-      per-token energy-CV penalty — the Gaussianization component of the KL,
-      unbundled from the rate penalty — compared head-to-head with VAE-kl1e4
-      on the scorecard + joint FID.
-- [ ] **Frontier-noise AE training**: finite-σ generalization of prefix
-      masking (sample a frontier position, noise tokens per the rolling
-      schedule, reconstruct). Co-designs tokenizer with the rolling sampler;
-      targets conditioning order at the sampler's actual state distribution.
-- [ ] **Crescendo gauge experiment** (cheap, anytime after Phase 0): per-token
-      descending population rescale of the existing cache (profile matched to
-      Gate-H functional order), same joint prior, inverse at decode. Tests
-      schedule design in isolation; the flat gauge (whitening) already lost.
+**Stop/continue rule.** Do not train a matched prior for a failed arm. If v12
+fails again, retire residual pooling as a general architecture claim. If v12 or
+v13 passes, train a matched 60k joint prior only on that seed-3 cache; require a
+larger 10k evaluation and another tokenizer seed before claiming v13 robust.
 
-## Phase 4 — generation-track upgrades (gated on Phases 1–2)
+### A2. Fine/local image stem
 
-Two tracks, kept deliberately alive in parallel — different perks:
+After A1 selects the latent-formation baseline, decouple encoder and decoder
+patch sizes. Compare the current `4x4` encoder with a `2x2` encoder or local
+convolutional stem reduced to the same `8x8` transformer grid. Hold the
+`64x16` bottleneck, decoder output grid, objective, budget, and selected latent
+formation fixed.
 
-**One-at-a-time AR** (streaming, KV-cacheable, anytime prefixes, modular
-heads, exact NLL):
-- [ ] Cross-attention conditioning for the head (the bandwidth fix — the
-      leading suspect from the audit) at matched steps vs single-vector AdaLN.
-- [ ] Full-covariance GMM head as a cheap density-family floor; NF (spline
-      coupling) head if one-pass sampling / exact NLL become priorities.
-- [ ] Slot-wise temperature schedule (eval-only, free).
+## Phase B — clean tokenwise-SNR prior (specified, not launched)
 
-**Rolling / diffusion-forcing** (joint-grade conditioning, schedule as an
-inference knob):
-- [ ] Frontier schedule shaped by the measured spectral half-recovery curve
-      (registers 3/6/15/27) instead of linear.
-- [ ] KV-caching for frozen (fully denoised) history to cut sampling cost.
-- [ ] If Phase 3's frontier-noise tokenizer lands: retrain rolling on it —
-      the co-designed pair is the thesis experiment of the project.
+The image/latent analogy is retained, but clean token magnitudes will remain in
+their learned gauge. Natural-image frequency modes differ structurally under
+spatial operators; forcing several orders of magnitude through shared
+tokenwise projections and pre-LayerNorm blocks is an avoidable conditioning
+burden.
 
-## Exit criteria / decision gates
+For token or group `i`, use the endpoint-preserving warp
 
-- Rolling ≥ joint − ~2 FID at matched budget → fixed-order sequential
-  generation is vindicated; prioritize rolling + co-design; AR track becomes
-  the efficiency/streaming variant.
-- Rolling stuck near AR → conditioning bandwidth was not the story; elevate
-  latent shaping (Phase 3) and the E1/E2 anchors to primary.
-- E2 pixel ≈ E1 joint → representation tax is small; scale question
-  (ImageNet-32) opens. E2 ≪ E1 → tax is real; Phase 3 is the project.
-- Defer ImageNet-32 until the CIFAR tax is measured (unchanged from Gate F).
+`phi_i(t) = a_i t / (1 - t + a_i t)`
+
+and noised state
+
+`x_i(t) = (1 - phi_i(t)) eps_i + phi_i(t) z_i`.
+
+Condition every token on its own `phi_i(t)` or log-SNR. Predict the comparable
+base displacement `u_i = z_i - eps_i`, not the global-time derivative
+`phi'_i(t) u_i`; sample with increments `Delta phi_i`. This keeps the shared
+input/output projections from handling artificial orders-of-magnitude clean
+targets.
+
+Run matched prior arms on one frozen, semantically ordered cache:
+
+1. common schedule `phi_i(t)=t`, uniform loss;
+2. groupwise warp, uniform loss (schedule only);
+3. the same warp with normalized explicit importance weights (schedule + loss
+   allocation).
+
+Start with 4-8 adjacent semantic groups, not 64 unrelated schedules. The first
+weight profile should be declared from either the CIFAR radial crossing curve
+or measured decoder contribution and must not be tuned on generated FID.
+
+This is distinct from the rejected static cache rescale: the clean endpoint and
+tensor-wide latent gauge are unchanged. Clamped time offsets are prohibited
+because they recreate the rolling exposure pathology.
+
+## Phase C — posterior/noise parameterization
+
+On the selected encoder, compare one axis at a time:
+
+1. deterministic latents;
+2. deterministic latents plus controlled decoder-input jitter near the measured
+   prior-error scale;
+3. a soft-floor variational posterior whose variance remains trainable.
+
+Log the full posterior distribution. Reject boundary-pinned arms. Promote only
+on the distortion/robustness screen before paying for a matched prior.
+
+## Phase D — explicit progressive semantics (conditional)
+
+Only pursue this phase if partial decoding is itself valuable or Phase B gives
+a positive schedule signal. Use 4-8 groups and compare:
+
+- cumulative low-pass targets;
+- additive DoG/band/residual targets;
+- block-causal register formation paired with an innovation constraint;
+- structured scale embeddings versus independent learned slot identities.
+
+Do not return to 64 individually supervised frequency tokens. Sinusoidal/RoPE
+nearness can encode a scale coordinate but cannot create scale semantics by
+itself.
+
+## Phase E — representation and decoder objectives
+
+After the encoder and posterior stabilize:
+
+- test controlled spectral concentration and slot utilization separately;
+- change decoder capacity only after encoder-side attribution is clear;
+- compare pixel MSE with restrained perceptual/frequency-aware objectives;
+- retain clean rFID, PSNR, decoder sensitivity, and matched-prior decoded FID.
+
+Effective rank, flow MSE, slot balance, and PSNR are diagnostics rather than
+standalone promotion criteria.
+
+## Promotion protocol
+
+1. 15k tokenizer representation screen.
+2. Full-test clean rFID/PSNR and sigma `0/.05/.10/.20/.40` sensitivity.
+3. Matched 60k bidirectional joint prior only for a passing representation.
+4. Paired FID/KID-5k screen, then 10k for a promising difference.
+5. Independent tokenizer and prior seeds before an architecture-level claim.
+6. Preserve optimizer-bearing resumes, final metrics, and W&B checkpoint
+   artifacts; append every decision to `EXPERIMENT_JOURNAL.md`.

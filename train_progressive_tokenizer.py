@@ -90,7 +90,9 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--encoder_depth", type=int, default=8)
     parser.add_argument("--pool_depth", type=int, default=2)
     parser.add_argument(
-        "--pool_type", choices=["residual", "cross_only"], default="residual"
+        "--pool_type",
+        choices=["residual", "cross_only", "register_tokens"],
+        default="residual",
     )
     parser.add_argument("--decoder_depth", type=int, default=8)
     parser.add_argument("--mlp_ratio", type=float, default=4.0)

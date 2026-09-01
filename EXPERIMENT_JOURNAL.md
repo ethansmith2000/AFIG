@@ -22,6 +22,20 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-01 — seed-3 register-formation screen predeclared:** the next
+  Stage-A screen compares three parameter-exact `64x16` full-only tokenizers:
+  v8 cross-only (`e8`), v12 residual pooling (`e7+p1`), and a new true
+  register-token arm (`e7+j1`) in which patches and learned registers share a
+  bidirectional block before register-only refinement. All have 60,056,784
+  parameters, seed 3, and a 15k budget. A candidate advances only by improving
+  clean/sigma-.10/sigma-.20 rFID by at least 0.5 without a greater-than-.5
+  regression on another selected point. Failed arms stop before priors. The
+  follow-on prior experiment is now specified as an endpoint-preserving
+  token/group time warp with unchanged clean magnitudes, per-token log-SNR
+  conditioning, base-displacement prediction, and independently controlled
+  loss weights; it is not part of this representation screen.
+  [Current roadmap](ROADMAP.md) and
+  [full record](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-08-31 — tokenizer-seed-2 architecture confirmation fails:** the
   parameter-matched v8/v12 pair completed 15k steps plus full-test
   reconstruction and latent-noise sensitivity. Residual pooling is essentially

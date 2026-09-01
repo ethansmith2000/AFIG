@@ -116,6 +116,67 @@ class TestProgressiveTokenizer(unittest.TestCase):
         self.assertIsNotNone(model.pool_attention.kv.weight.grad)
         self.assertGreater(float(model.pool_attention.kv.weight.grad.abs().sum()), 0)
 
+    def test_register_tokens_join_patch_sequence_and_train(self):
+        config = TokenizerConfig(
+            **{
+                **tiny_config().fingerprint(),
+                "pool_type": "register_tokens",
+                "pool_depth": 1,
+            }
+        )
+        model = ProgressiveTokenizer(config)
+        images = torch.randn(2, 3, 8, 8)
+        output = model(images, prefix_lengths=torch.tensor([2, 3]))
+        self.assertEqual(output["latents"].shape, (2, 4, 8))
+        F.mse_loss(output["reconstruction"], images).backward()
+        self.assertIsNone(model.pool_attention)
+        self.assertIsNotNone(model.register_joint_block)
+        self.assertIsNotNone(model.register_adapter)
+        self.assertGreater(
+            float(model.register_joint_block.attention.qkv.weight.grad.abs().sum()),
+            0,
+        )
+        self.assertGreater(float(model.register_adapter.input.weight.grad.abs().sum()), 0)
+        self.assertGreater(float(model.pool_queries.grad.abs().sum()), 0)
+
+    def test_stage_a_pooling_arms_are_parameter_exact(self):
+        base = tiny_config().fingerprint()
+        cross = ProgressiveTokenizer(
+            TokenizerConfig(
+                **{
+                    **base,
+                    "encoder_depth": 2,
+                    "pool_type": "cross_only",
+                    "pool_depth": 1,
+                }
+            )
+        )
+        residual = ProgressiveTokenizer(
+            TokenizerConfig(
+                **{
+                    **base,
+                    "encoder_depth": 1,
+                    "pool_type": "residual",
+                    "pool_depth": 1,
+                }
+            )
+        )
+        registers = ProgressiveTokenizer(
+            TokenizerConfig(
+                **{
+                    **base,
+                    "encoder_depth": 1,
+                    "pool_type": "register_tokens",
+                    "pool_depth": 1,
+                }
+            )
+        )
+        counts = {
+            sum(parameter.numel() for parameter in model.parameters())
+            for model in (cross, residual, registers)
+        }
+        self.assertEqual(len(counts), 1)
+
     def test_variational_sampling_and_deterministic_eval_encode(self):
         torch.manual_seed(6)
         config = TokenizerConfig(**{**tiny_config().fingerprint(), "variational": True})
