@@ -740,6 +740,11 @@ joint flow if it passes only the permissive codec-health check. Compare against
 the completed seed-2 v8/v12 priors above. End-to-end resumable launcher:
 `scripts/run_stage_a_register_seed2_confirmation.sh`.
 
+Launch record: started 2026-09-01 21:10 UTC on GPU 0 through `gpu-claim` and
+supervisor program `afig_stage_a_v13_register_s2_confirmation`. The tokenizer
+has 60,056,784 parameters as expected and is active at W&B run
+[`m49qqabv`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/m49qqabv).
+
 ### Clean tokenwise-SNR follow-on (specified, not launched)
 
 Keep the clean latent cache and tensor-wide normalization unchanged. For group

@@ -29,7 +29,9 @@ verdicts live under `reports/` and are linked here.
   35.75/0.02762, a 2.01-FID win with the KID direction now agreeing. V13 is
   therefore the seed-3 winner, but it has only one tokenizer seed. The next
   efficient confirmation is v13 tokenizer seed 2 against the already completed
-  seed-2 v8/v12 controls; its end-to-end tokenizer/prior launcher is queued.
+  seed-2 v8/v12 controls. Its end-to-end tokenizer/prior chain started on GPU 0
+  at 2026-09-01 21:10 UTC under `gpu-claim`; tokenizer W&B run
+  [`m49qqabv`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/m49qqabv).
   [Durable comparison](reports/2026-08-26_autoencoder_program/matched_prior_architecture_comparison.json)
   and [full record](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-01 — five matched priors complete; two comparisons remain close:**

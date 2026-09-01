@@ -92,7 +92,8 @@ FID. Seed 3 favors v13 register tokens over v12, 33.74 versus 35.75 FID, with
 KID also slightly better. V13 is the seed-3 winner but not yet a robust
 architecture claim. The active confirmation trains only v13 at tokenizer seed
 2 and compares its matched prior with the already completed seed-2 v8/v12
-controls.
+controls. This chain is running under `gpu-claim` as
+`v13-unordered-vae-register-e7j1-n64d16-s2` (W&B `m49qqabv`).
 
 ### A2. Fine/local image stem
 
