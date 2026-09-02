@@ -108,7 +108,7 @@ local convolutional stem reduced to the same `8x8` transformer grid. Hold the
 `64x16` bottleneck, decoder output grid, objective, budget, and residual latent
 formation fixed; retain v13 only as a stability control where useful.
 
-**Active arms (launched 2026-09-02 02:16 UTC):** tokenizer seed 2 is matched to
+**Complete:** tokenizer seed 2 is matched to
 the existing v12 seed-2 control.
 V14 directly processes 256 non-overlapping `2x2` encoder tokens while retaining
 64 `4x4` decoder queries (60,136,656 parameters). V15 uses a `2x2` lift plus a
@@ -119,9 +119,15 @@ deltas from v12 are only +0.13%/+0.42% and are reported rather than hidden.
 The direct-fine and local-fine W&B runs are
 [`s1bvu09a`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/s1bvu09a)
 and [`m3lnfesl`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/m3lnfesl).
-Both have entered optimization with finite losses.
+Both completed. Direct `2x2` encoding is rejected at FID/KID-5k
+38.153/0.02948. The local stem reaches 31.894/0.02279 at 5k and
+29.485/0.02232 at 10k versus v12's 31.970/0.02270 and 29.588/0.02255. That is
+an effective tie, not evidence for promotion; keep v12 unchanged. Notably, the
+local stem's flattened effective rank rises from 253.65 to 280.95 without a
+generation improvement, another reason not to use representation diagnostics
+as selectors.
 
-## Phase B — clean tokenwise-SNR prior (active)
+## Phase B — clean tokenwise-SNR prior (complete)
 
 The image/latent analogy is retained, but clean token magnitudes will remain in
 their learned gauge. Natural-image frequency modes differ structurally under
@@ -167,7 +173,14 @@ The common-time, rational-time, and rational-time-plus-weighting W&B runs are
 [`a5dyvamz`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/a5dyvamz),
 [`14o0ldkj`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/14o0ldkj),
 and [`kl6zbjog`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/kl6zbjog).
-All three have entered optimization with finite losses.
+All three completed. The reordered common-time control reaches FID/KID
+32.622/0.02330 at 5k and 30.461/0.02409 at 10k, slightly worse than the original
+v12 cache at 29.588/0.02255 at 10k. Rational groupwise time reaches
+37.287/0.02631 at 5k, 4.666 FID worse than its exact control. Adding the
+frequency-variance loss allocation reaches 47.408/0.03704, 14.787 FID worse.
+Reject both tested transfers; the weighting analogy is especially harmful.
+Exact metrics are in
+`reports/2026-08-26_autoencoder_program/fine_stem_tokenwise_snr_comparison.json`.
 
 This is distinct from the rejected static cache rescale: the clean endpoint and
 tensor-wide latent gauge are unchanged. Clamped time offsets are prohibited

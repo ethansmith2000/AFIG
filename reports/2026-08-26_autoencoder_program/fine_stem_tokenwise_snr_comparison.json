@@ -1,0 +1,76 @@
+{
+  "date": "2026-09-02",
+  "lower_is_better": ["fid", "kid"],
+  "evaluation": {
+    "sample_seed": 54321,
+    "sample_steps": 50
+  },
+  "fine_stem": {
+    "v12_residual_control": {
+      "psnr": 35.15340808149417,
+      "reconstruction_fid": 6.464240207526245,
+      "flattened_effective_rank": 253.64883358334188,
+      "fid_5k": 31.970390583176822,
+      "kid_5k": 0.022703023627400398,
+      "fid_10k": 29.588492661663338,
+      "kid_10k": 0.022549204528331757
+    },
+    "v14_direct_2x2": {
+      "psnr": 33.42374155626156,
+      "reconstruction_fid": 7.849335439862443,
+      "flattened_effective_rank": 158.1368423329378,
+      "fid_5k": 38.152641237338344,
+      "kid_5k": 0.029477568343281746,
+      "verdict": "reject"
+    },
+    "v15_local_2x2_to_8x8": {
+      "psnr": 35.11882483876867,
+      "reconstruction_fid": 6.452724295157395,
+      "flattened_effective_rank": 280.94748554279477,
+      "fid_5k": 31.89359853425958,
+      "kid_5k": 0.022793488577008247,
+      "fid_10k": 29.48494246341727,
+      "kid_10k": 0.022321991622447968,
+      "delta_vs_v12_10k": {
+        "fid": -0.1035501982460687,
+        "kid": -0.00022721290588378906
+      },
+      "verdict": "tie; do not promote"
+    }
+  },
+  "tokenwise_snr": {
+    "original_v12_control_10k": {
+      "fid": 29.588492661663338,
+      "kid": 0.022549204528331757
+    },
+    "v16_reordered_common_time": {
+      "fid_5k": 32.621530430463054,
+      "kid_5k": 0.023299064487218857,
+      "fid_10k": 30.461053724265184,
+      "kid_10k": 0.02409440465271473,
+      "delta_vs_original_10k": {
+        "fid": 0.8725610626018465,
+        "kid": 0.0015452001243829727
+      }
+    },
+    "v17_reordered_rational_time": {
+      "fid_5k": 37.28719384309073,
+      "kid_5k": 0.026311302557587624,
+      "delta_vs_v16_5k": {
+        "fid": 4.66566341262768,
+        "kid": 0.003012238070368767
+      },
+      "verdict": "reject"
+    },
+    "v18_reordered_rational_time_weighted": {
+      "fid_5k": 47.40829685657286,
+      "kid_5k": 0.03704005852341652,
+      "delta_vs_v16_5k": {
+        "fid": 14.786766426109807,
+        "kid": 0.013740994036197662
+      },
+      "verdict": "reject"
+    }
+  },
+  "program_verdict": "Retain v12 unchanged. Direct fine patching regresses; the local stem ties rather than improves; the tested frequency-derived token time warp and loss allocation regress."
+}

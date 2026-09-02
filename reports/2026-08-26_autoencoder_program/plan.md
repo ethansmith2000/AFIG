@@ -888,3 +888,13 @@ cache and receives a 10k check to quantify whether ordering/RoPE adjacency is
 neutral. The result rejects these aggressive image-frequency-derived token
 trajectories and especially their direct loss-allocation analogy; it does not
 show that every gentler learned tokenwise schedule must fail.
+
+The paired 10k checks are complete. V15 local reaches FID/KID
+29.48494/0.022322 versus v12 at 29.58849/0.022549: deltas -0.104/-0.000227,
+far below the decision threshold. It is a neutral alternative, not a promoted
+design. V16 reordered common-time reaches 30.46105/0.024094: deltas
++0.873/+0.001545 versus the original cache. This is consistent with a modest
+ordering/RoPE cost, though the FID gap alone remains below resolution. In
+either interpretation, v17 and v18 remain decisive regressions relative to
+their exact reordered control. Retain v12 unchanged. Durable exact metrics and
+deltas are in `fine_stem_tokenwise_snr_comparison.json`.

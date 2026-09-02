@@ -22,7 +22,7 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
-- **2026-09-02 — fine-stem and clean tokenwise-SNR follow-ons launched:**
+- **2026-09-02 — fine-stem and clean tokenwise-SNR follow-ons complete:**
   the tokenizer now separates encoder and decoder patch sizes. Two v12 seed-2
   arms test direct 256-token `2x2` encoding and a local `2x2 -> 8x8` convolutional
   stem while keeping the `4x4` decoder. The prior now supports smooth rational
@@ -42,9 +42,14 @@ verdicts live under `reports/` and are linked here.
   [`14o0ldkj`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/14o0ldkj),
   and rational-time plus radial loss allocation
   [`kl6zbjog`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/kl6zbjog).
-  The first health check found the priors around steps 1000--1125 at 16--20
-  steps/s and the tokenizers around steps 250--400 at 2.1k--4.1k images/s,
-  with three GPUs still unclaimed.
+  All chains completed. At 10k, the local-convolutional stem ties v12:
+  FID/KID 29.485/0.02232 versus 29.588/0.02255. Direct `2x2` encoding is clearly
+  worse at 5k (38.153/0.02948). On the reordered v12 cache, common time reaches
+  30.461/0.02409 at 10k versus the original 29.588/0.02255; at 5k, rational
+  tokenwise time worsens its matched control by 4.666 FID and adding radial
+  loss allocation worsens it by 14.787. Retain v12 unchanged. Reject direct
+  fine patching and the tested image-frequency-derived token schedule/weight
+  transfer; treat the local stem as a neutral alternative, not an improvement.
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-02 — complete three-seed architecture verdict:** at 10k samples,
   v8/v12/v13 FIDs are 27.38/24.85/31.18 for tokenizer seed 1,
