@@ -796,7 +796,7 @@ The seed-3 prior-seed-2 replication remains important: v13 reaches FID/KID
 result. It does not erase the cross-tokenizer-seed interaction. Exact durable
 values and aggregates are in `matched_prior_architecture_comparison.json`.
 
-### Clean tokenwise-SNR follow-on (specified, not launched)
+### Clean tokenwise-SNR follow-on (launched 2026-09-02)
 
 Keep the clean latent cache and tensor-wide normalization unchanged. For group
 `i`, use `phi_i(t)=a_i*t/(1-t+a_i*t)` and noised state
@@ -857,3 +857,14 @@ normalization remain unchanged. Compare decoded FID/KID at 5k; use 10k whenever
 a relevant gap is below two FID or FID/KID disagree. Launchers:
 `scripts/run_stage_a_fine_stem_arm.sh {direct2|local2}` and
 `scripts/run_phase_b_tokenwise_snr_arm.sh {control|warp|warp_weighted}`.
+
+Launch record: all five supervisor chains acquired lifetime `gpu-claim` locks
+at 2026-09-02 02:16 UTC. The direct-fine and local-fine tokenizer W&B runs are
+[`s1bvu09a`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/s1bvu09a)
+and [`m3lnfesl`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/m3lnfesl).
+The common-time, rational-time, and rational-time-plus-weighting prior runs are
+[`a5dyvamz`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/a5dyvamz),
+[`14o0ldkj`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/14o0ldkj),
+and [`kl6zbjog`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/kl6zbjog).
+The first post-compile health check found all runs writing finite optimization
+history; no gate had failed, and GPUs 5--7 remained unclaimed.

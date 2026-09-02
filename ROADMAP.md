@@ -108,15 +108,20 @@ local convolutional stem reduced to the same `8x8` transformer grid. Hold the
 `64x16` bottleneck, decoder output grid, objective, budget, and residual latent
 formation fixed; retain v13 only as a stability control where useful.
 
-**Queued arms:** tokenizer seed 2 is matched to the existing v12 seed-2 control.
+**Active arms (launched 2026-09-02 02:16 UTC):** tokenizer seed 2 is matched to
+the existing v12 seed-2 control.
 V14 directly processes 256 non-overlapping `2x2` encoder tokens while retaining
 64 `4x4` decoder queries (60,136,656 parameters). V15 uses a `2x2` lift plus a
 depthwise-separable local reduction to the historical `8x8` transformer grid
 and unchanged decoder (60,306,128 parameters). Both retain the 15k tokenizer,
 permissive codec-health, 60k prior-seed-1, and FID/KID-5k protocol. Parameter
 deltas from v12 are only +0.13%/+0.42% and are reported rather than hidden.
+The direct-fine and local-fine W&B runs are
+[`s1bvu09a`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/s1bvu09a)
+and [`m3lnfesl`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/m3lnfesl).
+Both have entered optimization with finite losses.
 
-## Phase B — clean tokenwise-SNR prior (queued)
+## Phase B — clean tokenwise-SNR prior (active)
 
 The image/latent analogy is retained, but clean token magnitudes will remain in
 their learned gauge. Natural-image frequency modes differ structurally under
@@ -157,6 +162,12 @@ permutation and changed RoPE adjacency; warp versus common isolates schedule,
 and weighted versus unweighted warp isolates loss allocation. Flow loss does
 not select. Compare decoded FID/KID-5k, and rerun at 10k when a gap is below two
 FID or when FID and KID disagree.
+
+The common-time, rational-time, and rational-time-plus-weighting W&B runs are
+[`a5dyvamz`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/a5dyvamz),
+[`14o0ldkj`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/14o0ldkj),
+and [`kl6zbjog`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/kl6zbjog).
+All three have entered optimization with finite losses.
 
 This is distinct from the rejected static cache rescale: the clean endpoint and
 tensor-wide latent gauge are unchanged. Clamped time offsets are prohibited

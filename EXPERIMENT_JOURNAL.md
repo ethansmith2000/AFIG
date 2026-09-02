@@ -22,7 +22,7 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
-- **2026-09-02 — fine-stem and clean tokenwise-SNR follow-ons implemented:**
+- **2026-09-02 — fine-stem and clean tokenwise-SNR follow-ons launched:**
   the tokenizer now separates encoder and decoder patch sizes. Two v12 seed-2
   arms test direct 256-token `2x2` encoding and a local `2x2 -> 8x8` convolutional
   stem while keeping the `4x4` decoder. The prior now supports smooth rational
@@ -30,7 +30,21 @@ verdicts live under `reports/` and are linked here.
   and `Delta phi_i` sampling. Phase B uses an exactly invertible content-RMS
   token ordering and three parameter-exact arms: common time, CIFAR-radial
   groupwise time, and the same time warp with declared radial-variance loss
-  weights. Thirty-two focused tests and end-to-end queued GPU smokes pass.
+  weights. Thirty-two focused tests and end-to-end queued GPU smokes pass. All
+  five long runs started through `gpu-claim` at 02:16 UTC and have emitted
+  finite optimization records: direct-fine tokenizer
+  [`s1bvu09a`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/s1bvu09a),
+  local-fine tokenizer
+  [`m3lnfesl`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/m3lnfesl),
+  common-time control
+  [`a5dyvamz`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/a5dyvamz),
+  rational-time
+  [`14o0ldkj`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/14o0ldkj),
+  and rational-time plus radial loss allocation
+  [`kl6zbjog`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/kl6zbjog).
+  The first health check found the priors around steps 1000--1125 at 16--20
+  steps/s and the tokenizers around steps 250--400 at 2.1k--4.1k images/s,
+  with three GPUs still unclaimed.
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-02 — complete three-seed architecture verdict:** at 10k samples,
   v8/v12/v13 FIDs are 27.38/24.85/31.18 for tokenizer seed 1,
