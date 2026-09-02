@@ -868,3 +868,23 @@ The common-time, rational-time, and rational-time-plus-weighting prior runs are
 and [`kl6zbjog`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/kl6zbjog).
 The first post-compile health check found all runs writing finite optimization
 history; no gate had failed, and GPUs 5--7 remained unclaimed.
+
+### Fine-stem and tokenwise-SNR 5k outcome (2026-09-02)
+
+All chains completed successfully. Against the matched v12 tokenizer-seed-2
+control at FID/KID-5k 31.970/0.02270, the direct `2x2` stem reaches
+38.153/0.02948 and is rejected. The local-convolutional stem reaches
+31.894/0.02279: effectively tied, with opposite negligible FID/KID directions.
+Its PSNR/rFID 35.119/6.453 also ties v12 at 35.153/6.464, so reconstruction does
+not provide a reason to override the generation result. Per protocol, only the
+local arm advances to a paired 10k evaluation.
+
+On the exactly reordered v12 cache, the common-time control reaches
+32.622/0.02330. Rational tokenwise time worsens this to 37.287/0.02631; adding
+the radial-variance loss allocation worsens it further to 47.408/0.03704. Both
+negative gaps exceed two FID and KID agrees, so neither receives a larger
+evaluation. The common-time control remains within 0.65 FID of the original
+cache and receives a 10k check to quantify whether ordering/RoPE adjacency is
+neutral. The result rejects these aggressive image-frequency-derived token
+trajectories and especially their direct loss-allocation analogy; it does not
+show that every gentler learned tokenwise schedule must fail.
