@@ -186,17 +186,34 @@ This is distinct from the rejected static cache rescale: the clean endpoint and
 tensor-wide latent gauge are unchanged. Clamped time offsets are prohibited
 because they recreate the rolling exposure pathology.
 
-## Phase C — posterior/noise parameterization
+## Phase C — posterior/noise parameterization (ready to queue)
 
-On the selected encoder, compare one axis at a time:
+Keep the selected v12 residual encoder, `64x16` shape, seed 2, decoder, data
+order, 15k tokenizer budget, and matched 60k prior fixed. The existing v12 arm
+is the historical control: hard-floor VAE, KL `1e-4`, effectively fixed 1.8%
+jitter plus a mean penalty. Four new arms isolate the missing mechanisms:
 
-1. deterministic latents;
-2. deterministic latents plus controlled decoder-input jitter near the measured
-   prior-error scale;
-3. a soft-floor variational posterior whose variance remains trainable.
+| arm | posterior / decoder training noise | parameters |
+|---|---|---:|
+| v19 | deterministic, clean decoder input | 60,048,576 |
+| v20 | deterministic, additive `sigma=0.05` decoder jitter | 60,048,576 |
+| v21 | deterministic, additive `sigma=0.10` decoder jitter | 60,048,576 |
+| v22 | differentiable soft-floor VAE, KL `1e-4` | 60,056,784 |
 
-Log the full posterior distribution. Reject boundary-pinned arms. Promote only
-on the distortion/robustness screen before paying for a matched prior.
+Jitter is measured in tensor-wide latent-RMS units and is used only while
+training the decoder/encoder; evaluation and cached prior targets remain clean.
+The two levels come from v12's measured sensitivity curve: rFID is
+`6.464/6.699/7.585/11.866` at sigma `0/.05/.10/.20`, so 0.05 and 0.10 span the
+useful region before degradation accelerates. The deterministic parameter
+delta versus v12 is only -8,208 (-0.014%) and is reported explicitly.
+
+For v22, log bounded log-variance quantiles, sigma quantiles and RMS, three
+near-floor fractions, and per-token sigma means. A fraction `>=0.95` within
+0.05 log-variance of the `-8` floor fails the named soft-posterior mechanism
+and stops before prior training. Reconstruction otherwise remains only a
+permissive health veto; every healthy valid-mechanism arm receives the matched
+prior and FID/KID-5k evaluation. Use 10k only for a sub-two-FID promising gap
+or metric disagreement.
 
 ## Phase D — explicit progressive semantics (conditional)
 

@@ -57,6 +57,21 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--log_variance_floor",
+        type=float,
+        default=-8.0,
+        help="Lower posterior log-variance bound (the soft path keeps gradients alive).",
+    )
+    parser.add_argument(
+        "--decoder_jitter_std",
+        type=float,
+        default=0.0,
+        help=(
+            "Train the decoder on additive isotropic noise at this fraction of "
+            "the in-graph batch latent RMS. Evaluation and cached latents remain clean."
+        ),
+    )
+    parser.add_argument(
         "--energy_reg_weight",
         type=float,
         default=0.0,
@@ -173,6 +188,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         parser.error("loss weights must be non-negative")
     if args.kl_weight > 0 and not args.variational:
         parser.error("--kl_weight requires --variational")
+    if args.log_variance_floor >= 0:
+        parser.error("--log_variance_floor must be negative")
+    if args.decoder_jitter_std < 0:
+        parser.error("--decoder_jitter_std must be non-negative")
+    if args.decoder_jitter_std > 0 and args.variational:
+        parser.error(
+            "--decoder_jitter_std and --variational are separate Phase-C interventions"
+        )
+    if args.decoder_jitter_std > 0 and args.objective != "full":
+        parser.error("--decoder_jitter_std currently requires --objective full")
+    if args.decoder_jitter_std > 0 and args.latent_shaping != "none":
+        parser.error("--decoder_jitter_std cannot be combined with --latent_shaping")
     if args.latent_shaping != "none" and args.objective != "progressive":
         parser.error(
             "--latent_shaping replaces the prefix term of the progressive objective"
@@ -229,6 +256,7 @@ def make_model_config(args: argparse.Namespace) -> TokenizerConfig:
         qk_norm=args.qk_norm,
         cross_attention_bias=args.cross_attention_bias,
         variational=args.variational,
+        log_variance_floor=args.log_variance_floor,
         hard_log_variance_clamp=args.hard_log_variance_clamp,
     )
 
@@ -357,6 +385,42 @@ def save_preview(
     save_image(panel.float().add(1).div(2).clamp(0, 1), path, nrow=count)
 
 
+def summarize_posterior(
+    log_variance: torch.Tensor, *, floor: float
+) -> dict[str, object]:
+    """Describe the bounded posterior without reducing it to a single KL."""
+
+    values = log_variance.float().cpu()
+    flat = values.flatten()
+    quantile_levels = torch.tensor(
+        [0.0, 0.001, 0.01, 0.05, 0.5, 0.95, 0.99, 0.999, 1.0]
+    )
+    quantiles = torch.quantile(flat, quantile_levels)
+    quantile_names = ("min", "p001", "p01", "p05", "p50", "p95", "p99", "p999", "max")
+    log_quantiles = {
+        name: float(value) for name, value in zip(quantile_names, quantiles)
+    }
+    sigma_quantiles = {
+        name: float(torch.exp(0.5 * value))
+        for name, value in zip(quantile_names, quantiles)
+    }
+    sigma = torch.exp(0.5 * values)
+    return {
+        "log_variance_floor": float(floor),
+        "log_variance_mean": float(flat.mean()),
+        "log_variance_std": float(flat.std(unbiased=False)),
+        "log_variance_quantiles": log_quantiles,
+        "sigma_mean": float(sigma.mean()),
+        "sigma_rms": float(sigma.square().mean().sqrt()),
+        "sigma_quantiles": sigma_quantiles,
+        "fraction_within_0p01_of_floor": float((flat <= floor + 0.01).float().mean()),
+        "fraction_within_0p05_of_floor": float((flat <= floor + 0.05).float().mean()),
+        "fraction_within_0p10_of_floor": float((flat <= floor + 0.10).float().mean()),
+        "per_token_log_variance_mean": values.mean(dim=(0, 2)).tolist(),
+        "per_token_sigma_mean": sigma.mean(dim=(0, 2)).tolist(),
+    }
+
+
 @torch.no_grad()
 def evaluate(
     model: ProgressiveTokenizer,
@@ -377,6 +441,9 @@ def evaluate(
         if collect_latent_stats
         else None
     )
+    posterior_batches = (
+        [] if collect_latent_stats and model.config.variational else None
+    )
     for images, _ in loader:
         if max_examples is not None and example_count >= max_examples:
             break
@@ -384,13 +451,20 @@ def evaluate(
             images = images[: max_examples - example_count]
         images = images.to(device, non_blocking=True)
         with autocast_context(args, device):
-            latents = model.encode(images)
+            if posterior_batches is None:
+                latents = model.encode(images)
+                log_variance = None
+            else:
+                latents, log_variance = model.encode_distribution(images)
             reconstructions = {
                 prefix: model.decode(latents, prefix_lengths=prefix)
                 for prefix in prefixes
             }
         if moments is not None:
             moments.update(latents)
+        if posterior_batches is not None:
+            assert log_variance is not None
+            posterior_batches.append(log_variance.float().cpu())
         for prefix, reconstruction in reconstructions.items():
             prefix_sse[prefix] += float(
                 (reconstruction.float() - images.float()).square().sum()
@@ -410,6 +484,11 @@ def evaluate(
         }
     if moments is not None:
         metrics["latent"] = moments.compute()
+    if posterior_batches is not None:
+        metrics["posterior"] = summarize_posterior(
+            torch.cat(posterior_batches, dim=0),
+            floor=model.config.log_variance_floor,
+        )
     return metrics
 
 
@@ -498,6 +577,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     rolling_prefix = 0.0
     rolling_shaping = 0.0
     rolling_kl = 0.0
+    rolling_log_variance_mean = 0.0
+    rolling_log_variance_std = 0.0
+    rolling_sigma_mean = 0.0
+    rolling_floor_fraction = 0.0
     rolling_kurtosis = 0.0
     rolling_energy_cv = 0.0
     rolling_count = 0
@@ -513,7 +596,14 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         prefix_lengths = None
         noise_mode = None
         noise_scales = None
-        if args.objective == "progressive" and args.latent_shaping == "none":
+        if args.decoder_jitter_std > 0:
+            noise_mode = "add"
+            noise_scales = torch.full(
+                (images.shape[0], args.num_latents),
+                args.decoder_jitter_std,
+                device=device,
+            )
+        elif args.objective == "progressive" and args.latent_shaping == "none":
             prefix_lengths = torch.randint(
                 1,
                 args.num_latents,
@@ -557,7 +647,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             if prefix_lengths is not None:
                 prefix_loss = F.mse_loss(output["reconstruction"], images)
                 prefix_mean = float(prefix_lengths.float().mean())
-            elif noise_mode is not None:
+            elif noise_mode is not None and args.latent_shaping != "none":
                 shaping_loss = F.mse_loss(output["reconstruction"], images)
             loss = (
                 full_loss
@@ -565,6 +655,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 + args.shaping_loss_weight * shaping_loss
             )
         kl_per_dim = loss.new_zeros(())
+        posterior_log_variance_mean = loss.new_zeros(())
+        posterior_log_variance_std = loss.new_zeros(())
+        posterior_sigma_mean = loss.new_zeros(())
+        posterior_floor_fraction = loss.new_zeros(())
         if args.variational:
             posterior_mean = output["mean"].float()
             log_variance = output["log_variance"].float()
@@ -572,6 +666,12 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 posterior_mean.square() + log_variance.exp() - 1.0 - log_variance
             ).mean()
             loss = loss + args.kl_weight * kl_per_dim
+            posterior_log_variance_mean = log_variance.mean()
+            posterior_log_variance_std = log_variance.std(unbiased=False)
+            posterior_sigma_mean = torch.exp(0.5 * log_variance).mean()
+            posterior_floor_fraction = (
+                log_variance <= args.log_variance_floor + 0.05
+            ).float().mean()
         kurtosis_penalty = loss.new_zeros(())
         token_energy_cv = loss.new_zeros(())
         if args.energy_reg_weight > 0:
@@ -597,6 +697,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         rolling_prefix += float(prefix_loss.detach())
         rolling_shaping += float(shaping_loss.detach())
         rolling_kl += float(kl_per_dim.detach())
+        rolling_log_variance_mean += float(posterior_log_variance_mean.detach())
+        rolling_log_variance_std += float(posterior_log_variance_std.detach())
+        rolling_sigma_mean += float(posterior_sigma_mean.detach())
+        rolling_floor_fraction += float(posterior_floor_fraction.detach())
         rolling_kurtosis += float(kurtosis_penalty.detach())
         rolling_energy_cv += float(token_energy_cv.detach())
         rolling_count += 1
@@ -619,12 +723,29 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 "gradient_norm": float(gradient_norm),
                 "images_per_second": rolling_count * images.shape[0] / elapsed,
             }
+            if args.variational:
+                record.update(
+                    {
+                        "posterior_log_variance_mean": (
+                            rolling_log_variance_mean / rolling_count
+                        ),
+                        "posterior_log_variance_std": (
+                            rolling_log_variance_std / rolling_count
+                        ),
+                        "posterior_sigma_mean": rolling_sigma_mean / rolling_count,
+                        "posterior_floor_fraction": (
+                            rolling_floor_fraction / rolling_count
+                        ),
+                    }
+                )
             with history_path.open("a") as handle:
                 handle.write(json.dumps(record, sort_keys=True) + "\n")
             print(json.dumps(record, sort_keys=True), flush=True)
             tracker.log(record, step=completed_step, prefix="train")
             rolling_loss = rolling_full = rolling_prefix = 0.0
             rolling_shaping = rolling_kl = 0.0
+            rolling_log_variance_mean = rolling_log_variance_std = 0.0
+            rolling_sigma_mean = rolling_floor_fraction = 0.0
             rolling_kurtosis = rolling_energy_cv = 0.0
             rolling_count = 0
             rolling_start = time.monotonic()

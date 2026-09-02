@@ -79,6 +79,8 @@ class TokenizerConfig:
             )
         if self.qk_norm not in {"rms", "l2_temperature"}:
             raise ValueError("qk_norm must be rms or l2_temperature")
+        if self.log_variance_floor >= 0:
+            raise ValueError("log_variance_floor must be negative")
 
     @property
     def grid_size(self) -> int:

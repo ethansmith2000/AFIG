@@ -898,3 +898,34 @@ ordering/RoPE cost, though the FID gap alone remains below resolution. In
 either interpretation, v17 and v18 remain decisive regressions relative to
 their exact reordered control. Retain v12 unchanged. Durable exact metrics and
 deltas are in `fine_stem_tokenwise_snr_comparison.json`.
+
+### Phase C posterior/noise launch specification (2026-09-02)
+
+Use the selected v12 residual architecture and tokenizer seed 2. The existing
+hard-clamped v12 checkpoint remains the exact historical control: KL `1e-4`,
+posterior sigma effectively fixed at `exp(-4)=0.0183`, and a live mean-square
+penalty. Do not retrain it. Four new tokenizer arms hold every non-posterior
+setting fixed:
+
+1. v19 deterministic with clean decoder inputs;
+2. v20 deterministic with additive decoder-input jitter sigma 0.05;
+3. v21 deterministic with additive decoder-input jitter sigma 0.10;
+4. v22 variational with the differentiable `-8` soft floor and KL `1e-4`.
+
+The jitter sigma multiplies the in-graph batch latent RMS, matching the units
+of the decoder-sensitivity audit. Noise is present only for the training
+reconstruction; clean posterior means are evaluated, cached, and modeled by
+the prior. The 0.05/0.10 values bracket the measured v12 region before the
+sigma-0.20 sensitivity curve steepens. This isolates jitter from the KL mean
+penalty while v22 versus historical v12 isolates the hard versus soft bound.
+
+Deterministic arms have 60,048,576 parameters versus 60,056,784 for both VAE
+arms. The -0.014% delta is negligible but explicit. Final variational metrics
+include global bounded-logvar and sigma quantiles, sigma RMS, mass within
+0.01/0.05/0.10 of the floor, and per-token sigma means. V22 advances only if
+less than 95% of posterior values lie within 0.05 logvar of the floor. This is
+a mechanism-validity gate, not a reconstruction ranking. Every other healthy
+arm advances through cache, axis scorecard, sigma `0/.05/.10/.20/.40`
+sensitivity, matched prior-seed-1 training for 60k steps, and paired
+FID/KID-5k. Reconstruction only vetoes a broken codec. Launcher:
+`scripts/run_phase_c_posterior_arm.sh {det|jitter05|jitter10|softvae}`.

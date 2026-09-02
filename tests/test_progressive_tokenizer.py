@@ -232,6 +232,35 @@ class TestProgressiveTokenizer(unittest.TestCase):
         self.assertTrue(torch.equal(encoded, evaluated["latents"]))
         self.assertTrue(torch.equal(encoded, evaluated["mean"]))
 
+    def test_soft_log_variance_bound_stays_differentiable(self):
+        config = TokenizerConfig(
+            **{**tiny_config().fingerprint(), "variational": True}
+        )
+        model = ProgressiveTokenizer(config)
+        raw = torch.tensor([-20.0, -8.0, 0.0, 20.0], requires_grad=True)
+        bounded = model._bound_log_variance(raw)
+        self.assertTrue(torch.all(bounded >= config.log_variance_floor))
+        self.assertTrue(torch.all(bounded <= -config.log_variance_floor))
+        bounded.sum().backward()
+        self.assertTrue(torch.all(raw.grad > 0))
+
+        hard_config = TokenizerConfig(
+            **{
+                **config.fingerprint(),
+                "hard_log_variance_clamp": True,
+            }
+        )
+        hard_model = ProgressiveTokenizer(hard_config)
+        hard_raw = torch.tensor([-20.0], requires_grad=True)
+        hard_model._bound_log_variance(hard_raw).sum().backward()
+        self.assertEqual(float(hard_raw.grad), 0.0)
+
+    def test_log_variance_floor_must_be_negative(self):
+        with self.assertRaises(ValueError):
+            TokenizerConfig(
+                **{**tiny_config().fingerprint(), "log_variance_floor": 0.0}
+            )
+
     def test_latent_noise_modes_zero_scale_identity_and_validation(self):
         torch.manual_seed(7)
         model = ProgressiveTokenizer(tiny_config()).eval()

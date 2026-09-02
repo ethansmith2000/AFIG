@@ -22,6 +22,16 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-02 — Phase C posterior/noise study implemented:** the selected v12
+  seed-2 residual baseline is held fixed while four arms test clean
+  deterministic latents, deterministic decoder-input jitter at sigma 0.05 and
+  0.10, and the same-KL soft-floor posterior. Jitter levels are predeclared
+  from v12's measured decoder-sensitivity curve rather than selected from
+  generation. Training now records posterior log-variance/sigma quantiles,
+  per-token sigma, and near-floor mass; a soft arm with at least 95% of values
+  within 0.05 logvar of the floor fails the mechanism gate. Thirty-four focused
+  tests and deterministic-jitter/soft-posterior end-to-end CPU smokes pass.
+  [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-02 — fine-stem and clean tokenwise-SNR follow-ons complete:**
   the tokenizer now separates encoder and decoder patch sizes. Two v12 seed-2
   arms test direct 256-token `2x2` encoding and a local `2x2 -> 8x8` convolutional
