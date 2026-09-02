@@ -775,6 +775,17 @@ currently uploading its artifact before cache construction and diagnostics.
 GPU assignments are dynamic lifetime locks; at launch the three new jobs used
 GPUs 0, 1, and 4, leaving GPUs 5--7 free for later phases or other projects.
 
+Completion record (2026-09-02): both prior-seed-2 replications completed at
+10k. V12 reaches FID/KID 35.243/0.02883; v13 reaches 32.038/0.02452. The v13
+advantage is therefore 3.205 FID and 0.00431 KID and repeats the prior-seed-1
+direction. V13 tokenizer seed 1 also completed, but its matched prior reaches
+only FID/KID 31.176/0.02290, worse than the durable seed-1 v8/v12 controls at
+27.38/24.85 FID. V13 tokenizer seed 2 reaches FID/KID 35.947/0.02605 at 5k,
+also behind the seed-2 v8/v12 5k controls at 30.31/31.97. This points to
+substantial tokenizer-seed instability rather than a generally dominant
+register architecture. Run seed-2 v13 and seed-3 v8 at 10k to finish the
+matched sample-count table before the final architecture verdict.
+
 ### Clean tokenwise-SNR follow-on (specified, not launched)
 
 Keep the clean latent cache and tensor-wide normalization unchanged. For group

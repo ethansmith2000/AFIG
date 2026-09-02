@@ -107,6 +107,13 @@ active (`6pnsnulc`, `1lxjnhll`, and `hh07ajxg`). V13 tokenizer seed 2 has
 completed tokenizer training at 34.68 dB PSNR and is advancing through the
 resumable diagnostic/prior chain.
 
+Completion note (2026-09-02): all four robustness chains finished. The
+tokenizer-seed-3 register advantage repeated at prior seed 2 by 3.21 FID and
+0.00431 KID. However, v13 reaches only 31.18 FID at tokenizer seed 1, versus
+the durable 27.38/24.85 v8/v12 controls, and its seed-2 5k FID is 35.95 versus
+30.31/31.97. Two final 10k evaluations (seed-2 v13 and seed-3 v8) are required
+to complete the matched table before selecting an encoder.
+
 ### A2. Fine/local image stem
 
 After A1 selects the latent-formation baseline, decouple encoder and decoder

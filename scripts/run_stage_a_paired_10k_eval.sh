@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
-  echo "usage: $0 {s2_v8|s2_v12|s3_v12|s3_v13}" >&2
+  echo "usage: $0 {s2_v8|s2_v12|s2_v13|s3_v8|s3_v12|s3_v13}" >&2
   exit 2
 fi
 
@@ -18,6 +18,12 @@ case "$1" in
   s2_v12)
     name="v12-joint-residual-e7p1-n64d16-tokenizer-s2-prior-s1"
     ;;
+  s2_v13)
+    name="v13-joint-register-e7j1-n64d16-tokenizer-s2-prior-s1"
+    ;;
+  s3_v8)
+    name="v8-joint-unordered-vae-tokenizer-s3-prior-s1"
+    ;;
   s3_v12)
     name="v12-joint-residual-e7p1-n64d16-tokenizer-s3-prior-s1"
     ;;
@@ -25,7 +31,7 @@ case "$1" in
     name="v13-joint-register-e7j1-n64d16-tokenizer-s3-prior-s1"
     ;;
   *)
-    echo "usage: $0 {s2_v8|s2_v12|s3_v12|s3_v13}" >&2
+    echo "usage: $0 {s2_v8|s2_v12|s2_v13|s3_v8|s3_v12|s3_v13}" >&2
     exit 2
     ;;
 esac

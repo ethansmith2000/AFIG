@@ -22,6 +22,15 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-02 — robustness block complete; register result is seed-specific:**
+  with tokenizer seed 3 and prior seed 2, v13 repeats its win over v12 at
+  FID/KID **32.04/0.02452** versus 35.24/0.02883. But v13 tokenizer seed 1
+  reaches only FID/KID 31.18/0.02290, behind the durable seed-1 v8/v12 controls
+  at 27.38/24.85 FID, and v13 tokenizer seed 2 reaches 35.95 FID at 5k, behind
+  both seed-2 controls. The result is robust to prior seed within tokenizer
+  seed 3, but not robust to tokenizer seed. Final seed-2 v13 and seed-3 v8 10k
+  evaluations close the sample-count mismatch before selection.
+  [Full record](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-01 — open GPUs assigned to architecture robustness:** v13 tokenizer
   seed 2 completed its 15k tokenizer phase at PSNR 34.68 and is in artifact/
   diagnostic processing before its matched prior. In parallel, frozen
