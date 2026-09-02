@@ -22,6 +22,17 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-02 — decoder-jitter robustness confirmation predeclared:** the
+  v20 sigma-0.05 result is being tested at fresh tokenizer seeds 1 and 3 with
+  matched prior seed 1, and the frozen seed-2 v12/v20 caches are being compared
+  with fresh prior seed 2. All four chains use the shared lifetime GPU queue,
+  resumable checkpoints, and supervisor ownership. Generation FID/KID selects;
+  reconstruction remains only a permissive health veto. The 5k screen advances
+  promising, close, or metric-discordant pairs to 10k. Global promotion
+  requires at least two of three tokenizer-seed FID wins, improved mean FID and
+  KID, no clear concordant per-seed regression, and preservation of direction
+  under prior seed 2.
+  [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-02 — Phase C posterior/noise study complete:** the selected v12
   seed-2 residual baseline is held fixed while four arms test clean
   deterministic latents, deterministic decoder-input jitter at sigma 0.05 and

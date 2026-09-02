@@ -968,3 +968,41 @@ winner to leading candidate, but do not yet replace v12 globally: the prior
 architecture study demonstrated large tokenizer-seed interactions, so an
 independent tokenizer seed remains mandatory. Exact values are serialized in
 `phase_c_posterior_comparison.json`.
+
+### Phase C decoder-jitter confirmation specification (2026-09-02)
+
+Resolve both known stochastic axes before changing the baseline. Four
+supervisor-owned, queue-compliant chains are predeclared:
+
+| arm | tokenizer cache | tokenizer seed | prior seed | matched control |
+|---|---|---:|---:|---|
+| tokenizer_s1 | new v23 deterministic jitter-0.05 | 1 | 1 | durable v12 seed-1 result |
+| tokenizer_s3 | new v24 deterministic jitter-0.05 | 3 | 1 | local v12 seed-3 result |
+| prior2_v12 | frozen v12 residual | 2 | 2 | paired with prior2_v20 |
+| prior2_v20 | frozen v20 jitter-0.05 | 2 | 2 | paired with prior2_v12 |
+
+The new tokenizers exactly retain the v20 architecture, `64x16` shape,
+decoder, data pipeline, 15k budget, optimizer, and sigma-0.05 in-graph
+latent-RMS-scaled decoder jitter. Their clean caches receive the unchanged 60k
+joint prior. The seed-2 replication does not retrain either tokenizer.
+Launcher:
+`scripts/run_phase_c_jitter_confirmation.sh {tokenizer_s1|tokenizer_s3|prior2_v12|prior2_v20}`.
+Qualifying larger-sample evaluations use
+`scripts/run_phase_c_jitter_confirmation_10k.sh <same-arm>`.
+
+Every arm first receives FID/KID-5k using seed 54321, 50-step Heun sampling,
+and the same decoder protocol. Advance a pair to 10k when jitter improves FID,
+lies within two FID of its matched control, or FID and KID disagree. The seed-1
+historical controls are FID/KID 27.13/0.01885 at 5k and
+24.85115/0.0191017 at 10k; seed-2 controls are 31.97039/0.0227030 and
+29.58849/0.0225492; seed-3 controls are 37.73726/0.0270355 and
+35.74954/0.0276222. These values were fixed before the new results.
+
+Generation selects. Reconstruction and sensitivity are retained only as
+mechanism/health evidence; the permissive broken-codec veto is `PSNR < 28`
+together with clean rFID `> 25`. Global promotion requires all of the
+following on the paired 10k evidence: jitter wins FID in at least two of three
+tokenizer seeds; its three-seed mean FID and mean KID both improve; it has no
+greater-than-two-FID loss with concordantly worse KID at any seed; and the
+prior-seed-2 seed-2 pair preserves the improvement direction. Failure retains
+v12 globally even if the original v20 checkpoint remains excellent.

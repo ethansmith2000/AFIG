@@ -234,6 +234,32 @@ Its FID/KID-5k 33.147/0.02381 does not improve v12, so it is not promoted.
 Exact metrics are in
 `reports/2026-08-26_autoencoder_program/phase_c_posterior_comparison.json`.
 
+### Phase C decoder-jitter robustness confirmation
+
+Do not promote v20 from one favorable tokenizer seed. Run the exact
+deterministic sigma-0.05 recipe at tokenizer seeds 1 and 3, each with a matched
+prior seed 1, and compare them with the durable v12 controls at the same seeds.
+In parallel, freeze the existing seed-2 v12 and v20 caches and train both with
+prior seed 2. This separates tokenizer-training interaction from prior-training
+luck without spending compute to reproduce frozen caches.
+
+All four arms first receive the fixed-seed FID/KID-5k evaluation. Advance a
+paired comparison to 10k if jitter improves FID, is within two FID of its
+control, or FID and KID disagree. Reconstruction, decoder sensitivity,
+effective rank, and utilization remain explanatory diagnostics; they only veto
+a broken codec (`PSNR < 28` together with clean reconstruction FID `> 25`) and
+cannot promote a representation.
+
+Replace v12 as the expected-performance baseline only if the prior-seed-1
+jitter arm wins FID at least two of three tokenizer seeds, improves both mean
+FID and mean KID across those seeds, has no greater-than-two-FID regression
+with concordantly worse KID, and the seed-2 prior-seed-2 pair preserves the
+direction. Otherwise retain v12 and report v20 as a checkpoint-local result.
+Launcher:
+`scripts/run_phase_c_jitter_confirmation.sh {tokenizer_s1|tokenizer_s3|prior2_v12|prior2_v20}`;
+larger-sample follow-up:
+`scripts/run_phase_c_jitter_confirmation_10k.sh <same-arm>`.
+
 ## Phase D — explicit progressive semantics (conditional)
 
 Only pursue this phase if partial decoding is itself valuable or Phase B gives
