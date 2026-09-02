@@ -775,16 +775,26 @@ currently uploading its artifact before cache construction and diagnostics.
 GPU assignments are dynamic lifetime locks; at launch the three new jobs used
 GPUs 0, 1, and 4, leaving GPUs 5--7 free for later phases or other projects.
 
-Completion record (2026-09-02): both prior-seed-2 replications completed at
-10k. V12 reaches FID/KID 35.243/0.02883; v13 reaches 32.038/0.02452. The v13
-advantage is therefore 3.205 FID and 0.00431 KID and repeats the prior-seed-1
-direction. V13 tokenizer seed 1 also completed, but its matched prior reaches
-only FID/KID 31.176/0.02290, worse than the durable seed-1 v8/v12 controls at
-27.38/24.85 FID. V13 tokenizer seed 2 reaches FID/KID 35.947/0.02605 at 5k,
-also behind the seed-2 v8/v12 5k controls at 30.31/31.97. This points to
-substantial tokenizer-seed instability rather than a generally dominant
-register architecture. Run seed-2 v13 and seed-3 v8 at 10k to finish the
-matched sample-count table before the final architecture verdict.
+Completion record (2026-09-02): all primary prior-seed-1 evaluations now use
+10k samples.
+
+| architecture | tokenizer seed 1 | tokenizer seed 2 | tokenizer seed 3 | mean FID | FID std | worst FID |
+|---|---:|---:|---:|---:|---:|---:|
+| v8 cross-only | 27.381 | **28.073** | 40.037 | 31.830 | 5.810 | 40.037 |
+| v12 residual | **24.851** | 29.588 | 35.750 | **30.063** | 4.462 | 35.750 |
+| v13 register tokens | 31.176 | 33.294 | **33.740** | 32.737 | **1.118** | **33.740** |
+
+The per-seed winners are v12, v8, and v13 respectively. Mean KID is
+0.02498/0.02309/0.02538, again favoring v12. Thus v12 is the primary baseline
+for expected performance: it has the best mean FID/KID and beats v8 in two of
+three seeds. V13 is not the mean-performance winner, but its narrow 2.56-FID
+range and best worst-case value make it the retained stability control.
+
+The seed-3 prior-seed-2 replication remains important: v13 reaches FID/KID
+32.038/0.02452 versus v12 at 35.243/0.02883, repeating the seed-3 v13 win by
+3.205 FID. This rules out prior-seed noise as the explanation for that local
+result. It does not erase the cross-tokenizer-seed interaction. Exact durable
+values and aggregates are in `matched_prior_architecture_comparison.json`.
 
 ### Clean tokenwise-SNR follow-on (specified, not launched)
 

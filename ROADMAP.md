@@ -1,4 +1,4 @@
-# AFIG roadmap — 2026-09-01
+# AFIG roadmap — 2026-09-02
 
 This is the current decision roadmap. Historical campaigns and corrected
 premises remain in `EXPERIMENT_JOURNAL.md`, `REVIEW_BRIEF.md`, and `reports/`.
@@ -28,9 +28,11 @@ assumed to improve full-length generation.
 - Raw PCA concentration and static token-magnitude schedules are rejected in
   their tested gauges. The loss-compensated alpha-0.50 scale still reached FID
   39.89 versus the flat progressive control's 35.85.
-- The residual register pool is checkpoint-promising but not tokenizer-seed
-  robust. Seed 1 improved distortion, robustness, and two matched-prior seeds;
-  tokenizer seed 2 was tied/slightly worse and did not advance to a prior.
+- No latent-formation arm wins every tokenizer seed. Across three matched 10k
+  evaluations, residual pooling has the best mean FID/KID and beats cross-only
+  in two seeds; register tokens have the lowest variance and best worst-case
+  FID but the worst mean. Carry residual as the primary baseline and registers
+  as the stability control.
 - The historical hard-clamped "VAE" is effectively deterministic plus tiny
   fixed jitter and a mean penalty. A clean posterior/noise study remains open.
 
@@ -82,45 +84,29 @@ reconstruction quality and making the matched-prior comparison especially
 diagnostic. All three prior-seed-1 runs and the reopened paired
 tokenizer-seed-2 priors completed under the corrected rule.
 
-**Prior status:** the five 60k/5k evaluations are complete. Tokenizer seed 2
-slightly favors v8 over v12 (30.31 versus 31.97 FID). Tokenizer seed 3 clearly
-favors both v12/v13 over v8 (37.74/36.35 versus 42.60), but v13 versus v12 is
-only a 1.38-FID gap and KID slightly favors v12 at 5k.
+**Final 10k result:** each architecture wins one tokenizer seed.
 
-**10k verdict:** seed 2 retains the v8 advantage over v12, 28.07 versus 29.59
-FID. Seed 3 favors v13 register tokens over v12, 33.74 versus 35.75 FID, with
-KID also slightly better. V13 is the seed-3 winner but not yet a robust
-architecture claim. The active confirmation trains only v13 at tokenizer seed
-2 and compares its matched prior with the already completed seed-2 v8/v12
-controls. This chain is running under `gpu-claim` as
-`v13-unordered-vae-register-e7j1-n64d16-s2` (W&B `m49qqabv`).
+| architecture | seed 1 | seed 2 | seed 3 | mean | population std | worst |
+|---|---:|---:|---:|---:|---:|---:|
+| v8 cross-only | 27.38 | **28.07** | 40.04 | 31.83 | 5.81 | 40.04 |
+| v12 residual | **24.85** | 29.59 | 35.75 | **30.06** | 4.46 | 35.75 |
+| v13 registers | 31.18 | 33.29 | **33.74** | 32.74 | **1.12** | **33.74** |
 
-Open-GPU robustness block: use two additional GPUs to repeat the frozen
-tokenizer-seed-3 v12/v13 comparison with prior seed 2 and paired 10k evaluation.
-Use one more GPU for a v13 tokenizer-seed-1 end-to-end arm, which can be compared
-against the durable seed-1 v8/v12 controls. This separates prior optimization
-variance from tokenizer/architecture variance while leaving two GPUs free for
-other projects.
-
-Launch status: both prior-seed-2 replications and v13 tokenizer seed 1 are
-active (`6pnsnulc`, `1lxjnhll`, and `hh07ajxg`). V13 tokenizer seed 2 has
-completed tokenizer training at 34.68 dB PSNR and is advancing through the
-resumable diagnostic/prior chain.
-
-Completion note (2026-09-02): all four robustness chains finished. The
-tokenizer-seed-3 register advantage repeated at prior seed 2 by 3.21 FID and
-0.00431 KID. However, v13 reaches only 31.18 FID at tokenizer seed 1, versus
-the durable 27.38/24.85 v8/v12 controls, and its seed-2 5k FID is 35.95 versus
-30.31/31.97. Two final 10k evaluations (seed-2 v13 and seed-3 v8) are required
-to complete the matched table before selecting an encoder.
+Mean KID is likewise best for v12: 0.02309 versus 0.02498 for v8 and 0.02538
+for v13. At tokenizer seed 3, v13's advantage over v12 also repeats with prior
+seed 2 (32.04 versus 35.24 FID), so that local win is real rather than prior
+noise. The overall conclusion is architecture-by-tokenizer-seed interaction,
+not a universal ordering. Select v12 residual for expected performance; retain
+v13 as the stability control. Durable exact metrics:
+`reports/2026-08-26_autoencoder_program/matched_prior_architecture_comparison.json`.
 
 ### A2. Fine/local image stem
 
-After A1 selects the latent-formation baseline, decouple encoder and decoder
-patch sizes. Compare the current `4x4` encoder with a `2x2` encoder or local
-convolutional stem reduced to the same `8x8` transformer grid. Hold the
-`64x16` bottleneck, decoder output grid, objective, budget, and selected latent
-formation fixed.
+With v12 residual selected as the primary baseline, decouple encoder and
+decoder patch sizes. Compare the current `4x4` encoder with a `2x2` encoder or
+local convolutional stem reduced to the same `8x8` transformer grid. Hold the
+`64x16` bottleneck, decoder output grid, objective, budget, and residual latent
+formation fixed; retain v13 only as a stability control where useful.
 
 ## Phase B — clean tokenwise-SNR prior (specified, not launched)
 

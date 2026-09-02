@@ -1,10 +1,30 @@
 {
   "protocol": {
-    "prior_seed": 1,
+    "primary_prior_seed": 1,
     "prior_steps": 60000,
+    "num_samples": 10000,
     "sample_steps": 50,
     "solver": "heun",
     "evaluation_seed": 54321
+  },
+  "tokenizer_seed_1": {
+    "v8_cross_only": {
+      "fid_10k": 27.380694655474485,
+      "kid_10k": 0.020403089001774788
+    },
+    "v12_residual": {
+      "fid_10k": 24.851145693853482,
+      "kid_10k": 0.01910168118774891
+    },
+    "v13_register_tokens": {
+      "fid_10k": 31.176318422778024,
+      "kid_10k": 0.022895699366927147
+    },
+    "ranking_by_fid_10k": [
+      "v12_residual",
+      "v8_cross_only",
+      "v13_register_tokens"
+    ]
   },
   "tokenizer_seed_2": {
     "v8_cross_only": {
@@ -19,14 +39,31 @@
       "fid_10k": 29.588492661663338,
       "kid_10k": 0.022549204528331757
     },
+    "v13_register_tokens": {
+      "fid_5k": 35.946997316902866,
+      "kid_5k": 0.02604588121175766,
+      "fid_10k": 33.2942390944678,
+      "kid_10k": 0.02582409419119358
+    },
     "v12_minus_v8": {
       "fid_5k": 1.6589828051725135,
       "kid_5k": 0.0025150980800390244,
       "fid_10k": 1.5157398032282572,
       "kid_10k": 0.0020914115011692047
-    }
+    },
+    "ranking_by_fid_10k": [
+      "v8_cross_only",
+      "v12_residual",
+      "v13_register_tokens"
+    ]
   },
   "tokenizer_seed_3": {
+    "v8_cross_only": {
+      "fid_5k": 42.59618704375987,
+      "kid_5k": 0.034268926829099655,
+      "fid_10k": 40.036921087300186,
+      "kid_10k": 0.03409239649772644
+    },
     "v12_residual": {
       "fid_5k": 37.737260274987705,
       "kid_5k": 0.027035469189286232,
@@ -44,11 +81,62 @@
       "kid_5k": 0.0007350444793701172,
       "fid_10k": -2.0091778887868372,
       "kid_10k": -0.00019429251551628113
+    },
+    "ranking_by_fid_10k": [
+      "v13_register_tokens",
+      "v12_residual",
+      "v8_cross_only"
+    ]
+  },
+  "aggregate_across_tokenizer_seeds": {
+    "v8_cross_only": {
+      "fid_mean": 31.830122867069917,
+      "fid_median": 28.07275285843508,
+      "fid_population_std": 5.809956334302481,
+      "fid_range": 12.6562264318257,
+      "fid_worst": 40.036921087300186,
+      "kid_mean": 0.024984426175554592
+    },
+    "v12_residual": {
+      "fid_mean": 30.063059145313293,
+      "fid_median": 29.588492661663338,
+      "fid_population_std": 4.461887090507693,
+      "fid_range": 10.89839338656958,
+      "fid_worst": 35.74953908042306,
+      "kid_mean": 0.023091039309899013
+    },
+    "v13_register_tokens": {
+      "fid_mean": 32.73697290296068,
+      "fid_median": 33.2942390944678,
+      "fid_population_std": 1.1184775474668356,
+      "fid_range": 2.564042768858201,
+      "fid_worst": 33.740361191636225,
+      "kid_mean": 0.025382577752073605
+    }
+  },
+  "prior_seed_2_replication_at_tokenizer_seed_3": {
+    "v12_residual": {
+      "fid_10k": 35.24337371940436,
+      "kid_10k": 0.028834553435444832
+    },
+    "v13_register_tokens": {
+      "fid_10k": 32.03835309076396,
+      "kid_10k": 0.024524927139282227
+    },
+    "v13_minus_v12": {
+      "fid_10k": -3.2050206286403977,
+      "kid_10k": -0.004309626296162605
     }
   },
   "verdict": {
-    "residual_pool": "seed-dependent: wins tokenizer seeds 1 and 3 but loses seed 2",
-    "register_tokens": "wins within tokenizer seed 3; requires a second tokenizer seed",
-    "next_test": "train v13 register tokens at tokenizer seed 2 and compare with the completed seed-2 v8/v12 priors"
+    "per_seed_winners": {
+      "tokenizer_seed_1": "v12_residual",
+      "tokenizer_seed_2": "v8_cross_only",
+      "tokenizer_seed_3": "v13_register_tokens"
+    },
+    "expected_performance_choice": "v12_residual: best mean FID and KID, and wins two of three pairwise comparisons against v8",
+    "stability_choice": "v13_register_tokens: lowest FID variance and best worst-case FID, but worst mean FID",
+    "selection": "carry v12 residual as the primary Stage-A baseline and retain v13 as the stability control",
+    "interpretation": "tokenizer seed effects and architecture-by-seed interaction are larger than a universal architecture ordering"
   }
 }
