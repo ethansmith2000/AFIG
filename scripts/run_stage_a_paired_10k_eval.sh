@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
-  echo "usage: $0 {s2_v8|s2_v12|s2_v13|s3_v8|s3_v12|s3_v13|v15_local|v16_snr_control}" >&2
+  echo "usage: $0 {s2_v8|s2_v12|s2_v13|s3_v8|s3_v12|s3_v13|v15_local|v16_snr_control|v20_jitter05}" >&2
   exit 2
 fi
 
@@ -36,8 +36,11 @@ case "$1" in
   v16_snr_control)
     name="v16-joint-v12s2-snr-ordered-common-time-prior-s1"
     ;;
+  v20_jitter05)
+    name="v20-residual-e7p1-det-jitter05-n64d16-s2-prior-s1"
+    ;;
   *)
-    echo "usage: $0 {s2_v8|s2_v12|s2_v13|s3_v8|s3_v12|s3_v13|v15_local|v16_snr_control}" >&2
+    echo "usage: $0 {s2_v8|s2_v12|s2_v13|s3_v8|s3_v12|s3_v13|v15_local|v16_snr_control|v20_jitter05}" >&2
     exit 2
     ;;
 esac

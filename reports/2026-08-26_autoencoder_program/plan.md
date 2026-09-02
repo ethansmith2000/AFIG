@@ -934,3 +934,29 @@ Launch record: the four supervisor-owned chains entered the shared queue at
 2026-09-02 07:59 UTC. All eight GPUs were held by other projects at submission,
 so each chain remains a `gpu-claim --wait` process until a lifetime lock becomes
 available. No project-local reservation or raw CUDA launch is used.
+
+### Phase C 5k outcome (2026-09-02)
+
+All four chains completed. The existing v12 seed-2 control is FID/KID-5k
+31.970/0.02270. Pure deterministic v19 is a decisive regression at
+47.195/0.03633. Adding decoder jitter is strongly non-monotonic: sigma 0.05
+reaches **27.743/0.01603**, while sigma 0.10 reaches 34.229/0.02528. Thus the
+5% arm improves 4.228 FID with KID agreeing, whereas doubling the intervention
+over-regularizes. The 5% arm advances to the declared paired 10k confirmation;
+the other deterministic arms do not.
+
+Soft-floor v22 passes its mechanism gate: only 5.53% of log-variances lie
+within 0.05 of the floor, mean sigma is 0.169, median sigma is 0.0408, and p95
+sigma is 0.985. Its posterior is strongly slot-adaptive rather than globally
+noisy: several low-content slots learn sigma near one while most active slots
+remain near-deterministic. Generation is FID/KID 33.147/0.02381, not an
+improvement over v12, so it is not promoted despite being a valid variational
+mechanism.
+
+The diagnostics clarify the 5% result without selecting it. Relative to pure
+deterministic, v20 raises flattened effective rank 174.73 -> 294.27 and greatly
+flattens slot-energy variation; it is also much less noise-sensitive. Yet v12
+and v21 show that neither rank nor decoder robustness alone predicts the FID
+ordering. The causal result is the matched v19/v20 intervention: modest decoder
+jitter changes the learned clean representation enough to improve prior
+modelability, while too much jitter loses the gain.
