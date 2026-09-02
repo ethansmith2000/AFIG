@@ -108,7 +108,15 @@ local convolutional stem reduced to the same `8x8` transformer grid. Hold the
 `64x16` bottleneck, decoder output grid, objective, budget, and residual latent
 formation fixed; retain v13 only as a stability control where useful.
 
-## Phase B — clean tokenwise-SNR prior (specified, not launched)
+**Queued arms:** tokenizer seed 2 is matched to the existing v12 seed-2 control.
+V14 directly processes 256 non-overlapping `2x2` encoder tokens while retaining
+64 `4x4` decoder queries (60,136,656 parameters). V15 uses a `2x2` lift plus a
+depthwise-separable local reduction to the historical `8x8` transformer grid
+and unchanged decoder (60,306,128 parameters). Both retain the 15k tokenizer,
+permissive codec-health, 60k prior-seed-1, and FID/KID-5k protocol. Parameter
+deltas from v12 are only +0.13%/+0.42% and are reported rather than hidden.
+
+## Phase B — clean tokenwise-SNR prior (queued)
 
 The image/latent analogy is retained, but clean token magnitudes will remain in
 their learned gauge. Natural-image frequency modes differ structurally under
@@ -130,16 +138,25 @@ base displacement `u_i = z_i - eps_i`, not the global-time derivative
 input/output projections from handling artificial orders-of-magnitude clean
 targets.
 
-Run matched prior arms on one frozen, semantically ordered cache:
+Run matched prior arms on one frozen cache from v12 tokenizer seed 2. Token IDs
+are exactly permuted by descending content RMS and inverted before decoding;
+this makes adjacent groups meaningful without changing the representation.
+The six groups contain `11/11/11/11/10/10` tokens. Their declared SNR=1 crossing
+times are copied, without fitting to FID, from the six CIFAR radial population
+bands: `0.1746/0.3830/0.5262/0.6275/0.7425/0.8474`.
+
+The matched arms are:
 
 1. common schedule `phi_i(t)=t`, uniform loss;
 2. groupwise warp, uniform loss (schedule only);
-3. the same warp with normalized explicit importance weights (schedule + loss
-   allocation).
+3. the same warp with normalized explicit importance weights proportional to
+   the corresponding CIFAR radial variances (schedule + loss allocation).
 
-Start with 4-8 adjacent semantic groups, not 64 unrelated schedules. The first
-weight profile should be declared from either the CIFAR radial crossing curve
-or measured decoder contribution and must not be tuned on generated FID.
+All three priors are parameter-exact. The common-time arm controls for the
+permutation and changed RoPE adjacency; warp versus common isolates schedule,
+and weighted versus unweighted warp isolates loss allocation. Flow loss does
+not select. Compare decoded FID/KID-5k, and rerun at 10k when a gap is below two
+FID or when FID and KID disagree.
 
 This is distinct from the rejected static cache rescale: the clean endpoint and
 tensor-wide latent gauge are unchanged. Clamped time offsets are prohibited

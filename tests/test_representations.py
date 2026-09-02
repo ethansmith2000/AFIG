@@ -71,6 +71,23 @@ def test_invert_pca_latent_transform() -> None:
     }
 
 
+def test_token_permutation_transform_roundtrip() -> None:
+    physical = torch.arange(2 * 4 * 3).reshape(2, 4, 3)
+    permutation = [2, 0, 3, 1]
+    prior = physical[:, permutation]
+    payload = {
+        "latent_transform": {
+            "type": "token_permutation_inverse",
+            "permutation": permutation,
+            "source": "unit-test",
+            "ordering": "descending_content_rms",
+        }
+    }
+    restored = invert_latent_transform(prior, payload)
+    torch.testing.assert_close(restored, physical)
+    assert latent_transform_fingerprint(payload) == payload["latent_transform"]
+
+
 def test_eigen_context_ablation_changes_only_selected_subspace() -> None:
     noisy = torch.tensor([[[1.0, 10.0]], [[2.0, 20.0]], [[3.0, 30.0]]])
     selected_basis = torch.tensor([[1.0], [0.0]])

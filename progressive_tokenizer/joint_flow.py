@@ -23,6 +23,8 @@ class JointFlowConfig:
     qk_norm: str = "rms"
     rope_theta: float = 10_000.0
     gradient_checkpointing: bool = False
+    time_parameterization: str = "global"
+    token_time_scales: Optional[tuple[float, ...]] = None
 
     def __post_init__(self) -> None:
         if self.sequence_length <= 0 or self.token_dim <= 0:
@@ -35,6 +37,23 @@ class JointFlowConfig:
             raise ValueError("depth and mlp_ratio must be positive")
         if self.qk_norm not in {"rms", "l2_temperature"}:
             raise ValueError("qk_norm must be rms or l2_temperature")
+        if self.time_parameterization not in {"global", "rational_per_token"}:
+            raise ValueError(
+                "time_parameterization must be global or rational_per_token"
+            )
+        if self.time_parameterization == "global":
+            if self.token_time_scales is not None:
+                raise ValueError("global time cannot carry token_time_scales")
+        else:
+            if (
+                self.token_time_scales is None
+                or len(self.token_time_scales) != self.sequence_length
+            ):
+                raise ValueError(
+                    "rational_per_token requires one scale per sequence token"
+                )
+            if any(not math.isfinite(value) or value <= 0 for value in self.token_time_scales):
+                raise ValueError("token_time_scales must be finite and positive")
 
     def fingerprint(self) -> dict:
         return asdict(self)
@@ -85,17 +104,19 @@ class TimestepEmbedding(nn.Module):
         )
 
     def forward(self, time: torch.Tensor) -> torch.Tensor:
-        if time.ndim != 1:
-            raise ValueError("time must have shape [B]")
+        if time.ndim not in {1, 2}:
+            raise ValueError("time must have shape [B] or [B,N]")
         half = self.frequency_dim // 2
         frequencies = torch.exp(
             -math.log(10_000.0)
             * torch.arange(half, device=time.device, dtype=torch.float32)
             / max(half - 1, 1)
         )
-        angles = time.float()[:, None] * frequencies[None, :] * 1000.0
+        original_shape = time.shape
+        angles = time.float().reshape(-1, 1) * frequencies[None, :] * 1000.0
         embedding = torch.cat((angles.cos(), angles.sin()), dim=-1)
-        return self.mlp(embedding.to(self.mlp[0].weight.dtype))
+        embedded = self.mlp(embedding.to(self.mlp[0].weight.dtype))
+        return embedded.reshape(*original_shape, embedded.shape[-1])
 
 
 class QKNormAttention(nn.Module):
@@ -239,11 +260,36 @@ class JointRectifiedFlow(nn.Module):
             config.width // config.num_heads,
             config.rope_theta,
         )
-        self.blocks = nn.ModuleList(
-            AdaLNZeroBlock(config) for _ in range(config.depth)
-        )
-        self.final = FinalLayer(config.width, config.token_dim)
+        if config.time_parameterization == "global":
+            self.blocks = nn.ModuleList(
+                AdaLNZeroBlock(config) for _ in range(config.depth)
+            )
+            self.final = FinalLayer(config.width, config.token_dim)
+            self.register_buffer("token_time_scales", None, persistent=False)
+        else:
+            self.blocks = nn.ModuleList(
+                PerTokenAdaLNZeroBlock(config) for _ in range(config.depth)
+            )
+            self.final = PerTokenFinalLayer(config.width, config.token_dim)
+            self.register_buffer(
+                "token_time_scales",
+                torch.tensor(config.token_time_scales, dtype=torch.float32),
+                persistent=False,
+            )
         nn.init.trunc_normal_(self.position, std=0.02)
+
+    def path_time(self, base_time: torch.Tensor) -> torch.Tensor:
+        """Map a shared integration coordinate to each token's clean fraction."""
+
+        if base_time.ndim != 1:
+            raise ValueError("base_time must have shape [B]")
+        if self.config.time_parameterization == "global":
+            return base_time
+        if self.token_time_scales is None:
+            raise RuntimeError("rational time scales were not constructed")
+        time = base_time.float()[:, None]
+        scales = self.token_time_scales[None]
+        return scales * time / (1.0 - time + scales * time)
 
     def predict_velocity(
         self, noisy_latents: torch.Tensor, time: torch.Tensor
@@ -275,10 +321,14 @@ class JointRectifiedFlow(nn.Module):
             time = torch.rand(batch, device=clean_latents.device)
         if noise is None:
             noise = torch.randn_like(clean_latents)
-        time_view = time[:, None, None].to(clean_latents.dtype)
+        path_time = self.path_time(time)
+        if path_time.ndim == 1:
+            time_view = path_time[:, None, None].to(clean_latents.dtype)
+        else:
+            time_view = path_time[:, :, None].to(clean_latents.dtype)
         noisy = (1.0 - time_view) * noise + time_view * clean_latents
         target = clean_latents - noise
-        prediction = self.predict_velocity(noisy, time)
+        prediction = self.predict_velocity(noisy, path_time)
         squared_error = (prediction.float() - target.float()).square()
         unweighted_loss = squared_error.mean()
         if token_loss_weights is None:
@@ -322,27 +372,33 @@ class JointRectifiedFlow(nn.Module):
             dtype=parameter.dtype,
             generator=generator,
         )
-        step_size = 1.0 / steps
         for index in range(steps):
             time = torch.full(
                 (batch_size,), index / steps, device=values.device, dtype=torch.float32
             )
-            velocity = self.predict_velocity(values, time)
-            if solver == "heun" and index + 1 < steps:
-                proposal = values + step_size * velocity
-                next_time = torch.full_like(time, (index + 1) / steps)
-                next_velocity = self.predict_velocity(proposal, next_time)
-                values = values + 0.5 * step_size * (velocity + next_velocity)
+            next_time = torch.full_like(time, (index + 1) / steps)
+            path_time = self.path_time(time)
+            next_path_time = self.path_time(next_time)
+            path_delta = next_path_time - path_time
+            if path_delta.ndim == 1:
+                path_delta = path_delta[:, None, None]
             else:
-                values = values + step_size * velocity
+                path_delta = path_delta[:, :, None]
+            path_delta = path_delta.to(values.dtype)
+            velocity = self.predict_velocity(values, path_time)
+            if solver == "heun" and index + 1 < steps:
+                proposal = values + path_delta * velocity
+                next_velocity = self.predict_velocity(proposal, next_path_time)
+                values = values + 0.5 * path_delta * (velocity + next_velocity)
+            else:
+                values = values + path_delta * velocity
         return values
 
 
 # --- per-register conditioning -------------------------------------------
-# Retained from the removed rolling engine: a static per-register timestep
-# offset (t_i = clamp(t + delta_i, 0, 1)) needs an AdaLN condition that varies
-# along the sequence, [B, N, W] rather than [B, W]. The rolling/diffusion-
-# forcing machinery itself is gone; see commit f906d4a.
+# A smooth per-register path needs an AdaLN condition that varies along the
+# sequence, [B, N, W] rather than [B, W]. Unlike the removed rolling engine,
+# the rational path keeps common noise/data endpoints and never clamps tokens.
 
 def _modulate_tokens(
     values: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor

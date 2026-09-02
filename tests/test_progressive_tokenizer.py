@@ -177,6 +177,41 @@ class TestProgressiveTokenizer(unittest.TestCase):
         }
         self.assertEqual(len(counts), 1)
 
+    def test_encoder_patch_size_is_decoupled_from_decoder_grid(self):
+        config = TokenizerConfig(
+            **{
+                **tiny_config().fingerprint(),
+                "encoder_patch_size": 2,
+                "encoder_stem": "patch",
+            }
+        )
+        model = ProgressiveTokenizer(config).eval()
+        images = torch.randn(2, 3, 8, 8)
+        output = model(images)
+        self.assertEqual(model.encoder_position.shape[1], 16)
+        self.assertEqual(model.output_position.shape[1], 4)
+        self.assertEqual(output["latents"].shape, (2, 4, 8))
+        self.assertEqual(output["reconstruction"].shape, images.shape)
+
+    def test_fine_conv_stem_returns_historical_transformer_grid(self):
+        config = TokenizerConfig(
+            **{
+                **tiny_config().fingerprint(),
+                "encoder_patch_size": 2,
+                "encoder_stem": "fine_conv",
+            }
+        )
+        model = ProgressiveTokenizer(config)
+        images = torch.randn(2, 3, 8, 8)
+        output = model(images)
+        self.assertEqual(model.encoder_position.shape[1], 4)
+        self.assertEqual(model.output_position.shape[1], 4)
+        F.mse_loss(output["reconstruction"], images).backward()
+        first_conv = model.patch_embed[0]
+        depthwise_conv = model.patch_embed[2]
+        self.assertIsNotNone(first_conv.weight.grad)
+        self.assertIsNotNone(depthwise_conv.weight.grad)
+
     def test_variational_sampling_and_deterministic_eval_encode(self):
         torch.manual_seed(6)
         config = TokenizerConfig(**{**tiny_config().fingerprint(), "variational": True})

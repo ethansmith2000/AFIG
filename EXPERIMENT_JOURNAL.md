@@ -22,6 +22,16 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-02 — fine-stem and clean tokenwise-SNR follow-ons implemented:**
+  the tokenizer now separates encoder and decoder patch sizes. Two v12 seed-2
+  arms test direct 256-token `2x2` encoding and a local `2x2 -> 8x8` convolutional
+  stem while keeping the `4x4` decoder. The prior now supports smooth rational
+  per-token time paths, tokenwise AdaLN conditioning, base-displacement targets,
+  and `Delta phi_i` sampling. Phase B uses an exactly invertible content-RMS
+  token ordering and three parameter-exact arms: common time, CIFAR-radial
+  groupwise time, and the same time warp with declared radial-variance loss
+  weights. Thirty-two focused tests and end-to-end queued GPU smokes pass.
+  [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-02 — complete three-seed architecture verdict:** at 10k samples,
   v8/v12/v13 FIDs are 27.38/24.85/31.18 for tokenizer seed 1,
   28.07/29.59/33.29 for seed 2, and 40.04/35.75/33.74 for seed 3. Each arm wins

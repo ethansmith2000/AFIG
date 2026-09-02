@@ -812,3 +812,48 @@ global-time derivative targets are not controls for this experiment: the first
 was already negative, the second recreates rolling exposure, and the third
 reintroduces the output-scale problem the clean parameterization is intended to
 remove.
+
+### Fine-stem and tokenwise-SNR launch specification (2026-09-02)
+
+The encoder/decoder patch coupling is now removed. With decoder `patch_size=4`
+fixed, the two tokenizer-seed-2 v12 residual arms are:
+
+| arm | encoder path | encoder transformer tokens | decoder queries | parameters |
+|---|---|---:|---:|---:|
+| v14 direct fine | non-overlapping `2x2` lift | 256 | 64 | 60,136,656 |
+| v15 local fine | `2x2` lift, depthwise `3x3/2`, pointwise mix | 64 | 64 | 60,306,128 |
+
+The historical v12 seed-2 control has 60,056,784 parameters and FID-10k 29.59.
+The +0.13%/+0.42% parameter deltas are small and explicitly reported. Each arm
+uses the unchanged 15k codec-health screen and receives a matched 60k prior if
+healthy; reconstruction is not the selector.
+
+For Phase B, source
+`tokenizer_runs/v12-unordered-vae-residual-e7p1-n64d16-s2/latents_final_original_flip.pt`
+is permuted by descending population content RMS. The inverse permutation is
+serialized with the cache and applied before the unchanged decoder. This gives
+the prior adjacent high-to-low-energy groups while exactly preserving images.
+The common-time arm on this same cache controls both permutation and RoPE
+adjacency.
+
+Six group sizes are `11/11/11/11/10/10`. Target crossings are the measured
+CIFAR radial population values
+`0.174565/0.382968/0.526249/0.627482/0.742522/0.847351`. For crossing `t_i*`,
+the rational-path scale is `a_i=(1-t_i*)/t_i*`, and
+`phi_i(t)=a_i*t/(1-t+a_i*t)`. Every token starts at noise and ends at data.
+The network conditions on each `phi_i`, predicts `z_i-eps_i`, and Heun/Euler
+sampling advances with `Delta phi_i`.
+
+Three parameter-exact prior-seed-1 arms isolate the factors:
+
+1. reordered cache, common linear time, uniform loss;
+2. reordered cache, rational groupwise time, uniform loss;
+3. the same rational time plus mean-one group weights proportional to the six
+   measured CIFAR radial variances
+   `22.35894/2.59591/0.81043/0.35244/0.12024/0.03245`.
+
+This is not static magnitude scaling: clean latent magnitudes and tensor-wide
+normalization remain unchanged. Compare decoded FID/KID at 5k; use 10k whenever
+a relevant gap is below two FID or FID/KID disagree. Launchers:
+`scripts/run_stage_a_fine_stem_arm.sh {direct2|local2}` and
+`scripts/run_phase_b_tokenwise_snr_arm.sh {control|warp|warp_weighted}`.

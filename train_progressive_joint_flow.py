@@ -77,13 +77,34 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight_decay", type=float, default=0.05)
     parser.add_argument(
         "--token_loss_weighting",
-        choices=["uniform", "inverse_token_scale_squared"],
+        choices=["uniform", "inverse_token_scale_squared", "explicit"],
         default="uniform",
         help=(
             "Optional per-token flow loss gauge. inverse_token_scale_squared "
             "cancels the implicit squared-error allocation introduced by a "
             "cache's token_scale, with weights normalized to mean one."
         ),
+    )
+    parser.add_argument(
+        "--time_parameterization",
+        choices=["global", "rational_per_token"],
+        default="global",
+        help="Shared linear path or endpoint-preserving per-token rational warp.",
+    )
+    parser.add_argument(
+        "--token_group_sizes",
+        default=None,
+        help="Comma-separated group sizes summing to the sequence length.",
+    )
+    parser.add_argument(
+        "--token_snr1_crossings",
+        default=None,
+        help="Comma-separated target base times where each token group reaches SNR=1.",
+    )
+    parser.add_argument(
+        "--token_loss_group_weights",
+        default=None,
+        help="Comma-separated explicit group loss weights, normalized to mean one.",
     )
     parser.add_argument("--max_grad_norm", type=float, default=1.0)
     parser.add_argument("--mixed_precision", choices=["no", "bf16"], default="bf16")
@@ -180,17 +201,56 @@ def reshape_latent_layout(
     return reshaped, layout
 
 
+def parse_csv_values(value: Optional[str], cast, name: str) -> Optional[list]:
+    if value is None:
+        return None
+    try:
+        values = [cast(item.strip()) for item in value.split(",") if item.strip()]
+    except ValueError as error:
+        raise ValueError(f"{name} must be a comma-separated numeric list") from error
+    if not values:
+        raise ValueError(f"{name} cannot be empty")
+    return values
+
+
+def expand_group_values(
+    group_sizes: list[int], group_values: list[float], sequence_length: int
+) -> list[float]:
+    if len(group_sizes) != len(group_values):
+        raise ValueError("group sizes and group values must have equal length")
+    if any(size <= 0 for size in group_sizes) or sum(group_sizes) != sequence_length:
+        raise ValueError("token group sizes must be positive and sum to sequence length")
+    return [value for size, value in zip(group_sizes, group_values) for _ in range(size)]
+
+
 def build_token_loss_weights(
     cache: dict,
     mode: str,
     sequence_length: int,
     latent_layout: Optional[dict],
     device: torch.device,
+    explicit_values: Optional[list[float]] = None,
 ) -> tuple[Optional[torch.Tensor], dict]:
     """Build a mean-one token loss gauge and JSON-safe provenance."""
 
     if mode == "uniform":
         return None, {"type": "uniform", "mean": 1.0}
+    if mode == "explicit":
+        if explicit_values is None or len(explicit_values) != sequence_length:
+            raise ValueError("explicit weighting requires one value per token")
+        weights = torch.tensor(explicit_values, dtype=torch.float32)
+        if not bool(torch.isfinite(weights).all()) or bool((weights <= 0).any()):
+            raise ValueError("explicit token weights must be finite and positive")
+        weights = weights / weights.mean()
+        payload = {
+            "type": mode,
+            "normalization": "mean_one",
+            "mean": float(weights.mean()),
+            "minimum": float(weights.min()),
+            "maximum": float(weights.max()),
+            "values": weights.tolist(),
+        }
+        return weights.to(device), payload
     if mode != "inverse_token_scale_squared":
         raise ValueError(f"unsupported token loss weighting: {mode}")
     if latent_layout is not None:
@@ -345,6 +405,7 @@ def checkpoint_payload(
     mean: torch.Tensor,
     scale: torch.Tensor,
     loss_weighting: dict,
+    time_parameterization: dict,
 ) -> dict:
     kind = representation_type(cache)
     payload = {
@@ -361,7 +422,10 @@ def checkpoint_payload(
         "token_scale": cache.get("token_scale"),
         "latent_layout": cache.get("latent_layout"),
         "latent_transform": cache.get("latent_transform"),
-        "training_objective": {"token_loss_weighting": loss_weighting},
+        "training_objective": {
+            "token_loss_weighting": loss_weighting,
+            "time_parameterization": time_parameterization,
+        },
     }
     if kind == TOKENIZER_LATENTS:
         payload.update(
@@ -411,12 +475,46 @@ def main() -> None:
     global_scale = cache["statistics"]["global_std"].float().to(device)
     if not bool(torch.isfinite(global_scale)) or float(global_scale) <= 0:
         raise ValueError("invalid global latent scale")
+    group_sizes = parse_csv_values(args.token_group_sizes, int, "token_group_sizes")
+    crossings = parse_csv_values(
+        args.token_snr1_crossings, float, "token_snr1_crossings"
+    )
+    group_loss_weights = parse_csv_values(
+        args.token_loss_group_weights, float, "token_loss_group_weights"
+    )
+    token_time_scales = None
+    if args.time_parameterization == "global":
+        if crossings is not None:
+            raise ValueError("global time cannot use token_snr1_crossings")
+    else:
+        if group_sizes is None or crossings is None:
+            raise ValueError(
+                "rational_per_token requires token_group_sizes and token_snr1_crossings"
+            )
+        if any(not math.isfinite(value) or not 0 < value < 1 for value in crossings):
+            raise ValueError("token SNR=1 crossings must lie strictly inside (0,1)")
+        expanded_crossings = expand_group_values(
+            group_sizes, crossings, sequence_length
+        )
+        token_time_scales = tuple((1.0 - value) / value for value in expanded_crossings)
+    explicit_loss_values = None
+    if args.token_loss_weighting == "explicit":
+        if group_sizes is None or group_loss_weights is None:
+            raise ValueError(
+                "explicit weighting requires token_group_sizes and token_loss_group_weights"
+            )
+        explicit_loss_values = expand_group_values(
+            group_sizes, group_loss_weights, sequence_length
+        )
+    elif group_loss_weights is not None:
+        raise ValueError("token_loss_group_weights requires explicit weighting")
     token_loss_weights, loss_weighting_payload = build_token_loss_weights(
         cache,
         args.token_loss_weighting,
         sequence_length,
         latent_layout,
         device,
+        explicit_loss_values,
     )
 
     train_loader = DataLoader(
@@ -447,6 +545,8 @@ def main() -> None:
         mlp_ratio=args.mlp_ratio,
         qk_norm=args.qk_norm,
         gradient_checkpointing=args.gradient_checkpointing,
+        time_parameterization=args.time_parameterization,
+        token_time_scales=token_time_scales,
     )
     model = JointRectifiedFlow(config).to(device)
     optimizer = torch.optim.AdamW(
@@ -458,7 +558,8 @@ def main() -> None:
     start_step = 0
     if args.resume:
         payload = torch.load(args.resume, map_location="cpu", weights_only=False)
-        if payload["model_config"] != config.fingerprint():
+        saved_config = JointFlowConfig(**payload["model_config"]).fingerprint()
+        if saved_config != config.fingerprint():
             raise ValueError("resume model configuration mismatch")
         model.load_state_dict(payload["model"])
         optimizer.load_state_dict(payload["optimizer"])
@@ -488,6 +589,12 @@ def main() -> None:
     preview_token_scale = cache.get("token_scale")
     if preview_token_scale is not None:
         preview_token_scale = preview_token_scale.float().to(device)[None, :, None]
+    time_parameterization_payload = {
+        "type": args.time_parameterization,
+        "group_sizes": group_sizes,
+        "snr1_crossings": crossings,
+        "token_time_scales": list(token_time_scales) if token_time_scales else None,
+    }
     config_payload = {
         "model": config.fingerprint(),
         "training": vars(args),
@@ -499,6 +606,7 @@ def main() -> None:
         "parameters": count_parameters(model.parameters()),
         "training_objective": {
             "token_loss_weighting": loss_weighting_payload,
+            "time_parameterization": time_parameterization_payload,
         },
         "representation": {
             "type": kind,
@@ -634,6 +742,7 @@ def main() -> None:
                     global_mean,
                     global_scale,
                     loss_weighting_payload,
+                    time_parameterization_payload,
                 ),
                 latest,
             )
@@ -654,6 +763,7 @@ def main() -> None:
         global_mean,
         global_scale,
         loss_weighting_payload,
+        time_parameterization_payload,
     )
     final_payload.pop("optimizer")
     atomic_save(final_payload, output_dir / "checkpoint_final.pt")

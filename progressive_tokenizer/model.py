@@ -22,6 +22,8 @@ import torch.nn.functional as F
 class TokenizerConfig:
     image_size: int = 32
     patch_size: int = 4
+    encoder_patch_size: Optional[int] = None
+    encoder_stem: str = "patch"
     in_channels: int = 3
     num_latents: int = 32
     latent_dim: int = 64
@@ -46,6 +48,17 @@ class TokenizerConfig:
             raise ValueError("image_size and patch_size must be positive")
         if self.image_size % self.patch_size:
             raise ValueError("image_size must be divisible by patch_size")
+        if self.resolved_encoder_patch_size <= 0:
+            raise ValueError("encoder_patch_size must be positive")
+        if self.image_size % self.resolved_encoder_patch_size:
+            raise ValueError("image_size must be divisible by encoder_patch_size")
+        if self.encoder_stem not in {"patch", "fine_conv"}:
+            raise ValueError("encoder_stem must be patch or fine_conv")
+        if self.encoder_stem == "fine_conv":
+            if self.resolved_encoder_patch_size != 2:
+                raise ValueError("fine_conv requires encoder_patch_size=2")
+            if self.image_size // self.resolved_encoder_patch_size % 2:
+                raise ValueError("fine_conv intermediate grid must be divisible by two")
         if self.num_latents <= 0 or self.latent_dim <= 0:
             raise ValueError("num_latents and latent_dim must be positive")
         if self.width <= 0 or self.width % self.num_heads:
@@ -69,11 +82,28 @@ class TokenizerConfig:
 
     @property
     def grid_size(self) -> int:
+        """Decoder/output grid size retained for checkpoint compatibility."""
+
         return self.image_size // self.patch_size
 
     @property
     def num_patches(self) -> int:
+        """Decoder/output patch count retained for checkpoint compatibility."""
+
         return self.grid_size**2
+
+    @property
+    def resolved_encoder_patch_size(self) -> int:
+        return self.patch_size if self.encoder_patch_size is None else self.encoder_patch_size
+
+    @property
+    def encoder_grid_size(self) -> int:
+        grid = self.image_size // self.resolved_encoder_patch_size
+        return grid // 2 if self.encoder_stem == "fine_conv" else grid
+
+    @property
+    def encoder_num_patches(self) -> int:
+        return self.encoder_grid_size**2
 
     @property
     def patch_dim(self) -> int:
@@ -424,17 +454,40 @@ class ProgressiveTokenizer(nn.Module):
     def __init__(self, config: TokenizerConfig):
         super().__init__()
         self.config = config
-        self.patch_embed = nn.Conv2d(
-            config.in_channels,
-            config.width,
-            kernel_size=config.patch_size,
-            stride=config.patch_size,
-        )
+        if config.encoder_stem == "patch":
+            self.patch_embed = nn.Conv2d(
+                config.in_channels,
+                config.width,
+                kernel_size=config.resolved_encoder_patch_size,
+                stride=config.resolved_encoder_patch_size,
+            )
+        else:
+            # Resolve a 2x2 fine grid locally before the transformer. The
+            # depthwise-separable reduction keeps the transformer and decoder
+            # on the historical 8x8 grid while exposing within-4x4 structure.
+            self.patch_embed = nn.Sequential(
+                nn.Conv2d(
+                    config.in_channels,
+                    config.width,
+                    kernel_size=config.resolved_encoder_patch_size,
+                    stride=config.resolved_encoder_patch_size,
+                ),
+                nn.GELU(approximate="tanh"),
+                nn.Conv2d(
+                    config.width,
+                    config.width,
+                    kernel_size=3,
+                    stride=2,
+                    padding=1,
+                    groups=config.width,
+                ),
+                nn.Conv2d(config.width, config.width, kernel_size=1),
+            )
         self.encoder_position = nn.Parameter(
-            torch.empty(1, config.num_patches, config.width)
+            torch.empty(1, config.encoder_num_patches, config.width)
         )
         self.encoder_rope = Rotary2D(
-            config.grid_size, config.head_dim, config.rope_theta
+            config.encoder_grid_size, config.head_dim, config.rope_theta
         )
         self.encoder_blocks = nn.ModuleList(
             EncoderBlock(config) for _ in range(config.encoder_depth)
@@ -568,7 +621,7 @@ class ProgressiveTokenizer(nn.Module):
             # geometries (2-D space versus a learned register/scale axis).
             joint = torch.cat((patches, queries), dim=1)
             joint = self.register_joint_block(joint, None)
-            queries = joint[:, self.config.num_patches :]
+            queries = joint[:, self.config.encoder_num_patches :]
             queries = queries + self.register_adapter(
                 self.register_adapter_norm(queries)
             )

@@ -92,6 +92,21 @@ def invert_latent_transform(
     if not isinstance(transform, Mapping):
         raise ValueError("latent_transform must be a mapping")
     kind = transform.get("type")
+    if kind == "token_permutation_inverse":
+        if tokens.ndim != 3:
+            raise ValueError("permuted tokens must have shape [B,L,D]")
+        permutation = transform.get("permutation")
+        if torch.is_tensor(permutation):
+            permutation = permutation.tolist()
+        if not isinstance(permutation, (list, tuple)):
+            raise ValueError("token permutation transform requires permutation")
+        permutation = [int(value) for value in permutation]
+        if sorted(permutation) != list(range(tokens.shape[1])):
+            raise ValueError("token permutation is not a complete sequence permutation")
+        physical = torch.empty_like(tokens)
+        indices = torch.tensor(permutation, device=tokens.device, dtype=torch.long)
+        physical[:, indices] = tokens
+        return physical
     if kind != "pca_inverse":
         raise ValueError(f"unsupported latent transform: {kind}")
     if tokens.ndim != 3:
@@ -123,6 +138,18 @@ def latent_transform_fingerprint(payload: Mapping[str, Any]) -> Optional[dict]:
         return None
     if not isinstance(transform, Mapping):
         raise ValueError("latent_transform must be a mapping")
+    if transform.get("type") == "token_permutation_inverse":
+        permutation = transform.get("permutation")
+        if torch.is_tensor(permutation):
+            permutation = permutation.tolist()
+        if not isinstance(permutation, (list, tuple)):
+            raise ValueError("token permutation transform requires permutation")
+        return {
+            "type": "token_permutation_inverse",
+            "permutation": [int(value) for value in permutation],
+            "source": transform.get("source"),
+            "ordering": transform.get("ordering"),
+        }
     if transform.get("type") != "pca_inverse":
         raise ValueError("unsupported latent transform")
     basis = transform.get("basis")

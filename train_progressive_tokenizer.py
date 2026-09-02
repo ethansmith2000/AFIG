@@ -83,6 +83,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 
     parser.add_argument("--image_size", type=int, default=32)
     parser.add_argument("--patch_size", type=int, default=4)
+    parser.add_argument(
+        "--encoder_patch_size",
+        type=int,
+        default=None,
+        help="Encoder-only patch size; decoder patch_size remains unchanged.",
+    )
+    parser.add_argument(
+        "--encoder_stem",
+        choices=["patch", "fine_conv"],
+        default="patch",
+        help="Direct patch embedding or a fine 2x2 local stem reduced by 2x.",
+    )
     parser.add_argument("--num_latents", type=int, default=32)
     parser.add_argument("--latent_dim", type=int, default=64)
     parser.add_argument("--width", type=int, default=512)
@@ -203,6 +215,8 @@ def make_model_config(args: argparse.Namespace) -> TokenizerConfig:
     return TokenizerConfig(
         image_size=args.image_size,
         patch_size=args.patch_size,
+        encoder_patch_size=args.encoder_patch_size,
+        encoder_stem=args.encoder_stem,
         num_latents=args.num_latents,
         latent_dim=args.latent_dim,
         width=args.width,
