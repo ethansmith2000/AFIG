@@ -31,7 +31,15 @@ verdicts live under `reports/` and are linked here.
   promising, close, or metric-discordant pairs to 10k. Global promotion
   requires at least two of three tokenizer-seed FID wins, improved mean FID and
   KID, no clear concordant per-seed regression, and preservation of direction
-  under prior seed 2.
+  under prior seed 2. The four chains acquired GPUs 3--6 at 18:16 UTC. W&B
+  runs are tokenizer seed 1
+  [`ahrvj0vr`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/ahrvj0vr),
+  tokenizer seed 3
+  [`zudow065`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/zudow065),
+  v12 prior seed 2
+  [`c3l0pdrh`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/c3l0pdrh),
+  and v20 prior seed 2
+  [`whl85sj2`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/whl85sj2).
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-02 — Phase C posterior/noise study complete:** the selected v12
   seed-2 residual baseline is held fixed while four arms test clean

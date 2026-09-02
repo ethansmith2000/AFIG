@@ -260,6 +260,11 @@ Launcher:
 larger-sample follow-up:
 `scripts/run_phase_c_jitter_confirmation_10k.sh <same-arm>`.
 
+Launch record (2026-09-02 18:16 UTC): all four chains acquired shared
+`gpu-claim` locks and entered finite training. Tokenizer seeds 1 and 3 use W&B
+`ahrvj0vr` and `zudow065`; the v12/v20 prior-seed-2 pair uses `c3l0pdrh` and
+`whl85sj2`. Supervisor owns every chain and one GPU remained free at launch.
+
 ## Phase D — explicit progressive semantics (conditional)
 
 Only pursue this phase if partial decoding is itself valuable or Phase B gives

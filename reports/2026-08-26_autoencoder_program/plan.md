@@ -1006,3 +1006,14 @@ tokenizer seeds; its three-seed mean FID and mean KID both improve; it has no
 greater-than-two-FID loss with concordantly worse KID at any seed; and the
 prior-seed-2 seed-2 pair preserves the improvement direction. Failure retains
 v12 globally even if the original v20 checkpoint remains excellent.
+
+Launch record: all four supervisor chains acquired lifetime locks at
+2026-09-02 18:16 UTC and began with finite losses. W&B runs are
+[`ahrvj0vr`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/ahrvj0vr)
+(tokenizer seed 1),
+[`zudow065`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/zudow065)
+(tokenizer seed 3),
+[`c3l0pdrh`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/c3l0pdrh)
+(v12 prior seed 2), and
+[`whl85sj2`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/whl85sj2)
+(v20 prior seed 2). Initial assignments were GPUs 3--6; GPU 7 remained free.
