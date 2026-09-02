@@ -960,3 +960,11 @@ and v21 show that neither rank nor decoder robustness alone predicts the FID
 ordering. The causal result is the matched v19/v20 intervention: modest decoder
 jitter changes the learned clean representation enough to improve prior
 modelability, while too much jitter loses the gain.
+
+The paired 10k result confirms v20: FID/KID **25.35326/0.015676** versus v12
+at **29.58849/0.022549**. The deltas, -4.23523 FID and -0.006873 KID, reproduce
+the 5k deltas almost exactly. Promote sigma-0.05 decoder jitter from screen
+winner to leading candidate, but do not yet replace v12 globally: the prior
+architecture study demonstrated large tokenizer-seed interactions, so an
+independent tokenizer seed remains mandatory. Exact values are serialized in
+`phase_c_posterior_comparison.json`.

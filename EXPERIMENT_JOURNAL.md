@@ -22,7 +22,7 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
-- **2026-09-02 — Phase C posterior/noise study implemented:** the selected v12
+- **2026-09-02 — Phase C posterior/noise study complete:** the selected v12
   seed-2 residual baseline is held fixed while four arms test clean
   deterministic latents, deterministic decoder-input jitter at sigma 0.05 and
   0.10, and the same-KL soft-floor posterior. Jitter levels are predeclared
@@ -32,8 +32,15 @@ verdicts live under `reports/` and are linked here.
   within 0.05 logvar of the floor fails the mechanism gate. Thirty-four focused
   tests and deterministic-jitter/soft-posterior end-to-end CPU smokes pass. All
   four supervisor chains entered `gpu-claim --wait` at 07:59 UTC; the node's
-  eight GPUs were already held by other projects, so this is queued rather than
-  falsely reported as active training.
+  eight GPUs were already held by other projects, so the jobs initially waited
+  rather than oversubscribing. All chains later completed. Pure deterministic,
+  10% jitter, and soft-VAE arms reach FID/KID-5k
+  47.195/0.03633, 34.229/0.02528, and 33.147/0.02381. The 5% jitter arm reaches
+  27.743/0.01603 and confirms at 10k with **25.353/0.01568** versus v12's
+  **29.588/0.02255**. This is the first clear Phase-C win and now requires an
+  independent tokenizer-seed replication. Tokenizer/prior W&B runs are
+  [`w2kvua0n`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/w2kvua0n)
+  and [`exzxq6zm`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/exzxq6zm).
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-02 — fine-stem and clean tokenwise-SNR follow-ons complete:**
   the tokenizer now separates encoder and decoder patch sizes. Two v12 seed-2

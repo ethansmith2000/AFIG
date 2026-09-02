@@ -186,7 +186,7 @@ This is distinct from the rejected static cache rescale: the clean endpoint and
 tensor-wide latent gauge are unchanged. Clamped time offsets are prohibited
 because they recreate the rolling exposure pathology.
 
-## Phase C — posterior/noise parameterization (queued)
+## Phase C — posterior/noise parameterization (screen complete; replication next)
 
 Keep the selected v12 residual encoder, `64x16` shape, seed 2, decoder, data
 order, 15k tokenizer budget, and matched 60k prior fixed. The existing v12 arm
@@ -219,6 +219,20 @@ All four supervisor-owned chains entered the shared queue at 2026-09-02 07:59
 UTC. Every GPU was already claimed by another project, so the jobs are waiting
 inside `gpu-claim --wait` and will start without oversubscription as capacity
 opens.
+
+**Outcome:** all chains and evaluations completed. Pure deterministic v19 is a
+clear regression at FID/KID-5k 47.195/0.03633. Decoder jitter is sharply
+non-monotonic: sigma 0.05 reaches 27.743/0.01603, while sigma 0.10 reaches
+34.229/0.02528. The v20 gain over v12 repeats at 10k: **25.353/0.01568** versus
+**29.588/0.02255**, a 4.235-FID and 0.00687-KID improvement. This becomes the
+leading candidate, pending an independent tokenizer seed.
+
+Soft-floor v22 is mechanism-valid rather than boundary-pinned: 5.53% of values
+are within 0.05 logvar of the floor, median/mean/p95 sigma are
+0.0408/0.169/0.985, and high noise is allocated mostly to low-content slots.
+Its FID/KID-5k 33.147/0.02381 does not improve v12, so it is not promoted.
+Exact metrics are in
+`reports/2026-08-26_autoencoder_program/phase_c_posterior_comparison.json`.
 
 ## Phase D — explicit progressive semantics (conditional)
 

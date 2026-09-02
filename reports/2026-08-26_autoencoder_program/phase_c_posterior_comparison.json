@@ -1,0 +1,69 @@
+{
+  "date": "2026-09-02",
+  "lower_is_better": ["fid", "kid", "reconstruction_fid"],
+  "evaluation": {
+    "sample_seed": 54321,
+    "sample_steps": 50
+  },
+  "arms": {
+    "v12_hard_vae_control": {
+      "psnr": 35.15340808149417,
+      "reconstruction_fid": 6.464240207526245,
+      "flattened_effective_rank": 253.64883358334188,
+      "fid_5k": 31.970390583176822,
+      "kid_5k": 0.022703023627400398,
+      "fid_10k": 29.588492661663338,
+      "kid_10k": 0.022549204528331757
+    },
+    "v19_deterministic": {
+      "psnr": 33.60797211626573,
+      "reconstruction_fid": 7.705547537849043,
+      "flattened_effective_rank": 174.7292887552514,
+      "fid_5k": 47.1948407418069,
+      "kid_5k": 0.03632543608546257,
+      "verdict": "reject"
+    },
+    "v20_deterministic_jitter_0p05": {
+      "psnr": 33.33228088970495,
+      "reconstruction_fid": 7.422003854781224,
+      "flattened_effective_rank": 294.27336231494513,
+      "fid_5k": 27.74280050916525,
+      "kid_5k": 0.016026753932237625,
+      "delta_vs_v12_5k": {
+        "fid": -4.227590074011573,
+        "kid": -0.006676269695162773
+      },
+      "fid_10k": 25.353261144921817,
+      "kid_10k": 0.015676116570830345,
+      "delta_vs_v12_10k": {
+        "fid": -4.235231516741521,
+        "kid": -0.0068730879575014114
+      },
+      "verdict": "leading candidate; replicate tokenizer seed"
+    },
+    "v21_deterministic_jitter_0p10": {
+      "psnr": 33.14123968324135,
+      "reconstruction_fid": 8.646647261595149,
+      "flattened_effective_rank": 366.1815397360699,
+      "fid_5k": 34.228890591248046,
+      "kid_5k": 0.025283318012952805,
+      "verdict": "reject; over-regularized"
+    },
+    "v22_soft_vae_kl_1e4": {
+      "psnr": 35.15580611235925,
+      "reconstruction_fid": 6.726532295853701,
+      "flattened_effective_rank": 268.39743486124405,
+      "posterior": {
+        "fraction_within_0p05_of_floor": 0.055268652737140656,
+        "sigma_p50": 0.04077059030532837,
+        "sigma_mean": 0.16947241127490997,
+        "sigma_p95": 0.9845067858695984,
+        "sigma_rms": 0.3549216091632843
+      },
+      "fid_5k": 33.14738142512721,
+      "kid_5k": 0.023811355233192444,
+      "verdict": "valid soft posterior, no generation improvement"
+    }
+  },
+  "program_verdict": "Five-percent decoder-input jitter is the leading candidate after a 4.235-FID paired 10k gain, pending independent tokenizer-seed replication. Pure deterministic, ten-percent jitter, and soft-VAE arms are not promoted."
+}
