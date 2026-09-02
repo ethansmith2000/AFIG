@@ -30,7 +30,10 @@ verdicts live under `reports/` and are linked here.
   generation. Training now records posterior log-variance/sigma quantiles,
   per-token sigma, and near-floor mass; a soft arm with at least 95% of values
   within 0.05 logvar of the floor fails the mechanism gate. Thirty-four focused
-  tests and deterministic-jitter/soft-posterior end-to-end CPU smokes pass.
+  tests and deterministic-jitter/soft-posterior end-to-end CPU smokes pass. All
+  four supervisor chains entered `gpu-claim --wait` at 07:59 UTC; the node's
+  eight GPUs were already held by other projects, so this is queued rather than
+  falsely reported as active training.
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-02 — fine-stem and clean tokenwise-SNR follow-ons complete:**
   the tokenizer now separates encoder and decoder patch sizes. Two v12 seed-2

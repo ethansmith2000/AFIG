@@ -186,7 +186,7 @@ This is distinct from the rejected static cache rescale: the clean endpoint and
 tensor-wide latent gauge are unchanged. Clamped time offsets are prohibited
 because they recreate the rolling exposure pathology.
 
-## Phase C — posterior/noise parameterization (ready to queue)
+## Phase C — posterior/noise parameterization (queued)
 
 Keep the selected v12 residual encoder, `64x16` shape, seed 2, decoder, data
 order, 15k tokenizer budget, and matched 60k prior fixed. The existing v12 arm
@@ -214,6 +214,11 @@ and stops before prior training. Reconstruction otherwise remains only a
 permissive health veto; every healthy valid-mechanism arm receives the matched
 prior and FID/KID-5k evaluation. Use 10k only for a sub-two-FID promising gap
 or metric disagreement.
+
+All four supervisor-owned chains entered the shared queue at 2026-09-02 07:59
+UTC. Every GPU was already claimed by another project, so the jobs are waiting
+inside `gpu-claim --wait` and will start without oversubscription as capacity
+opens.
 
 ## Phase D — explicit progressive semantics (conditional)
 

@@ -929,3 +929,8 @@ arm advances through cache, axis scorecard, sigma `0/.05/.10/.20/.40`
 sensitivity, matched prior-seed-1 training for 60k steps, and paired
 FID/KID-5k. Reconstruction only vetoes a broken codec. Launcher:
 `scripts/run_phase_c_posterior_arm.sh {det|jitter05|jitter10|softvae}`.
+
+Launch record: the four supervisor-owned chains entered the shared queue at
+2026-09-02 07:59 UTC. All eight GPUs were held by other projects at submission,
+so each chain remains a `gpu-claim --wait` process until a lifetime lock becomes
+available. No project-local reservation or raw CUDA launch is used.
