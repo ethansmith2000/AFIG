@@ -1,0 +1,53 @@
+{
+  "protocol": {
+    "prior_steps": 60000,
+    "screen_samples": 5000,
+    "sample_steps": 50,
+    "solver": "heun",
+    "evaluation_seed": 54321,
+    "jitter_std": 0.05
+  },
+  "prior_seed_1_by_tokenizer_seed": {
+    "seed_1": {
+      "v12_control": {"fid_5k": 27.134988552098093, "kid_5k": 0.018848514184355736},
+      "jitter05": {"fid_5k": 29.321292510435683, "kid_5k": 0.019673103466629982},
+      "jitter_minus_control": {"fid_5k": 2.1863039583375894, "kid_5k": 0.0008245892822742462},
+      "advance_to_10k": false
+    },
+    "seed_2": {
+      "v12_control": {"fid_5k": 31.970390583176822, "kid_5k": 0.022703023627400398},
+      "jitter05": {"fid_5k": 27.74280050916525, "kid_5k": 0.016026753932237625},
+      "jitter_minus_control": {"fid_5k": -4.227590074011572, "kid_5k": -0.006676269695162773},
+      "advance_to_10k": true,
+      "status": "10k complete in Phase C screen"
+    },
+    "seed_3": {
+      "v12_control": {"fid_5k": 37.737260274987705, "kid_5k": 0.027035469189286232},
+      "jitter05": {"fid_5k": 27.75492479468062, "kid_5k": 0.01830054260790348},
+      "jitter_minus_control": {"fid_5k": -9.982335480307086, "kid_5k": -0.008734926581382751},
+      "advance_to_10k": true
+    },
+    "aggregate_5k": {
+      "v12_fid_mean": 32.28087980342087,
+      "jitter05_fid_mean": 28.27300593809385,
+      "fid_mean_delta": -4.007873865327021,
+      "v12_kid_mean": 0.022862335667014122,
+      "jitter05_kid_mean": 0.018000133335590363,
+      "kid_mean_delta": -0.004862202331423759,
+      "jitter_fid_wins": 2,
+      "tokenizer_seeds": 3
+    }
+  },
+  "tokenizer_seed_2_prior_seed_2": {
+    "v12_control": {"fid_5k": 32.45338334391897, "kid_5k": 0.02257709950208664},
+    "jitter05": {"fid_5k": 25.737997972468804, "kid_5k": 0.013842353597283363},
+    "jitter_minus_control": {"fid_5k": -6.715385371450168, "kid_5k": -0.008734745904803276},
+    "advance_both_to_10k": true
+  },
+  "screen_verdict": {
+    "tokenizer_seed_1": "clear concordant regression just beyond the declared two-FID boundary; stop at 5k",
+    "tokenizer_seed_3": "clear concordant improvement; advance to 10k",
+    "prior_seed_2": "clear concordant seed-2 replication; advance both matched arms to 10k",
+    "global_status": "jitter wins two of three tokenizer seeds and improves 5k mean FID/KID, but the seed-1 regression means the conservative no-clear-regression promotion condition is not yet satisfied"
+  }
+}

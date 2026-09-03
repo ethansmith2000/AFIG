@@ -40,6 +40,12 @@ verdicts live under `reports/` and are linked here.
   [`c3l0pdrh`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/c3l0pdrh),
   and v20 prior seed 2
   [`whl85sj2`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/whl85sj2).
+  All 5k screens completed. At tokenizer seeds 1/2/3, jitter-minus-v12 FID is
+  +2.186/-4.228/-9.982 and KID agrees in every case; jitter therefore wins two
+  of three seeds and improves mean FID by 4.008, but seed 1 narrowly crosses
+  the declared clear-regression boundary. Under prior seed 2 at tokenizer seed
+  2, jitter repeats strongly at 25.738/0.01384 versus 32.453/0.02258. Seed 3
+  and both prior-seed-2 arms advance to 10k; seed 1 stops at 5k as predeclared.
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-02 — Phase C posterior/noise study complete:** the selected v12
   seed-2 residual baseline is held fixed while four arms test clean

@@ -265,6 +265,18 @@ Launch record (2026-09-02 18:16 UTC): all four chains acquired shared
 `ahrvj0vr` and `zudow065`; the v12/v20 prior-seed-2 pair uses `c3l0pdrh` and
 `whl85sj2`. Supervisor owns every chain and one GPU remained free at launch.
 
+**5k screen:** jitter is seed-sensitive but favorable in expectation. At
+tokenizer seeds 1/2/3 its FID deltas versus v12 are
+`+2.186/-4.228/-9.982`; corresponding KID deltas are
+`+0.000825/-0.006676/-0.008735`. It wins two of three seeds and improves the
+three-seed mean from FID/KID 32.281/0.02286 to 28.273/0.01800. However, the
+seed-1 concordant regression is just beyond the declared two-FID boundary, so
+that arm stops at 5k and the conservative global replacement condition is not
+yet met. The prior-seed-2 seed-2 replication is strongly positive:
+25.738/0.01384 versus v12 32.453/0.02258. Run 10k for tokenizer seed 3 and
+both prior-seed-2 arms. Exact screen values are in
+`reports/2026-08-26_autoencoder_program/phase_c_jitter_confirmation.json`.
+
 ## Phase D — explicit progressive semantics (conditional)
 
 Only pursue this phase if partial decoding is itself valuable or Phase B gives

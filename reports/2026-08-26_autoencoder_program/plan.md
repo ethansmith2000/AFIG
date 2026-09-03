@@ -1017,3 +1017,27 @@ Launch record: all four supervisor chains acquired lifetime locks at
 (v12 prior seed 2), and
 [`whl85sj2`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/whl85sj2)
 (v20 prior seed 2). Initial assignments were GPUs 3--6; GPU 7 remained free.
+
+### Phase C decoder-jitter confirmation 5k outcome (2026-09-03)
+
+All chains completed cleanly. Both new tokenizers pass the codec-health veto:
+seed 1 reaches PSNR/rFID 37.437/5.380 and seed 3 reaches 37.834/5.210. These
+numbers do not select the representation.
+
+| tokenizer seed | v12 FID/KID-5k | jitter-0.05 FID/KID-5k | jitter FID delta | decision |
+|---:|---:|---:|---:|---|
+| 1 | 27.135/0.01885 | 29.321/0.01967 | +2.186 | stop at 5k |
+| 2 | 31.970/0.02270 | 27.743/0.01603 | -4.228 | existing 10k positive |
+| 3 | 37.737/0.02704 | 27.755/0.01830 | -9.982 | advance to 10k |
+
+Jitter wins two of three tokenizer seeds. Across all three it improves mean
+FID 32.281 -> 28.273 and mean KID 0.02286 -> 0.01800, but the seed-1 loss is a
+concordant 2.186 FID and therefore narrowly fails the predeclared no-clear-
+regression clause. Do not run seed 1 at 10k or declare a global replacement
+from this screen.
+
+The independent prior-seed-2 pair at tokenizer seed 2 strongly repeats the
+original direction: v20 reaches FID/KID 25.738/0.01384 versus v12 at
+32.453/0.02258, deltas -6.715/-0.008735. Advance both members of this pair and
+the tokenizer-seed-3 jitter arm to 10k. Exact values and decisions are in
+`phase_c_jitter_confirmation.json`.
