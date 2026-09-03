@@ -73,5 +73,12 @@
     }
   },
   "decision_5k": "Both mechanisms worked without harming codec health, and both improved FID by just over two points with KID agreeing. Advance both to the predeclared 10k gate; no global design change is permitted from seed 1 alone.",
-  "decision_10k": "Slot balancing improves FID by 2.538 points with KID agreeing and advances to tokenizer seeds 2 and 3. Marginal Gaussianity improves KID but its 1.907-point FID gain misses the fixed 2-point replication gate by 0.093 and stops."
+  "decision_10k": "Slot balancing improves FID by 2.538 points with KID agreeing and advances to tokenizer seeds 2 and 3. Marginal Gaussianity improves KID but its 1.907-point FID gain misses the fixed 2-point replication gate by 0.093 and stops.",
+  "replication": {
+    "status": "running",
+    "launched_utc": "2026-09-03T14:28:04Z",
+    "tokenizer_seed_2_wandb": "wi7qqx8s",
+    "tokenizer_seed_3_wandb": "v2avcbeh",
+    "prior_seed": 1
+  }
 }

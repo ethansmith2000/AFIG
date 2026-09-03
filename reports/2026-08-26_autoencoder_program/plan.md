@@ -1227,3 +1227,10 @@ fixed. Pair seed 2 with residual+jitter v20 (5k 27.74280/0.0160268; 10k
 Promote slot balancing globally only if it wins FID in at least two of three
 tokenizer seeds, improves three-seed mean FID and KID, and has no paired
 concordant regression greater than two FID.
+
+Both replication chains launched through supervisor and the shared lifetime
+GPU queue at 2026-09-03 14:28 UTC. Initial losses are finite and throughput is
+approximately 4.3k images/s. Tokenizer W&B runs are seed 2
+[`wi7qqx8s`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/wi7qqx8s)
+and seed 3
+[`v2avcbeh`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/v2avcbeh).

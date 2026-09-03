@@ -426,6 +426,10 @@ paired residual+jitter controls v20 and v24; apply the same 5k continuation
 rule. Global promotion requires at least two of three tokenizer-seed FID wins,
 better mean FID and KID, and no concordant regression larger than two FID.
 
+Replication launch (2026-09-03 14:28 UTC): both supervisor chains acquired
+shared lifetime GPU locks and began finite training near 4.3k images/s. W&B
+tokenizer runs are seed 2 `wi7qqx8s` and seed 3 `v2avcbeh`.
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality
