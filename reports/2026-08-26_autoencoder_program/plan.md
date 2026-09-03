@@ -1116,3 +1116,27 @@ are [`0zoq4bhb`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs
 [`17pc720a`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/17pc720a),
 and [`e3d4l17z`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/e3d4l17z)
 for seeds 1, 2, and 3 respectively. Five GPUs remained free at submission.
+
+### Register formation x decoder jitter 5k outcome
+
+All tokenizers, diagnostics, matched priors, and screens completed. The codecs
+are healthy: seed-1/2/3 PSNR is 37.549/34.381/37.496 and clean rFID is
+5.533/7.255/5.375. As predeclared, these do not rank the representations.
+
+| seed | residual+jitter FID/KID | register+jitter FID/KID | register FID delta | decision |
+|---:|---:|---:|---:|---|
+| 1 | 29.321/0.01967 | **26.736/0.01802** | -2.585 | advance both to 10k |
+| 2 | **27.743/0.01603** | 30.863/0.02061 | +3.120 | stop |
+| 3 | **27.755/0.01830** | 29.141/0.02030 | +1.386 | advance register to 10k |
+
+KID agrees with every FID direction. Register+jitter has mean/std/worst FID
+28.913/1.692/30.863 versus residual+jitter at 28.273/0.741/29.321, and mean
+KID is 0.01964 versus 0.01800. Thus it fails both declared global promotion
+routes: seed 2 is a clear concordant regression, and stability also worsens.
+Residual+jitter remains the expected-value lead and hard-VAE v13 remains the
+stability control.
+
+Complete the local uncertainties without reopening the global gate: run 10k
+for register+jitter seeds 1 and 3, plus the residual-jitter seed-1 control that
+was absent under the earlier experiment's stopping rule. Exact screen evidence
+is serialized in `register_jitter_factorial.json`.

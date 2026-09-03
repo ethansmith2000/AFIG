@@ -326,6 +326,17 @@ at roughly 4.2k images/s after compilation. Tokenizer W&B runs are
 `0zoq4bhb`, `17pc720a`, and `e3d4l17z` for seeds 1/2/3. Five GPUs were free at
 submission.
 
+**5k screen:** register+jitter reaches FID/KID
+26.736/0.01802, 30.863/0.02061, and 29.141/0.02030 at seeds 1/2/3. Relative
+to residual+jitter, the FID deltas are -2.585/+3.120/+1.386 and KID agrees in
+all cases. Its aggregate mean/std/worst FID is 28.913/1.692/30.863 versus
+28.273/0.741/29.321 for residual+jitter; mean KID is also worse,
+0.01964 versus 0.01800. Seed 2 decisively fails and stops, so register+jitter
+cannot become either the expected-quality or stability lead. Seeds 1 and 3
+receive 10k checks under the declared gate; seed 1 also receives the missing
+v23 residual-jitter 10k control. Exact values are in
+`reports/2026-08-26_autoencoder_program/register_jitter_factorial.json`.
+
 ## Phase D — explicit progressive semantics (conditional)
 
 Only pursue this phase if partial decoding is itself valuable or Phase B gives

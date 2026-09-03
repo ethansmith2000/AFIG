@@ -1,0 +1,47 @@
+{
+  "protocol": {
+    "tokenizer_steps": 15000,
+    "prior_steps": 60000,
+    "prior_seed": 1,
+    "screen_samples": 5000,
+    "sample_steps": 50,
+    "solver": "heun",
+    "evaluation_seed": 54321,
+    "decoder_jitter_std": 0.05
+  },
+  "screen_by_tokenizer_seed": {
+    "seed_1": {
+      "residual_jitter": {"fid_5k": 29.321292510435683, "kid_5k": 0.019673103466629982},
+      "register_jitter": {"fid_5k": 26.736442591248476, "kid_5k": 0.018020082265138626},
+      "register_minus_residual": {"fid_5k": -2.5848499191872065, "kid_5k": -0.001653021201491356},
+      "codec_health": {"psnr": 37.54850951698826, "clean_rfid": 5.532592149063873},
+      "advance_to_10k": true,
+      "also_evaluate_residual_control_at_10k": true
+    },
+    "seed_2": {
+      "residual_jitter": {"fid_5k": 27.74280050916525, "kid_5k": 0.016026753932237625},
+      "register_jitter": {"fid_5k": 30.862843746773763, "kid_5k": 0.020608700811862946},
+      "register_minus_residual": {"fid_5k": 3.120043237608513, "kid_5k": 0.0045819468796253204},
+      "codec_health": {"psnr": 34.38125896220343, "clean_rfid": 7.255077483762591},
+      "advance_to_10k": false
+    },
+    "seed_3": {
+      "residual_jitter": {"fid_5k": 27.75492479468062, "kid_5k": 0.01830054260790348},
+      "register_jitter": {"fid_5k": 29.140516016617767, "kid_5k": 0.020301155745983124},
+      "register_minus_residual": {"fid_5k": 1.3855912219371476, "kid_5k": 0.0020006131380796432},
+      "codec_health": {"psnr": 37.49601611994517, "clean_rfid": 5.374578528354391},
+      "advance_to_10k": true
+    }
+  },
+  "aggregate_5k": {
+    "residual_jitter": {"fid_mean": 28.27300593809385, "fid_population_std": 0.7412670696804472, "fid_worst": 29.321292510435683, "kid_mean": 0.018000133335590363},
+    "register_jitter": {"fid_mean": 28.91326745154667, "fid_population_std": 1.6922427045837247, "fid_worst": 30.862843746773763, "kid_mean": 0.0196433129409949},
+    "register_minus_residual": {"fid_mean": 0.6402615134528205, "kid_mean": 0.001643179605404537}
+  },
+  "screen_verdict": {
+    "expected_quality_gate": "failed because seed 2 is a greater-than-two-FID concordant regression",
+    "stability_gate": "failed because both FID population standard deviation and worst-case FID are worse",
+    "selection_status": "residual jitter remains the leading expected-value design; hard-VAE v13 remains the stability control",
+    "larger_sample_followup": ["register_jitter_seed_1", "residual_jitter_seed_1", "register_jitter_seed_3"]
+  }
+}

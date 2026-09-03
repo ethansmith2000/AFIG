@@ -37,6 +37,12 @@ verdicts live under `reports/` and are linked here.
   [`17pc720a`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/17pc720a),
   and seed 3
   [`e3d4l17z`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/e3d4l17z).
+  All 5k screens completed. Register-minus-residual jitter FID deltas are
+  -2.585/+3.120/+1.386 at seeds 1/2/3; KID agrees in direction at every seed.
+  The combined arm has worse mean, variance, worst-case FID, and mean KID, so
+  it cannot clear either global promotion route. Seed 2 stops; seeds 1 and 3
+  qualify for 10k, and seed 1 also triggers the missing residual-jitter 10k
+  control.
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-03 — decoder-jitter robustness confirmation complete:** the
   v20 sigma-0.05 result is being tested at fresh tokenizer seeds 1 and 3 with
