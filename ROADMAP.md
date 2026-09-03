@@ -476,6 +476,15 @@ control's 25.738/0.01384. FID is effectively tied (-0.030) while KID worsens
 by 0.00263. This is not confirmation, but it advances to 10k under the frozen
 within-two/metric-disagreement rule.
 
+**10k outcome:** slot balance reaches **23.375/0.01640** versus
+**22.861/0.01315**, losing 0.514 FID and 0.00325 KID. This is the predeclared
+prior-sensitive outcome, not the >=2-FID concordant loss required to revoke
+default promotion. Across the two priors at tokenizer seed 2, FID is effectively
+neutral on average (-0.152) while KID is worse by 0.00261. Keep slot balancing
+as the leading expected-value modifier because the three-tokenizer-seed gate
+passed, but do not describe it as universally robust; its benefit is strongly
+seed-interactive.
+
 ### Roadmap after the robustness check
 
 1. **Restrained decoder objectives:** with encoder formation stabilized, isolate

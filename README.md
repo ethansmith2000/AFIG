@@ -59,17 +59,20 @@ retaining the hard-VAE path as a conservative stability control.
 - Weak slot-power balancing improves 10k FID at all three tokenizer seeds. Mean
   FID improves from 25.70 to 23.75 and mean KID from 0.01762 to 0.01733, so it
   is now part of the leading design. KID regresses at seed 2 and remains an
-  explicit interaction caveat.
+  explicit interaction caveat. A second prior seed on that weakest tokenizer
+  seed loses 0.51 FID and 0.00325 KID, confirming that the effect is
+  expected-value positive but not universal.
 
 ## Current follow-up
 
-The slot-balance campaign is complete and passes its predeclared multi-seed
-promotion gate. The most efficient remaining robustness check is a prior-seed-2
-run on the mixed tokenizer-seed-2 slot-balanced cache, paired with the already
-completed unregularized seed-2/prior-2 control. This tests prior stochasticity
-without training another tokenizer. Reconstruction remains only a permissive
-codec-health veto; decoded FID/KID selects representation quality. Details and
-exact stop rules are in `reports/2026-08-26_autoencoder_program/plan.md`.
+The slot-balance campaign is complete. It passes its predeclared multi-tokenizer
+seed promotion gate but shows prior-seed sensitivity on its weakest tokenizer
+seed. The next screen isolates restrained frequency-aware and perceptual
+decoder objectives on this leading expected-value design, with the
+unregularized residual+jitter checkpoint retained as a control. Reconstruction
+remains only a permissive codec-health veto; decoded FID/KID selects
+representation quality. Details and exact stop rules are in
+`reports/2026-08-26_autoencoder_program/plan.md`.
 
 ## Running safely
 

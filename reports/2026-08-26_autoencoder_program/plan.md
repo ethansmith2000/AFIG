@@ -1297,3 +1297,16 @@ The 5k evaluation reaches FID/KID **25.70832/0.0164760** against the paired
 control's 25.73800/0.0138424. The -0.02968 FID difference is an effective tie,
 while KID worsens by 0.0026337. This does not confirm robustness, but the frozen
 continuation rule advances the metric-discordant result to 10k.
+
+The 10k result is **23.37484/0.0164034** versus the paired control's
+**22.86064/0.0131494**, deltas of +0.51420 FID and +0.0032540 KID. This lands
+in the frozen prior-sensitive category: it is a concordant loss, but far below
+the two-FID revocation boundary. At tokenizer seed 2 across prior seeds 1 and
+2, slot balancing changes mean FID by -0.15247 (effectively neutral) and mean
+KID by +0.0026124 (worse).
+
+Retain the prior three-tokenizer-seed promotion as the expected-value decision,
+but narrow the claim. Slot balancing is a leading modifier with two strong
+tokenizer-seed wins, not a universally robust improvement. No additional seed
+sweeps are warranted before testing a genuinely different objective; carry the
+unregularized residual+jitter checkpoint as the paired control in future work.

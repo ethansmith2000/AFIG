@@ -140,7 +140,7 @@
     "verdict": "Promote slot balancing at weight 0.002 into the leading deterministic residual-pool, sigma-0.05 decoder-jitter tokenizer. FID improves at all three tokenizer seeds, mean FID and KID improve, and there is no paired FID regression. Retain the seed-2 KID regression as an explicit caveat."
   },
   "prior_seed_2_confirmation": {
-    "status": "fid_kid_5k_complete_advance_to_10k",
+    "status": "complete_prior_sensitive_default_promotion_retained",
     "launched_utc": "2026-09-03T16:18:10Z",
     "wandb_run": "ptfm3rzt",
     "tokenizer_seed": 2,
@@ -162,6 +162,21 @@
     "fid_delta_vs_control_5k": -0.029675027244707052,
     "kid_delta_vs_control_5k": 0.002633675932884217,
     "advance_to_10k": true,
-    "continuation_reason": "FID is effectively tied and KID disagrees"
+    "continuation_reason": "FID is effectively tied and KID disagrees",
+    "fid_10k": 23.374839742924053,
+    "kid_10k": 0.016403350979089737,
+    "fid_delta_vs_control_10k": 0.5142044917958515,
+    "kid_delta_vs_control_10k": 0.0032539749518036842,
+    "outcome": "prior_sensitive",
+    "default_promotion_retained": true,
+    "tokenizer_seed_2_two_prior_aggregate": {
+      "control_fid_mean": 24.10694819802501,
+      "slot_balance_fid_mean": 23.954473322830353,
+      "fid_mean_delta": -0.15247487519465608,
+      "control_kid_mean": 0.014412746299058199,
+      "slot_balance_kid_mean": 0.017025158740580082,
+      "kid_mean_delta": 0.002612412441521883
+    },
+    "verdict": "The weakest tokenizer seed is prior-sensitive: slot balancing wins FID under prior seed 1 but loses 0.514 FID and 0.00325 KID under prior seed 2. This does not meet the predeclared revocation threshold, so slot balancing remains the leading expected-value modifier, with no claim of universal robustness."
   }
 }

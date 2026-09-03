@@ -82,6 +82,11 @@ verdicts live under `reports/` and are linked here.
   At 5k it reaches **25.708/0.01648** versus 25.738/0.01384: FID is tied
   (-0.030) and KID is worse (+0.00263). The frozen metric-disagreement rule
   advances it to 10k, but this checkpoint is not a robustness confirmation.
+  At 10k it reaches **23.375/0.01640** versus **22.861/0.01315**, losing
+  0.514 FID and 0.00325 KID. This is the frozen prior-sensitive outcome and is
+  below the >=2-FID revocation boundary. Slot balancing remains the leading
+  expected-value modifier, but its tokenizer/prior-seed interaction is real and
+  the result must not be described as universal.
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-03 — register formation x decoder jitter factorial complete:**
   three new seed-matched tokenizers combine v13's bidirectional
