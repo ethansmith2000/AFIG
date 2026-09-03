@@ -532,6 +532,11 @@ within two points, or FID/KID disagree. Only a 10k gain of at least two FID
 with lower KID earns tokenizer-seed-1/3 replication. Twenty focused tests, two
 CPU end-to-end smokes, and two full-architecture batch-512 GPU smokes pass.
 
+Launch record (2026-09-03 19:19 UTC): both supervisor-owned chains acquired
+shared lifetime locks and entered finite tokenizer training. Radial runs near
+3.6k images/s and LPIPS near 4.3k images/s after compilation. W&B tokenizer
+runs are `xlu5z1n6` and `5471b4xt`.
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality

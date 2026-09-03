@@ -1,6 +1,7 @@
 {
   "date": "2026-09-03",
-  "status": "predeclared_ready_to_launch",
+  "status": "running",
+  "launched_utc": "2026-09-03T19:19:51Z",
   "hypothesis": "A weak decoder-side frequency or perceptual reconstruction signal can improve latent modelability after residual formation, decoder jitter, and slot utilization have stabilized.",
   "control": {
     "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
@@ -35,7 +36,8 @@
       "signal_relative_power_floor": 0.001,
       "weight": 0.00006,
       "calibrated_weighted_gradient_ratio": 0.09943072631835938,
-      "estimated_weighted_loss_ratio": 0.013424858076422236
+      "estimated_weighted_loss_ratio": 0.013424858076422236,
+      "wandb_run": "xlu5z1n6"
     },
     "perceptual": {
       "tokenizer": "v29-residual-e7p1-det-jitter05-slotbal2e3-lpips2e2-n64d16-s2",
@@ -43,7 +45,8 @@
       "weight": 0.02,
       "calibrated_weighted_gradient_ratio": 0.09341,
       "estimated_weighted_loss_ratio": 0.007545536476644297,
-      "dependency": "lpips==0.1.4"
+      "dependency": "lpips==0.1.4",
+      "wandb_run": "5471b4xt"
     }
   },
   "selection": {

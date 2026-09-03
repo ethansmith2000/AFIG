@@ -1337,3 +1337,9 @@ Twenty focused tests, both CPU end-to-end smokes, and both full 60M-parameter
 batch-512 GPU smokes pass. Launchers:
 `scripts/run_decoder_objective_arm.sh {radial|perceptual}` and
 `scripts/run_decoder_objective_10k.sh {radial|perceptual}`.
+
+Both supervisor-owned chains acquired shared lifetime GPU locks at 2026-09-03
+19:19 UTC and entered finite training. Tokenizer W&B runs are radial
+[`xlu5z1n6`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/xlu5z1n6)
+and perceptual
+[`5471b4xt`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/5471b4xt).
