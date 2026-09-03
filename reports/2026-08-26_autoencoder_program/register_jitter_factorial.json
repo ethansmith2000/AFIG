@@ -11,12 +11,13 @@
   },
   "screen_by_tokenizer_seed": {
     "seed_1": {
-      "residual_jitter": {"fid_5k": 29.321292510435683, "kid_5k": 0.019673103466629982},
-      "register_jitter": {"fid_5k": 26.736442591248476, "kid_5k": 0.018020082265138626},
-      "register_minus_residual": {"fid_5k": -2.5848499191872065, "kid_5k": -0.001653021201491356},
+      "residual_jitter": {"fid_5k": 29.321292510435683, "kid_5k": 0.019673103466629982, "fid_10k": 26.704713573357026, "kid_10k": 0.01920797862112522},
+      "register_jitter": {"fid_5k": 26.736442591248476, "kid_5k": 0.018020082265138626, "fid_10k": 23.97154910919437, "kid_10k": 0.017738008871674538},
+      "register_minus_residual": {"fid_5k": -2.5848499191872065, "kid_5k": -0.001653021201491356, "fid_10k": -2.7331644641626553, "kid_10k": -0.0014699697494506836},
       "codec_health": {"psnr": 37.54850951698826, "clean_rfid": 5.532592149063873},
       "advance_to_10k": true,
-      "also_evaluate_residual_control_at_10k": true
+      "also_evaluate_residual_control_at_10k": true,
+      "status": "10k confirms local register-jitter win"
     },
     "seed_2": {
       "residual_jitter": {"fid_5k": 27.74280050916525, "kid_5k": 0.016026753932237625},
@@ -26,11 +27,12 @@
       "advance_to_10k": false
     },
     "seed_3": {
-      "residual_jitter": {"fid_5k": 27.75492479468062, "kid_5k": 0.01830054260790348},
-      "register_jitter": {"fid_5k": 29.140516016617767, "kid_5k": 0.020301155745983124},
-      "register_minus_residual": {"fid_5k": 1.3855912219371476, "kid_5k": 0.0020006131380796432},
+      "residual_jitter": {"fid_5k": 27.75492479468062, "kid_5k": 0.01830054260790348, "fid_10k": 25.045121760295842, "kid_10k": 0.017984895035624504},
+      "register_jitter": {"fid_5k": 29.140516016617767, "kid_5k": 0.020301155745983124, "fid_10k": 26.578752831768156, "kid_10k": 0.020520582795143127},
+      "register_minus_residual": {"fid_5k": 1.3855912219371476, "kid_5k": 0.0020006131380796432, "fid_10k": 1.533631071472314, "kid_10k": 0.0025356877595186234},
       "codec_health": {"psnr": 37.49601611994517, "clean_rfid": 5.374578528354391},
-      "advance_to_10k": true
+      "advance_to_10k": true,
+      "status": "10k confirms a mild concordant register-jitter loss"
     }
   },
   "aggregate_5k": {
@@ -42,6 +44,7 @@
     "expected_quality_gate": "failed because seed 2 is a greater-than-two-FID concordant regression",
     "stability_gate": "failed because both FID population standard deviation and worst-case FID are worse",
     "selection_status": "residual jitter remains the leading expected-value design; hard-VAE v13 remains the stability control",
-    "larger_sample_followup": ["register_jitter_seed_1", "residual_jitter_seed_1", "register_jitter_seed_3"]
+    "larger_sample_followup": ["register_jitter_seed_1", "residual_jitter_seed_1", "register_jitter_seed_3"],
+    "final_interpretation": "decoder jitter improves register-token modelability substantially relative to hard-VAE v13, but register formation changes the residual-jitter result in opposite directions across tokenizer seeds and worsens its aggregate frontier"
   }
 }

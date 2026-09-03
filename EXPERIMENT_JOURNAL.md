@@ -22,8 +22,8 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
-- **2026-09-03 — register formation x decoder jitter factorial
-  predeclared:** three new seed-matched tokenizers combine v13's bidirectional
+- **2026-09-03 — register formation x decoder jitter factorial complete:**
+  three new seed-matched tokenizers combine v13's bidirectional
   patch/register formation with deterministic sigma-0.05 decoder-only jitter.
   Existing v13 hard-VAE and v23/v20/v24 residual-jitter runs supply both main-
   effect controls. Every healthy seed receives the unchanged prior-seed-1 60k
@@ -43,6 +43,12 @@ verdicts live under `reports/` and are linked here.
   it cannot clear either global promotion route. Seed 2 stops; seeds 1 and 3
   qualify for 10k, and seed 1 also triggers the missing residual-jitter 10k
   control.
+  The larger evaluation confirms both local directions: seed 1 register+jitter
+  reaches **23.972/0.01774** versus residual+jitter **26.705/0.01921**, while
+  seed 3 reaches 26.579/0.02052 versus **25.045/0.01798**. Register formation
+  therefore remains architecture-by-seed dependent and does not improve the
+  aggregate jitter frontier. Retain residual+jitter as the expected-value lead
+  and hard-VAE v13 as the stability control.
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-03 — decoder-jitter robustness confirmation complete:** the
   v20 sigma-0.05 result is being tested at fresh tokenizer seeds 1 and 3 with

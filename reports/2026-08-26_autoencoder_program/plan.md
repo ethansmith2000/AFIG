@@ -1140,3 +1140,21 @@ Complete the local uncertainties without reopening the global gate: run 10k
 for register+jitter seeds 1 and 3, plus the residual-jitter seed-1 control that
 was absent under the earlier experiment's stopping rule. Exact screen evidence
 is serialized in `register_jitter_factorial.json`.
+
+### Register formation x decoder jitter 10k outcome
+
+The qualifying checks preserve rather than overturn the screen. At seed 1,
+register+jitter reaches FID/KID **23.97155/0.017738** versus residual+jitter
+26.70471/0.019208, a clear -2.733 FID and -0.001470 KID win. At seed 3,
+register+jitter reaches 26.57875/0.020521 versus residual+jitter
+**25.04512/0.017985**, a +1.534 FID and +0.002536 KID loss. Seed 2 remains
+stopped at its decisive +3.120-FID 5k regression.
+
+The factorial conclusion is therefore clean. Decoder jitter transfers to the
+register-token architecture—it improves v13 dramatically—but register
+formation itself changes the jitter result in opposite directions across
+seeds and worsens mean, variance, worst-case FID, and mean KID at 5k. It is not
+the expected-quality or stability lead. Retain deterministic residual pooling
+with sigma-0.05 decoder jitter for expected value and hard-VAE v13 as the
+separate stability control. The seed-1 v25 checkpoint is an excellent local
+result, not evidence for universal register-token superiority.

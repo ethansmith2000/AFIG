@@ -337,6 +337,15 @@ receive 10k checks under the declared gate; seed 1 also receives the missing
 v23 residual-jitter 10k control. Exact values are in
 `reports/2026-08-26_autoencoder_program/register_jitter_factorial.json`.
 
+**10k outcome:** seed 1 confirms a real local register+jitter win at
+23.972/0.01774 versus residual+jitter 26.705/0.01921, deltas
+-2.733/-0.00147. Seed 3 confirms a mild loss at 26.579/0.02052 versus
+25.045/0.01798, deltas +1.534/+0.00254. Together with the decisive seed-2 5k
+loss, this rejects register+jitter as a global mean or stability improvement.
+Jitter itself does transfer well to register formation relative to hard-VAE
+v13, but the architecture-by-seed interaction remains. Keep residual+jitter
+as the expected-value lead and v13 hard-VAE only as the stability control.
+
 ## Phase D — explicit progressive semantics (conditional)
 
 Only pursue this phase if partial decoding is itself valuable or Phase B gives
