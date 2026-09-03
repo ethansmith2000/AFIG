@@ -29,7 +29,14 @@ verdicts live under `reports/` and are linked here.
   effect controls. Every healthy seed receives the unchanged prior-seed-1 60k
   flow and FID/KID-5k; qualifying paired comparisons advance to 10k when improved,
   within two FID, or metric-discordant. Promotion requires a three-seed mean or
-  stability frontier improvement, not better reconstruction.
+  stability frontier improvement, not better reconstruction. All three chains
+  acquired shared GPU locks at 01:34 UTC and entered finite training. Tokenizer
+  W&B runs are seed 1
+  [`0zoq4bhb`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/0zoq4bhb),
+  seed 2
+  [`17pc720a`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/17pc720a),
+  and seed 3
+  [`e3d4l17z`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/e3d4l17z).
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-03 — decoder-jitter robustness confirmation complete:** the
   v20 sigma-0.05 result is being tested at fresh tokenizer seeds 1 and 3 with

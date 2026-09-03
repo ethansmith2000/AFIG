@@ -320,6 +320,12 @@ control.
 Launchers: `scripts/run_register_jitter_factorial.sh {s1|s2|s3}` and
 `scripts/run_register_jitter_factorial_10k.sh {s1|s2|s3|residual_s1}`.
 
+Launch record (2026-09-03 01:34 UTC): all three supervisor-owned chains
+acquired lifetime `gpu-claim` locks and began with finite optimization records
+at roughly 4.2k images/s after compilation. Tokenizer W&B runs are
+`0zoq4bhb`, `17pc720a`, and `e3d4l17z` for seeds 1/2/3. Five GPUs were free at
+submission.
+
 ## Phase D — explicit progressive semantics (conditional)
 
 Only pursue this phase if partial decoding is itself valuable or Phase B gives

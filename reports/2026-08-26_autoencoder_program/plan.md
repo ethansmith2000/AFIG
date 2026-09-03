@@ -1108,3 +1108,11 @@ below one, and mean KID is non-worse. Otherwise retain residual+jitter for
 expected value and hard-VAE v13 as the stability control. Launchers:
 `scripts/run_register_jitter_factorial.sh {s1|s2|s3}` and
 `scripts/run_register_jitter_factorial_10k.sh {s1|s2|s3|residual_s1}`.
+
+Launch record: the three supervisor-owned chains acquired shared lifetime GPU
+locks at 2026-09-03 01:34 UTC. After the longer register-token compilation,
+all emitted finite losses at approximately 4.2k images/s. Tokenizer W&B runs
+are [`0zoq4bhb`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/0zoq4bhb),
+[`17pc720a`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/17pc720a),
+and [`e3d4l17z`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/e3d4l17z)
+for seeds 1, 2, and 3 respectively. Five GPUs remained free at submission.
