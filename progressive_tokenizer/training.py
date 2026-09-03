@@ -41,6 +41,26 @@ def pixel_psnr(normalized_mse: float) -> float:
     return 10.0 * math.log10(4.0 / normalized_mse)
 
 
+def marginal_kurtosis_penalty(latents: torch.Tensor) -> torch.Tensor:
+    """Match each flattened latent coordinate's batch kurtosis to Gaussian 3."""
+
+    coordinates = latents.float().reshape(latents.shape[0], -1)
+    centered = coordinates - coordinates.mean(dim=0)
+    second = centered.square().mean(dim=0)
+    fourth = centered.pow(4).mean(dim=0)
+    kurtosis = fourth / (second.square() + 1e-8)
+    return (kurtosis - 3.0).square().mean()
+
+
+def slot_variance_balance_penalty(latents: torch.Tensor) -> torch.Tensor:
+    """Equalize sample-varying power across slots without fixing global scale."""
+
+    centered = latents.float() - latents.float().mean(dim=0, keepdim=True)
+    slot_power = centered.square().mean(dim=(0, 2))
+    relative_power = slot_power / slot_power.mean().clamp_min(1e-8)
+    return (relative_power - 1.0).square().mean()
+
+
 class LatentMomentAccumulator:
     """Streaming global and covariance diagnostics for clean latent tokens."""
 

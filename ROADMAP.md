@@ -372,6 +372,35 @@ After the encoder and posterior stabilize:
 Effective rank, flow MSE, slot balance, and PSNR are diagnostics rather than
 standalone promotion criteria.
 
+### Weak representation-regularizer screen
+
+Start on residual+jitter tokenizer seed 1, the only seed where the selected
+design lost to hard-VAE v12. Run two isolated, parameter-free penalties:
+
+- v26 marginal Gaussianity: existing per-coordinate batch kurtosis-to-3
+  penalty with weight `1e-4`;
+- v27 slot utilization: new scale-invariant variance of sample-varying
+  per-slot power with weight `0.002`.
+
+The frozen v23 cache measures these raw penalties at 0.5273 and 0.03624, so
+their mature loss contributions are approximately `5.27e-5` and `7.25e-5`—
+roughly 7-10% of the typical terminal reconstruction loss near `7e-4`. This is
+a deliberately weak intervention. Slot balancing centers each token-coordinate
+over the batch before measuring power, so constant offsets cannot satisfy it;
+normalization by mean slot power makes it invariant to the latent's global
+scale. Do not combine the penalties in this screen.
+
+Hold the v23 deterministic residual encoder, sigma-0.05 decoder jitter,
+`64x16` shape, seed 1, 15k budget, and prior-seed-1 60k recipe fixed. Both
+healthy codecs receive priors regardless of reconstruction ordering. Compare
+against v23 FID/KID 29.321/0.01967 at 5k and 26.705/0.01921 at 10k. Advance
+an arm to 10k if it improves FID, lies within two FID, or FID/KID disagree.
+Only a 10k gain of at least two FID with KID agreeing earns tokenizer-seed-2/3
+replication; nothing from seed 1 alone changes the global design.
+
+Launchers: `scripts/run_representation_regularizer_arm.sh {marginal|slot}` and
+`scripts/run_representation_regularizer_10k.sh {marginal|slot}`.
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality

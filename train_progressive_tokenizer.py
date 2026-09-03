@@ -25,8 +25,10 @@ from progressive_tokenizer import ProgressiveTokenizer, TokenizerConfig
 from progressive_tokenizer.training import (
     LatentMomentAccumulator,
     count_parameters,
+    marginal_kurtosis_penalty,
     optimizer_parameter_groups,
     pixel_psnr,
+    slot_variance_balance_penalty,
 )
 from progressive_tokenizer.tracking import WandbTracker
 
@@ -76,6 +78,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         type=float,
         default=0.0,
         help="Weight on the per-coordinate kurtosis->3 energy-consistency penalty.",
+    )
+    parser.add_argument(
+        "--slot_balance_weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Weight on scale-invariant equalization of sample-varying power "
+            "across latent slots."
+        ),
     )
     parser.add_argument(
         "--latent_shaping",
@@ -184,7 +195,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 
     if args.prefix_loss_weight < 0:
         parser.error("--prefix_loss_weight must be non-negative")
-    if args.kl_weight < 0 or args.shaping_loss_weight < 0 or args.energy_reg_weight < 0:
+    if (
+        args.kl_weight < 0
+        or args.shaping_loss_weight < 0
+        or args.energy_reg_weight < 0
+        or args.slot_balance_weight < 0
+    ):
         parser.error("loss weights must be non-negative")
     if args.kl_weight > 0 and not args.variational:
         parser.error("--kl_weight requires --variational")
@@ -583,6 +599,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     rolling_floor_fraction = 0.0
     rolling_kurtosis = 0.0
     rolling_energy_cv = 0.0
+    rolling_slot_balance = 0.0
     rolling_count = 0
     rolling_start = time.monotonic()
 
@@ -677,16 +694,17 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         if args.energy_reg_weight > 0:
             coordinates = latents.float().reshape(latents.shape[0], -1)
             centered = coordinates - coordinates.mean(dim=0)
-            second = centered.square().mean(dim=0)
-            fourth = centered.pow(4).mean(dim=0)
-            kurtosis = fourth / (second.square() + 1e-8)
-            kurtosis_penalty = (kurtosis - 3.0).square().mean()
+            kurtosis_penalty = marginal_kurtosis_penalty(latents)
             token_energy = centered.reshape(latents.shape).square().mean(dim=-1)
             token_energy_cv = (
                 token_energy.var(dim=0)
                 / (token_energy.mean(dim=0).square() + 1e-8)
             ).mean()
             loss = loss + args.energy_reg_weight * kurtosis_penalty
+        slot_balance_penalty = loss.new_zeros(())
+        if args.slot_balance_weight > 0:
+            slot_balance_penalty = slot_variance_balance_penalty(latents)
+            loss = loss + args.slot_balance_weight * slot_balance_penalty
         loss.backward()
         gradient_norm = clip_grad_norm_(model.parameters(), args.max_grad_norm)
         optimizer.step()
@@ -703,6 +721,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         rolling_floor_fraction += float(posterior_floor_fraction.detach())
         rolling_kurtosis += float(kurtosis_penalty.detach())
         rolling_energy_cv += float(token_energy_cv.detach())
+        rolling_slot_balance += float(slot_balance_penalty.detach())
         rolling_count += 1
         if completed_step % args.log_every == 0 or completed_step == 1:
             if device.type == "cuda":
@@ -717,6 +736,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 "kl_per_dim": rolling_kl / rolling_count,
                 "kurtosis_penalty": rolling_kurtosis / rolling_count,
                 "token_energy_cv": rolling_energy_cv / rolling_count,
+                "slot_balance_penalty": rolling_slot_balance / rolling_count,
                 "prefix_mean": prefix_mean,
                 "psnr_db": pixel_psnr(rolling_full / rolling_count),
                 "learning_rate": learning_rate,
@@ -746,7 +766,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             rolling_shaping = rolling_kl = 0.0
             rolling_log_variance_mean = rolling_log_variance_std = 0.0
             rolling_sigma_mean = rolling_floor_fraction = 0.0
-            rolling_kurtosis = rolling_energy_cv = 0.0
+            rolling_kurtosis = rolling_energy_cv = rolling_slot_balance = 0.0
             rolling_count = 0
             rolling_start = time.monotonic()
 

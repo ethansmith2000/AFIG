@@ -13,7 +13,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from progressive_tokenizer import ProgressiveTokenizer, TokenizerConfig  # noqa: E402
 from progressive_tokenizer.model import Rotary2D  # noqa: E402
-from progressive_tokenizer.training import optimizer_parameter_groups  # noqa: E402
+from progressive_tokenizer.training import (  # noqa: E402
+    marginal_kurtosis_penalty,
+    optimizer_parameter_groups,
+    slot_variance_balance_penalty,
+)
 
 
 def tiny_config() -> TokenizerConfig:
@@ -32,6 +36,30 @@ def tiny_config() -> TokenizerConfig:
 
 
 class TestProgressiveTokenizer(unittest.TestCase):
+    def test_slot_variance_balance_is_scale_invariant_and_has_gradients(self):
+        torch.manual_seed(2)
+        base = torch.randn(32, 1, 3)
+        scales = torch.tensor([0.5, 1.0, 2.0, 4.0]).view(1, 4, 1)
+        latents = (base.repeat(1, 4, 1) * scales).requires_grad_()
+        penalty = slot_variance_balance_penalty(latents)
+        balanced = slot_variance_balance_penalty(latents / scales)
+        globally_scaled = slot_variance_balance_penalty(latents * 7.0)
+        self.assertGreater(float(penalty.detach()), 0.1)
+        self.assertLess(float(balanced.detach()), 1e-10)
+        torch.testing.assert_close(penalty, globally_scaled)
+        penalty.backward()
+        self.assertTrue(torch.isfinite(latents.grad).all())
+        self.assertGreater(float(latents.grad.abs().sum()), 0.0)
+
+    def test_marginal_kurtosis_penalty_is_finite_and_has_gradients(self):
+        torch.manual_seed(3)
+        latents = torch.randn(64, 4, 3).requires_grad_()
+        penalty = marginal_kurtosis_penalty(latents)
+        self.assertTrue(torch.isfinite(penalty))
+        penalty.backward()
+        self.assertTrue(torch.isfinite(latents.grad).all())
+        self.assertGreater(float(latents.grad.abs().sum()), 0.0)
+
     def test_shapes_determinism_and_full_prefix_equivalence(self):
         torch.manual_seed(3)
         model = ProgressiveTokenizer(tiny_config()).eval()

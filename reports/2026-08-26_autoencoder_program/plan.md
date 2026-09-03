@@ -1158,3 +1158,38 @@ the expected-quality or stability lead. Retain deterministic residual pooling
 with sigma-0.05 decoder jitter for expected value and hard-VAE v13 as the
 separate stability control. The seed-1 v25 checkpoint is an excellent local
 result, not evidence for universal register-token superiority.
+
+### Weak representation-regularizer screen (predeclared 2026-09-03)
+
+Defer explicit progressive semantics and first test whether a weak latent
+distribution objective can repair the selected residual+jitter design's seed-1
+regression. Use two independent parameter-free arms on the exact v23 seed-1
+recipe:
+
+| arm | penalty | weight | frozen-v23 value | estimated mature contribution |
+|---|---|---:|---:|---:|
+| v26 marginal | mean squared per-coordinate `(kurtosis - 3)` | `1e-4` | 0.5273 | `5.27e-5` |
+| v27 slot | variance of normalized sample-varying slot power | `0.002` | 0.03624 | `7.25e-5` |
+
+The baseline terminal full reconstruction loss is typically about `7e-4`, so
+both interventions are intentionally weak at roughly 7-10% of that scale.
+The slot term batch-centers every token-coordinate, averages variance over its
+16 channels, and penalizes dispersion across the 64 slots after division by
+mean slot power. It is invariant to global latent scale and cannot be satisfied
+by per-slot constants. The marginal term changes distributional shape without
+directly balancing slots. Do not combine them until one works alone.
+
+Every non-regularizer detail remains fixed: residual `e7+p1`, deterministic
+`64x16` latents, sigma-0.05 latent-RMS decoder jitter, tokenizer seed 1, full
+objective, 15k steps, and matched prior seed 1 for 60k steps. Parameter counts
+are identical. The implementation reports both regularizer values separately;
+18 focused tests and two queue-compliant end-to-end smokes pass.
+
+Generation selects. Both codecs advance unless they trip the established
+broken-codec veto. Compare FID/KID-5k to v23 at 29.32129/0.019673. Improvement,
+a gap within two FID, or metric disagreement advances to the existing v23 10k
+control at 26.70471/0.019208. Only a 10k improvement of at least two FID with
+KID agreeing justifies seed-2/3 replication. A seed-1 result alone cannot
+replace residual+jitter globally. Launchers:
+`scripts/run_representation_regularizer_arm.sh {marginal|slot}` and
+`scripts/run_representation_regularizer_10k.sh {marginal|slot}`.

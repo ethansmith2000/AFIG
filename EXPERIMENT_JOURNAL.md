@@ -22,6 +22,15 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-03 — weak representation-regularizer screen predeclared:** on the
+  weak seed-1 residual+jitter checkpoint, compare marginal kurtosis-to-Gaussian
+  regularization at weight `1e-4` with scale-invariant sample-varying slot-power
+  balancing at weight `0.002`. Frozen-cache calibration makes their expected
+  mature contributions 7-10% of reconstruction loss. They are separate arms,
+  add no parameters, and retain the full matched-prior generation protocol;
+  reconstruction is only a health veto. A seed-1 10k gain of at least two FID
+  with KID agreeing is required before seeds 2/3.
+  [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-03 — register formation x decoder jitter factorial complete:**
   three new seed-matched tokenizers combine v13's bidirectional
   patch/register formation with deterministic sigma-0.05 decoder-only jitter.
