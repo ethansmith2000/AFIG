@@ -1,6 +1,6 @@
 {
   "date": "2026-09-03",
-  "status": "running",
+  "status": "evaluating_10k",
   "launched_utc": "2026-09-03T19:19:51Z",
   "hypothesis": "A weak decoder-side frequency or perceptual reconstruction signal can improve latent modelability after residual formation, decoder jitter, and slot utilization have stabilized.",
   "control": {
@@ -37,7 +37,20 @@
       "weight": 0.00006,
       "calibrated_weighted_gradient_ratio": 0.09943072631835938,
       "estimated_weighted_loss_ratio": 0.013424858076422236,
-      "wandb_run": "xlu5z1n6"
+      "wandb_run": "xlu5z1n6",
+      "tokenizer_health": {
+        "test_psnr": 38.09839533824841,
+        "clean_reconstruction_fid": 5.089944056874629,
+        "global_latent_std": 0.9736311320471505,
+        "terminal_weighted_auxiliary_to_pixel_loss_ratio": 0.0155
+      },
+      "generation_5k": {
+        "fid": 25.847283870137176,
+        "kid": 0.01571187563240528,
+        "fid_delta_vs_control": -0.895709259550699,
+        "kid_delta_vs_control": -0.001826157793402673,
+        "decision": "advance_to_10k"
+      }
     },
     "perceptual": {
       "tokenizer": "v29-residual-e7p1-det-jitter05-slotbal2e3-lpips2e2-n64d16-s2",
@@ -46,7 +59,20 @@
       "calibrated_weighted_gradient_ratio": 0.09341,
       "estimated_weighted_loss_ratio": 0.007545536476644297,
       "dependency": "lpips==0.1.4",
-      "wandb_run": "5471b4xt"
+      "wandb_run": "5471b4xt",
+      "tokenizer_health": {
+        "test_psnr": 38.30631629059685,
+        "clean_reconstruction_fid": 5.214596551704574,
+        "global_latent_std": 0.952513,
+        "terminal_weighted_auxiliary_to_pixel_loss_ratio": 0.0113
+      },
+      "generation_5k": {
+        "fid": 27.61312387200013,
+        "kid": 0.019229549914598465,
+        "fid_delta_vs_control": 0.8701307423122549,
+        "kid_delta_vs_control": 0.001691516488790512,
+        "decision": "advance_to_10k_within_margin"
+      }
     }
   },
   "selection": {

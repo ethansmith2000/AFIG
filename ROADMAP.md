@@ -537,6 +537,15 @@ shared lifetime locks and entered finite tokenizer training. Radial runs near
 3.6k images/s and LPIPS near 4.3k images/s after compilation. W&B tokenizer
 runs are `xlu5z1n6` and `5471b4xt`.
 
+5k gate (2026-09-03 21:00 UTC): both tokenizers are healthy, with full-prefix
+PSNR 38.10/38.31 dB and clean reconstruction FID 5.09/5.21 for radial/LPIPS.
+The auxiliaries remain weak at the end of training: their weighted scalar
+contributions are approximately 1.55%/1.13% of pixel MSE. Radial reaches
+**25.847/0.01571**, improving the control by 0.896 FID and 0.00183 KID. LPIPS
+reaches **27.613/0.01923**, worsening by 0.870 FID and 0.00169 KID, but remains
+inside the frozen two-FID continuation margin. Both advance to the 10k read;
+this is a generation-metric decision, not reconstruction ranking.
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality

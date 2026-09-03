@@ -1343,3 +1343,16 @@ Both supervisor-owned chains acquired shared lifetime GPU locks at 2026-09-03
 [`xlu5z1n6`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/xlu5z1n6)
 and perceptual
 [`5471b4xt`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/5471b4xt).
+
+Both chains completed successfully. Full-prefix PSNR is 38.10 dB for radial
+and 38.31 dB for perceptual, with clean reconstruction FID 5.09 and 5.21; these
+are codec-health checks only. The terminal weighted auxiliary terms remain
+small at approximately 1.55% and 1.13% of pixel MSE, confirming that the screen
+tested restrained decoder signals rather than replacements for reconstruction.
+
+At 5k generated samples, radial obtains **25.84728/0.0157119**, deltas of
+-0.89571 FID and -0.0018262 KID from v27. Perceptual obtains
+**27.61312/0.0192295**, deltas of +0.87013 FID and +0.0016915 KID. Radial is a
+concordant early improvement. Perceptual is a concordant early loss but remains
+inside the predeclared two-FID continuation margin. Accordingly, both—not just
+the visually or reconstructively preferred arm—advance to the 10k evaluation.
