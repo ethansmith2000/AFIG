@@ -140,7 +140,9 @@
     "verdict": "Promote slot balancing at weight 0.002 into the leading deterministic residual-pool, sigma-0.05 decoder-jitter tokenizer. FID improves at all three tokenizer seeds, mean FID and KID improve, and there is no paired FID regression. Retain the seed-2 KID regression as an explicit caveat."
   },
   "prior_seed_2_confirmation": {
-    "status": "predeclared",
+    "status": "running",
+    "launched_utc": "2026-09-03T16:18:10Z",
+    "wandb_run": "ptfm3rzt",
     "tokenizer_seed": 2,
     "candidate": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2-prior-s2",
     "control": "v20-residual-e7p1-det-jitter05-n64d16-s2-prior-s2",

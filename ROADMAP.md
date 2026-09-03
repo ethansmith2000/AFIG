@@ -467,6 +467,10 @@ KID is FID-only confirmation; a sub-two-point or metric-discordant FID loss
 marks prior sensitivity; a >=2-FID loss with worse KID revokes default
 promotion. This isolates prior stochasticity without another tokenizer.
 
+Launch record (2026-09-03 16:18 UTC): the supervisor-owned chain acquired a
+shared lifetime GPU lock and entered finite prior training at roughly 21.5
+steps/s. W&B run: `ptfm3rzt`.
+
 ### Roadmap after the robustness check
 
 1. **Restrained decoder objectives:** with encoder formation stabilized, isolate

@@ -1288,3 +1288,7 @@ losing FID by less than two or with metric disagreement establishes prior-seed
 sensitivity; losing at least two FID with KID also worse revokes slot balance as
 the default. Launchers are `scripts/run_slot_balance_prior_seed2.sh` and
 `scripts/run_slot_balance_prior_seed2_10k.sh`.
+
+The supervisor-owned chain acquired a shared lifetime GPU lock at 2026-09-03
+16:18 UTC and entered finite training near 21.5 steps/s. Prior W&B run:
+[`ptfm3rzt`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/ptfm3rzt).

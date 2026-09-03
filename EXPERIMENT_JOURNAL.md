@@ -76,6 +76,9 @@ verdicts live under `reports/` and are linked here.
   22.861/0.01315 (10k). The standard continuation rule applies. The 10k
   outcome is classified as full confirmation, FID-only confirmation, prior
   sensitivity, or revocation using the exact thresholds in the plan.
+  The supervisor-owned chain acquired a shared lifetime GPU lock at 16:18 UTC
+  and began finite training near 21.5 steps/s. Prior W&B run:
+  [`ptfm3rzt`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/ptfm3rzt).
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-03 — register formation x decoder jitter factorial complete:**
   three new seed-matched tokenizers combine v13's bidirectional
