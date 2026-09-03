@@ -1356,3 +1356,12 @@ At 5k generated samples, radial obtains **25.84728/0.0157119**, deltas of
 concordant early improvement. Perceptual is a concordant early loss but remains
 inside the predeclared two-FID continuation margin. Accordingly, both—not just
 the visually or reconstructively preferred arm—advance to the 10k evaluation.
+
+The 10k read completes the screen. Radial obtains **23.68561/0.0158595**,
+improving v27 by 0.84850 FID and 0.0017875 KID. Its similar concordant gains at
+5k and 10k are credible directional evidence that weak radial log-power matching
+can help latent modelability. They are not large enough to pass the declared
+two-FID replication bar. Perceptual obtains **24.77091/0.0188098**, worsening
+FID by 0.23680 and KID by 0.0011629. Neither arm earns tokenizer-seed-1/3
+replication or promotion. Preserve radial as a possible later modifier, reject
+LPIPS in this context, and keep the next experiment isolated from both.

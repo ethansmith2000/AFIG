@@ -546,6 +546,15 @@ reaches **27.613/0.01923**, worsening by 0.870 FID and 0.00169 KID, but remains
 inside the frozen two-FID continuation margin. Both advance to the 10k read;
 this is a generation-metric decision, not reconstruction ranking.
 
+**10k outcome:** radial reaches **23.686/0.01586** versus the control's
+**24.534/0.01765**, a concordant improvement of 0.849 FID and 0.00179 KID.
+The nearly identical 5k and 10k FID deltas make this useful directional evidence,
+but it is below the frozen two-FID threshold for seed replication. LPIPS reaches
+**24.771/0.01881**, losing 0.237 FID and 0.00116 KID. Neither arm is promoted or
+replicated. Retain radial log-power as a plausible weak modifier; reject LPIPS
+for this configuration, and do not silently combine either objective with the
+next experiment.
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality

@@ -1,7 +1,8 @@
 {
   "date": "2026-09-03",
-  "status": "evaluating_10k",
+  "status": "complete_no_replication",
   "launched_utc": "2026-09-03T19:19:51Z",
+  "completed_utc": "2026-09-03T22:42:14Z",
   "hypothesis": "A weak decoder-side frequency or perceptual reconstruction signal can improve latent modelability after residual formation, decoder jitter, and slot utilization have stabilized.",
   "control": {
     "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
@@ -50,6 +51,13 @@
         "fid_delta_vs_control": -0.895709259550699,
         "kid_delta_vs_control": -0.001826157793402673,
         "decision": "advance_to_10k"
+      },
+      "generation_10k": {
+        "fid": 23.685605263032357,
+        "kid": 0.01585947535932064,
+        "fid_delta_vs_control": -0.8485016397042968,
+        "kid_delta_vs_control": -0.0017874911427497864,
+        "decision": "stop_below_replication_threshold"
       }
     },
     "perceptual": {
@@ -72,6 +80,13 @@
         "fid_delta_vs_control": 0.8701307423122549,
         "kid_delta_vs_control": 0.001691516488790512,
         "decision": "advance_to_10k_within_margin"
+      },
+      "generation_10k": {
+        "fid": 24.77090746887592,
+        "kid": 0.018809838220477104,
+        "fid_delta_vs_control": 0.23680056613926825,
+        "kid_delta_vs_control": 0.0011628717184066773,
+        "decision": "stop_concordant_loss"
       }
     }
   },
@@ -87,5 +102,11 @@
     "focused_tests": "20 passed",
     "cpu_end_to_end_smokes": ["radial", "lpips"],
     "full_architecture_batch_512_gpu_smokes": ["radial", "lpips"]
+  },
+  "outcome": {
+    "replication_earned": false,
+    "radial_interpretation": "consistent modest concordant gain at 5k and 10k, but below the predeclared two-FID replication threshold",
+    "perceptual_interpretation": "concordant loss at 5k and 10k",
+    "promotion": "neither decoder objective"
   }
 }
