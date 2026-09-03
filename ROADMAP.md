@@ -407,6 +407,16 @@ Marginal Gaussianity is W&B `gmudbr8y`; slot balance is `h43ihnea`. Their early
 reconstruction trajectories match the control, and the regularizer terms are
 small by design.
 
+5k result: both arms are healthy and both clear the continuation gate. Marginal
+Gaussianity reaches **27.199/0.01754** FID/KID, improving on v23 by
+**2.122 FID and 0.00213 KID**. Slot balancing reaches **27.232/0.01915**,
+improving by **2.090 FID and 0.00052 KID**. The named mechanisms are also
+measurably active: marginal kurtosis penalty falls 11.1x, while slot-power
+dispersion falls 90.8x and the slot-RMS range tightens to 0.937-0.965. These
+diagnostics establish intervention fidelity, not selection. Advance both to
+10k; only the predeclared >=2-FID gain with lower KID can earn seed-2/3
+replication.
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality

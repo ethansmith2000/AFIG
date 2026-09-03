@@ -1201,3 +1201,14 @@ reconstruction trajectory. At step 25, marginal Gaussianity contributes about
 formed. Tokenizer W&B runs are
 [`gmudbr8y`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/gmudbr8y)
 and [`h43ihnea`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/h43ihnea).
+
+The 5k generation screen is complete. Marginal Gaussianity records
+**27.19883/0.0175446** FID/KID, deltas of **-2.12246/-0.0021285** from v23.
+Slot balancing records **27.23151/0.0191532**, deltas of
+**-2.08978/-0.0005199**. Both therefore advance to 10k. The interventions did
+what they were intended to do: the marginal penalty falls from the frozen-v23
+0.5273 calibration to 0.04745 at the terminal train batch, and slot-power
+dispersion falls from 0.03624 to 0.000399. Slot balancing also compresses the
+full-test slot-RMS range from v23's 0.322-0.989 to 0.937-0.965. Reconstruction
+remains healthy (38.25/38.24 dB and clean rFID 5.10/5.15) but does not enter the
+ranking decision. Exact evidence is in `representation_regularizer_screen.json`.

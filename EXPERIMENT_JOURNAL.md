@@ -35,6 +35,14 @@ verdicts live under `reports/` and are linked here.
   [`gmudbr8y`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/gmudbr8y)
   and slot balance
   [`h43ihnea`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/h43ihnea).
+  Both complete chains are healthy. At 5k, marginal reaches
+  **27.199/0.01754** FID/KID and slot balance reaches **27.232/0.01915**,
+  improving on v23 by 2.122 and 2.090 FID respectively with KID agreeing.
+  Marginal kurtosis falls 11.1x; slot-power dispersion falls 90.8x and yields
+  an almost flat 0.937-0.965 slot-RMS range, so both named mechanisms are
+  verified. Both advance to the predeclared 10k test. Seed-1 evidence remains
+  insufficient for global promotion.
+  [Exact screen](reports/2026-08-26_autoencoder_program/representation_regularizer_screen.json).
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-03 — register formation x decoder jitter factorial complete:**
   three new seed-matched tokenizers combine v13's bidirectional

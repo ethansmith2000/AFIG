@@ -1,0 +1,64 @@
+{
+  "date": "2026-09-03",
+  "status": "fid_kid_5k_complete_both_advance_to_10k",
+  "selection_rule": {
+    "reconstruction_role": "health_veto_only",
+    "advance_5k_to_10k": "improved FID, FID within 2 points, or FID/KID disagreement",
+    "replication_gate": "10k FID improvement >= 2 points versus v23 with lower KID",
+    "replication_seeds": [2, 3]
+  },
+  "control": {
+    "name": "v23-residual-e7p1-det-jitter05-n64d16-s1-prior-s1-060000",
+    "fid_5k": 29.321292510435683,
+    "kid_5k": 0.019673103466629982,
+    "fid_10k": 26.704713573357026,
+    "kid_10k": 0.01920797862112522,
+    "tokenizer_psnr_db": 37.43695847797775,
+    "clean_reconstruction_fid": 5.380147585007251,
+    "flattened_effective_rank": 384.08744128105036,
+    "token_profile_correlation_mean": 0.6282688744229009,
+    "slot_rms_min": 0.3224906498979294,
+    "slot_rms_max": 0.9889881138872764
+  },
+  "arms": {
+    "marginal": {
+      "name": "v26-residual-e7p1-det-jitter05-kurt1e4-n64d16-s1-prior-s1-060000",
+      "penalty": "mean squared per-coordinate marginal kurtosis minus 3",
+      "weight": 0.0001,
+      "frozen_control_penalty": 0.5273,
+      "terminal_train_penalty": 0.04744691357016564,
+      "terminal_weighted_penalty": 0.000004744691357016564,
+      "mechanism_reduction_factor": 11.113925562482163,
+      "tokenizer_psnr_db": 38.25443409654159,
+      "clean_reconstruction_fid": 5.099663820818307,
+      "flattened_effective_rank": 409.5905121521272,
+      "token_profile_correlation_mean": 0.22806519771654865,
+      "fid_5k": 27.198832482726857,
+      "kid_5k": 0.017544608563184738,
+      "fid_delta_vs_control_5k": -2.122460027708826,
+      "kid_delta_vs_control_5k": -0.002128494903445244,
+      "advance_to_10k": true
+    },
+    "slot": {
+      "name": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s1-prior-s1-060000",
+      "penalty": "variance of normalized sample-varying per-slot power",
+      "weight": 0.002,
+      "frozen_control_penalty": 0.03624,
+      "terminal_train_penalty": 0.00039911412168294194,
+      "terminal_weighted_penalty": 7.982282433658839e-7,
+      "mechanism_reduction_factor": 90.80108953798502,
+      "tokenizer_psnr_db": 38.236887314357475,
+      "clean_reconstruction_fid": 5.15485650650038,
+      "flattened_effective_rank": 406.79054456010266,
+      "token_profile_correlation_mean": 0.04306835317719973,
+      "slot_rms_min": 0.9373878981670313,
+      "slot_rms_max": 0.9645773424115341,
+      "fid_5k": 27.231510273586423,
+      "kid_5k": 0.019153188914060593,
+      "fid_delta_vs_control_5k": -2.08978223684926,
+      "kid_delta_vs_control_5k": -0.0005199145525693893,
+      "advance_to_10k": true
+    }
+  },
+  "decision_5k": "Both mechanisms worked without harming codec health, and both improved FID by just over two points with KID agreeing. Advance both to the predeclared 10k gate; no global design change is permitted from seed 1 alone."
+}
