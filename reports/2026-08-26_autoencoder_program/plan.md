@@ -1396,3 +1396,7 @@ smokes peak at 18.87 GiB (`32x32`) and 23.86 GiB (`128x8`), so no batch-size
 change is required. Tokenizer parameter counts are 60,032,208 and 60,105,912
 versus 60,048,576 for the control; prior counts are 70,293,536 and 70,318,088
 versus 70,293,520. Twenty focused tokenizer tests pass.
+
+Both supervisor-owned chains acquired shared lifetime GPU locks at 2026-09-03
+22:55 UTC and entered tokenizer startup while respecting four foreign claims.
+Tokenizer W&B runs are `bm5ih5cx` for `32x32` and `y67pbcqn` for `128x8`.

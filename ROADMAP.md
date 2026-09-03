@@ -534,6 +534,10 @@ and 20 focused tokenizer tests pass. The tokenizer parameter differences from
 the 60,048,576-parameter control are -0.027% and +0.095%; hidden architecture
 and all train settings remain fixed.
 
+Launch record (2026-09-03 22:55 UTC): both supervisor-owned chains acquired
+shared lifetime GPU locks and began tokenizer training without contention.
+Tokenizer W&B runs are `bm5ih5cx` (`32x32`) and `y67pbcqn` (`128x8`).
+
 ### Decoder-objective screen (predeclared)
 
 Use tokenizer seed 2 and the promoted residual+jitter+slot configuration. Hold

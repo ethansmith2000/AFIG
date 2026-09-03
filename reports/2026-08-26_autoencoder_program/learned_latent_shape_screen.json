@@ -1,6 +1,7 @@
 {
   "date": "2026-09-03",
-  "status": "predeclared",
+  "status": "running",
+  "launched_utc": "2026-09-03T22:55:18Z",
   "hypothesis": "At fixed 1,024-coordinate capacity, a tokenizer trained natively for a different token/feature factorization may learn geometry that compensates for the prior penalty seen under forced cache reshaping.",
   "control": {
     "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
@@ -18,7 +19,8 @@
       "shape": [32, 32],
       "coordinates": 1024,
       "tokenizer_parameters": 60032208,
-      "prior_parameters": 70293536
+      "prior_parameters": 70293536,
+      "wandb_tokenizer_run": "bm5ih5cx"
     },
     "n128d8": {
       "version": "v31",
@@ -26,7 +28,8 @@
       "shape": [128, 8],
       "coordinates": 1024,
       "tokenizer_parameters": 60105912,
-      "prior_parameters": 70318088
+      "prior_parameters": 70318088,
+      "wandb_tokenizer_run": "y67pbcqn"
     }
   },
   "common_configuration": {
