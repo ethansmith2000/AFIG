@@ -1,4 +1,4 @@
-# AFIG roadmap — 2026-09-02
+# AFIG roadmap — 2026-09-03
 
 This is the current decision roadmap. Historical campaigns and corrected
 premises remain in `EXPERIMENT_JOURNAL.md`, `REVIEW_BRIEF.md`, and `reports/`.
@@ -34,7 +34,13 @@ assumed to improve full-length generation.
   FID but the worst mean. Carry residual as the primary baseline and registers
   as the stability control.
 - The historical hard-clamped "VAE" is effectively deterministic plus tiny
-  fixed jitter and a mean penalty. A clean posterior/noise study remains open.
+  fixed jitter and a mean penalty. The completed posterior/noise study promotes
+  deterministic sigma-0.05 decoder jitter for expected value while retaining
+  the hard-VAE path as a conservative stability control.
+- Scale-invariant sample-varying slot-power balancing at weight `0.002` is now
+  part of the leading residual+jitter tokenizer. At 10k it improves FID at all
+  three tokenizer seeds and improves mean FID/KID; marginal kurtosis
+  regularization did not clear its replication gate.
 
 Decoded FID decides model selection. FID-5k gaps below roughly two points are
 unresolved. Every exclusive GPU phase uses `/workspace/GPU_QUEUEING.md` and
@@ -437,6 +443,18 @@ Replication 5k result: seed 2 reaches **26.743/0.01754** versus v20
 predeclared continuation rule. Slot-power dispersion remains tightly
 controlled at 0.000352/0.000426 and both codecs pass the health veto; neither
 diagnostic selects the result.
+
+**Final 10k result and promotion:** slot balancing reaches FID/KID
+**24.166/0.01817**, **24.534/0.01765**, and **22.548/0.01617** at tokenizer
+seeds 1/2/3, versus residual+jitter controls 26.705/0.01921,
+25.353/0.01568, and 25.045/0.01798. FID improves at all three seeds by
+2.538/0.819/2.497. KID improves at seeds 1 and 3 but regresses at seed 2.
+Mean FID improves from 25.701 to **23.749** (-1.952), and mean KID improves
+slightly from 0.017623 to **0.017328**. This passes every frozen promotion
+condition: at least two FID wins, improved mean FID and KID, and no >2-FID
+regression. Promote slot balancing at weight `0.002` into the leading
+deterministic residual-pool + sigma-0.05 decoder-jitter design. Preserve the
+seed-2 KID interaction as a caveat rather than claiming universal improvement.
 
 ## Promotion protocol
 

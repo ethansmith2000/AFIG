@@ -9,19 +9,21 @@ matched-prior modelability, and decoder robustness.
 See [ROADMAP.md](ROADMAP.md) for active decisions and
 [EXPERIMENT_JOURNAL.md](EXPERIMENT_JOURNAL.md) for the chronological evidence.
 
-## Reproducible baseline
+## Current leading design
 
 ```text
 32x32 RGB image
   -> 64 non-overlapping 4x4 patch features
-  -> 8 patch Transformer blocks
-  -> 64 learned queries with one terminal cross-attention read
-  -> 64x16 continuous latent
+  -> 7 patch Transformer blocks
+  -> 64 learned queries with a cross read + residual latent self-attention/FFN
+  -> deterministic 64x16 continuous latent
+  -> scale-invariant sample-varying slot-power balance penalty (weight 0.002)
+  -> decoder training with latent-RMS Gaussian jitter (sigma 0.05)
   -> 64 spatial decoder queries
   -> reconstructed image
 ```
 
-- Tokenizer objective: full reconstruction only.
+- Tokenizer objective: full reconstruction plus weak slot-power balancing.
 - Encoder/decoder width 512, eight heads, QK RMS normalization.
 - One tensor-wide latent mean/std for the prior.
 - Prior: 12-block width-512 bidirectional rectified flow.
@@ -29,10 +31,10 @@ See [ROADMAP.md](ROADMAP.md) for active decisions and
 - Selection: decoded FID/KID, with reconstruction and latent-noise sensitivity
   as representation gates.
 
-The matched historical control retains the hard-clamped variational head and KL
-`1e-4`, but it is effectively deterministic: almost all posterior log-variance
-values pin to the floor. A clean deterministic/jitter/soft-floor comparison is
-an explicit future stage rather than a silent recipe change.
+The historical hard-clamped variational control is effectively deterministic:
+almost all posterior log-variance values pin to the floor. Controlled posterior
+experiments selected decoder-only jitter for expected generation quality while
+retaining the hard-VAE path as a conservative stability control.
 
 ## Main results
 
@@ -51,22 +53,23 @@ an explicit future stage rather than a silent recipe change.
 - Residual register refinement produced the best seed-1 checkpoint and repeated
   across two prior seeds, but did not repeat at tokenizer seed 2. It remains a
   checkpoint-level result, not a confirmed architecture effect.
+- Decoder-only sigma-0.05 latent jitter improves expected matched-prior
+  generation across tokenizer and prior seeds, although one tokenizer seed
+  regresses; it is the retained expected-value training design.
+- Weak slot-power balancing improves 10k FID at all three tokenizer seeds. Mean
+  FID improves from 25.70 to 23.75 and mean KID from 0.01762 to 0.01733, so it
+  is now part of the leading design. KID regresses at seed 2 and remains an
+  explicit interaction caveat.
 
-## Active experiment
+## Current follow-up
 
-The current Stage-A screen uses tokenizer seed 3 and exactly 60,056,784
-parameters per arm:
-
-1. v8: eight patch blocks plus terminal cross-attention;
-2. v12: seven patch blocks plus one residual Perceiver register block;
-3. v13: seven patch blocks plus one joint patch/register block and a matched
-   register-only adapter.
-
-Reconstruction is now only a permissive codec-health check. Every healthy arm
-receives a matched prior, and decoded FID/KID selects latent quality. This avoids
-discarding a representation that reconstructs slightly worse but has a simpler
-or more useful generative distribution. Details and stop rules are in
-`reports/2026-08-26_autoencoder_program/plan.md`.
+The slot-balance campaign is complete and passes its predeclared multi-seed
+promotion gate. The most efficient remaining robustness check is a prior-seed-2
+run on the mixed tokenizer-seed-2 slot-balanced cache, paired with the already
+completed unregularized seed-2/prior-2 control. This tests prior stochasticity
+without training another tokenizer. Reconstruction remains only a permissive
+codec-health veto; decoded FID/KID selects representation quality. Details and
+exact stop rules are in `reports/2026-08-26_autoencoder_program/plan.md`.
 
 ## Running safely
 

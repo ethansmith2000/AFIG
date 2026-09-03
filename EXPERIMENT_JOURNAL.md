@@ -61,6 +61,16 @@ verdicts live under `reports/` and are linked here.
   0.00165 KID. Both advance to 10k under the frozen continuation rule. Codec
   health passes and the slot-balance mechanism repeats strongly; these remain
   diagnostics rather than selection evidence.
+  Final 10k FID/KID for slot balance is **24.166/0.01817**,
+  **24.534/0.01765**, and **22.548/0.01617** at tokenizer seeds 1/2/3. Paired
+  FID improves by 2.538/0.819/2.497; KID improves at seeds 1 and 3 but
+  regresses at seed 2. Mean FID improves 25.701 -> **23.749**, and mean KID
+  improves 0.017623 -> **0.017328**. The frozen gate passes: three FID wins,
+  better mean FID/KID, and no >2-FID regression. Promote slot-power balancing
+  at weight `0.002` into the leading residual-pool + sigma-0.05 decoder-jitter
+  tokenizer, with the seed-2 KID interaction retained as a caveat. The most
+  efficient robustness follow-up is a prior-seed-2 run on the mixed seed-2
+  slot cache against the existing v20 prior-seed-2 control.
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-03 — register formation x decoder jitter factorial complete:**
   three new seed-matched tokenizers combine v13's bidirectional

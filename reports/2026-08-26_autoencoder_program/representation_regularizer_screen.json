@@ -1,6 +1,6 @@
 {
   "date": "2026-09-03",
-  "status": "replication_5k_complete_both_advance_to_10k",
+  "status": "complete_slot_balance_promoted",
   "selection_rule": {
     "reconstruction_role": "health_veto_only",
     "advance_5k_to_10k": "improved FID, FID within 2 points, or FID/KID disagreement",
@@ -75,7 +75,8 @@
   "decision_5k": "Both mechanisms worked without harming codec health, and both improved FID by just over two points with KID agreeing. Advance both to the predeclared 10k gate; no global design change is permitted from seed 1 alone.",
   "decision_10k": "Slot balancing improves FID by 2.538 points with KID agreeing and advances to tokenizer seeds 2 and 3. Marginal Gaussianity improves KID but its 1.907-point FID gain misses the fixed 2-point replication gate by 0.093 and stops.",
   "replication": {
-    "status": "fid_kid_5k_complete_both_advance_to_10k",
+    "status": "complete_global_promotion_gate_passed",
+    "completed_utc": "2026-09-03T16:03:30Z",
     "launched_utc": "2026-09-03T14:28:04Z",
     "tokenizer_seed_2_wandb": "wi7qqx8s",
     "tokenizer_seed_3_wandb": "v2avcbeh",
@@ -94,7 +95,13 @@
       "fid_delta_vs_control_5k": -0.9998073794773747,
       "kid_delta_vs_control_5k": 0.001511279493570328,
       "advance_to_10k": true,
-      "continuation_reason": "FID improves while KID disagrees"
+      "continuation_reason": "FID improves while KID disagrees",
+      "control_fid_10k": 25.353261144921817,
+      "control_kid_10k": 0.015676116570830345,
+      "fid_10k": 24.534106902736653,
+      "kid_10k": 0.017646966502070427,
+      "fid_delta_vs_control_10k": -0.8191542421851636,
+      "kid_delta_vs_control_10k": 0.001970849931240082
     },
     "seed_3": {
       "control": "v24-residual-e7p1-det-jitter05-n64d16-s3-prior-s1-060000",
@@ -110,7 +117,26 @@
       "fid_delta_vs_control_5k": -2.584385310148605,
       "kid_delta_vs_control_5k": -0.0016474146395921704,
       "advance_to_10k": true,
-      "continuation_reason": "FID and KID both improve"
-    }
+      "continuation_reason": "FID and KID both improve",
+      "control_fid_10k": 25.045121760295842,
+      "control_kid_10k": 0.017984895035624504,
+      "fid_10k": 22.54779528180586,
+      "kid_10k": 0.016168199479579926,
+      "fid_delta_vs_control_10k": -2.497326478489981,
+      "kid_delta_vs_control_10k": -0.0018166955560445786
+    },
+    "aggregate_10k": {
+      "control_fid_mean": 25.701032159524896,
+      "slot_balance_fid_mean": 23.749455992589105,
+      "fid_mean_delta": -1.9515761669357896,
+      "control_kid_mean": 0.01762299674252669,
+      "slot_balance_kid_mean": 0.017327560111880302,
+      "kid_mean_delta": -0.00029543663064638775,
+      "fid_wins": 3,
+      "concordant_fid_kid_wins": 2,
+      "concordant_fid_regressions_over_2": 0
+    },
+    "global_promotion_gate_passed": true,
+    "verdict": "Promote slot balancing at weight 0.002 into the leading deterministic residual-pool, sigma-0.05 decoder-jitter tokenizer. FID improves at all three tokenizer seeds, mean FID and KID improve, and there is no paired FID regression. Retain the seed-2 KID regression as an explicit caveat."
   }
 }

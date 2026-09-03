@@ -1247,3 +1247,28 @@ importantly for intervention fidelity, terminal slot penalties are
 0.000352/0.000426 and slot-RMS ranges are only 0.897-0.919 and 0.804-0.825.
 These diagnostics verify that the mechanism repeats; the paired 10k generation
 results decide global promotion.
+
+### Slot-balance replication final outcome
+
+The 10k results pass the frozen global promotion rule. Slot balancing reaches
+FID/KID **24.16647/0.0181675**, **24.53411/0.0176470**, and
+**22.54780/0.0161682** at tokenizer seeds 1/2/3. Their paired residual+jitter
+controls are 26.70471/0.0192080, 25.35326/0.0156761, and
+25.04512/0.0179849. Thus FID improves at every seed by
+2.53825/0.81915/2.49733. KID improves at seeds 1 and 3 by
+0.0010405/0.0018167 but worsens at seed 2 by 0.0019708.
+
+Across seeds, mean FID moves from 25.70103 to **23.74946**, a 1.95158-point
+gain, while mean KID moves from 0.0176230 to **0.0173276**, a smaller but
+favorable 0.0002954 change. There are three FID wins, two concordant FID/KID
+wins, and no FID regression. Promote the scale-invariant sample-varying
+slot-power penalty at weight `0.002` into the leading deterministic residual
+pool, `64x16`, sigma-0.05 decoder-jitter tokenizer. Keep the seed-2 KID
+regression explicit: the result is a robust FID/mean improvement, not a claim
+that every metric improves at every seed.
+
+All matched priors in this tokenizer-seed replication used prior seed 1. The
+highest-value robustness follow-up is one prior-seed-2 run on the mixed seed-2
+slot-balanced cache, paired against the already completed v20 seed-2/prior-2
+control. It requires no new tokenizer and directly tests whether the weakest
+pairing survives prior stochasticity.
