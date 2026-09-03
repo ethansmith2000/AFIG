@@ -289,6 +289,37 @@ deterministic sigma-0.05 decoder jitter the leading expected-value design for
 the next representation experiments. Always report the interaction rather
 than claiming universal dominance.
 
+### Register formation x decoder jitter factorial
+
+Test whether v13's stable true register-token formation and Phase C's strong
+decoder-jitter result combine constructively. Train three new `64x16`
+tokenizers at seeds 1/2/3 with seven patch blocks, one bidirectional
+patch/register block plus the parameter-matched register adapter,
+deterministic latents, and decoder-only latent-RMS-scaled Gaussian jitter
+`sigma=0.05`. Hold the 15k tokenizer and matched 60k prior-seed-1 protocols
+fixed.
+
+This completes the two-factor table: v12 is residual/hard-VAE, v13 is
+register/hard-VAE, v23/v20/v24 are residual/jitter, and v25 is
+register/jitter. Reconstruction and latent statistics remain diagnostics and
+the existing permissive codec-health veto is unchanged. Generation FID/KID
+selects.
+
+Each seed receives FID/KID-5k. Compare first against its exact-seed residual-
+jitter control: 29.321/0.01967, 27.743/0.01603, and 27.755/0.01830 for seeds
+1/2/3. Advance a v25 seed to 10k if it improves FID, lies within two FID of
+that control, or FID/KID disagree. If seed 1 advances, also evaluate its v23
+residual-jitter control at 10k. Register+jitter becomes the expected-quality
+lead only if all three seeds advance, it wins at least two, improves mean FID
+by at least two with mean KID agreeing, and has no greater-than-two-FID
+regression. It becomes the stability lead if worst-case FID improves by at
+least two with mean FID cost below one and mean KID non-worse. Otherwise retain
+residual+jitter as the expected-value lead and v13 hard-VAE as the stability
+control.
+
+Launchers: `scripts/run_register_jitter_factorial.sh {s1|s2|s3}` and
+`scripts/run_register_jitter_factorial_10k.sh {s1|s2|s3|residual_s1}`.
+
 ## Phase D — explicit progressive semantics (conditional)
 
 Only pursue this phase if partial decoding is itself valuable or Phase B gives

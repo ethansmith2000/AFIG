@@ -1065,3 +1065,46 @@ design: it wins two of three tokenizer seeds, improves three-seed mean FID/KID
 at 5k, and replicates under the second prior seed. Carry both into the next
 phase and report tokenizer-seed interaction explicitly. This is stronger than
 a checkpoint-local result but weaker than universal architecture dominance.
+
+### Register formation x decoder jitter factorial (predeclared 2026-09-03)
+
+The next experiment crosses the two useful empirical properties rather than
+adding a new semantic objective. V13's true register-token encoder has the
+lowest architecture-seed FID variance but weak mean performance; deterministic
+sigma-0.05 decoder jitter has the strongest mean performance but one local
+seed regression. Train their combination at tokenizer seeds 1, 2, and 3.
+
+The new v25 arms use seven ordinary patch blocks followed by the existing
+bidirectional patch/register block and parameter-matched register adapter,
+`64x16` clean deterministic latents, and decoder-input Gaussian jitter with
+sigma 0.05 times the in-graph latent RMS. Everything else remains fixed:
+CIFAR-10, `4x4` patches, full-only objective, batch 512, LR `1e-4`, 1k warmup,
+15k tokenizer steps, and a prior-seed-1 60k joint flow. Outputs are
+`tokenizer_runs/v25-register-e7j1-det-jitter05-n64d16-s{1,2,3}` and matching
+`prior_runs/*-prior-s1`.
+
+The factorial controls are already complete:
+
+| architecture | posterior/decoder training | seeds |
+|---|---|---|
+| v12 residual | hard-floor VAE | 1, 2, 3 |
+| v13 register tokens | hard-floor VAE | 1, 2, 3 |
+| v23/v20/v24 residual | deterministic + jitter 0.05 | 1, 2, 3 |
+| v25 register tokens | deterministic + jitter 0.05 | 1, 2, 3 (new) |
+
+Generation is primary. Reconstruction, sensitivity, effective rank, and slot
+statistics explain outcomes but only invoke the established broken-codec veto.
+At 5k, compare v25 to the exact-seed residual-jitter controls:
+29.321/0.01967, 27.743/0.01603, and 27.755/0.01830 for seeds 1/2/3. A seed
+advances to 10k if v25 improves FID, lies within two FID, or FID and KID
+disagree. Qualifying seed 1 also triggers a matched 10k evaluation of v23,
+which stopped at 5k under the earlier question's gate.
+
+Promote register+jitter as the expected-quality lead only if all seeds advance,
+it wins at least two seeds, mean FID improves by at least two with mean KID
+agreeing, and no seed regresses by more than two FID. Promote it as the
+stability lead if worst-case FID improves by at least two, mean FID cost stays
+below one, and mean KID is non-worse. Otherwise retain residual+jitter for
+expected value and hard-VAE v13 as the stability control. Launchers:
+`scripts/run_register_jitter_factorial.sh {s1|s2|s3}` and
+`scripts/run_register_jitter_factorial_10k.sh {s1|s2|s3|residual_s1}`.
