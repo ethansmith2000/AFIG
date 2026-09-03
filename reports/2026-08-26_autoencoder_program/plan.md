@@ -1272,3 +1272,19 @@ highest-value robustness follow-up is one prior-seed-2 run on the mixed seed-2
 slot-balanced cache, paired against the already completed v20 seed-2/prior-2
 control. It requires no new tokenizer and directly tests whether the weakest
 pairing survives prior stochasticity.
+
+### Prior-seed-2 confirmation (predeclared 2026-09-03)
+
+Train one new prior, not a tokenizer: use the verified v27 tokenizer-seed-2
+slot-balanced cache with prior seed 2. The paired v20 tokenizer-seed-2/prior-2
+control is already complete at FID/KID 25.737998/0.0138424 at 5k and
+22.860635/0.0131494 at 10k. Architecture, optimizer, 60k budget, sampling seed,
+and evaluation recipe remain exact.
+
+Apply the standard 5k continuation rule: advance when candidate FID improves,
+is within two points, or FID/KID disagree. At 10k, improving FID and KID is a
+full confirmation; improving FID with worse KID is FID-only confirmation;
+losing FID by less than two or with metric disagreement establishes prior-seed
+sensitivity; losing at least two FID with KID also worse revokes slot balance as
+the default. Launchers are `scripts/run_slot_balance_prior_seed2.sh` and
+`scripts/run_slot_balance_prior_seed2_10k.sh`.

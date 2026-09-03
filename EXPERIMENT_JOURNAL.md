@@ -71,6 +71,11 @@ verdicts live under `reports/` and are linked here.
   tokenizer, with the seed-2 KID interaction retained as a caveat. The most
   efficient robustness follow-up is a prior-seed-2 run on the mixed seed-2
   slot cache against the existing v20 prior-seed-2 control.
+  That follow-up is now predeclared: train only the v27 seed-2 prior with seed
+  2 and compare to the existing v20 prior-2 control at 25.738/0.01384 (5k) and
+  22.861/0.01315 (10k). The standard continuation rule applies. The 10k
+  outcome is classified as full confirmation, FID-only confirmation, prior
+  sensitivity, or revocation using the exact thresholds in the plan.
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-03 — register formation x decoder jitter factorial complete:**
   three new seed-matched tokenizers combine v13's bidirectional

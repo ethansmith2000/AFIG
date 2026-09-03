@@ -456,6 +456,40 @@ regression. Promote slot balancing at weight `0.002` into the leading
 deterministic residual-pool + sigma-0.05 decoder-jitter design. Preserve the
 seed-2 KID interaction as a caveat rather than claiming universal improvement.
 
+### Prior-seed-2 robustness check
+
+Use the already verified tokenizer-seed-2 slot cache and train only a fresh
+prior with seed 2. Its exact paired v20 seed-2/prior-2 control already exists at
+FID/KID 25.738/0.01384 (5k) and 22.861/0.01315 (10k). Advance the candidate
+from 5k to 10k if FID improves, is within two points, or FID/KID disagree.
+At 10k, improving both metrics is full confirmation; improving FID with worse
+KID is FID-only confirmation; a sub-two-point or metric-discordant FID loss
+marks prior sensitivity; a >=2-FID loss with worse KID revokes default
+promotion. This isolates prior stochasticity without another tokenizer.
+
+### Roadmap after the robustness check
+
+1. **Restrained decoder objectives:** with encoder formation stabilized, isolate
+   a small frequency-aware reconstruction term from a small perceptual term.
+   Hold the selected encoder, latent shape, jitter, slot penalty, decoder, and
+   prior recipe fixed. Reconstruction remains a health veto; matched-prior
+   FID/KID selects.
+2. **Grouped explicit information allocation:** only if variable-rate or
+   interpretable partial decoding is valuable, use 4-8 additive residual/DoG
+   groups with cumulative low-pass targets. Pair any block-causal register mask
+   with an innovation constraint; causality alone does not create hierarchy.
+3. **Latent factorization under the new objective:** revisit nearby fixed-budget
+   shapes such as `32x32`, `64x16`, and `128x8` only after the objective test.
+   Slot balancing may change the earlier token-count/channel-width tradeoff, but
+   the established `64x16` point remains the control.
+4. **Decoder capacity/locality:** test only after an objective or hierarchy arm
+   gives a representation-side gain, so encoder and decoder effects remain
+   attributable.
+
+Deprioritize marginal kurtosis, static token-magnitude schedules, the tested
+tokenwise time warps, direct `2x2` patching, and register+jitter without a new
+mechanistic hypothesis; each has already missed a declared gate.
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality
