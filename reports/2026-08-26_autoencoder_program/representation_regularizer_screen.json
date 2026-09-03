@@ -1,11 +1,13 @@
 {
   "date": "2026-09-03",
-  "status": "fid_kid_5k_complete_both_advance_to_10k",
+  "status": "fid_kid_10k_complete_slot_advances_to_seed_replication",
   "selection_rule": {
     "reconstruction_role": "health_veto_only",
     "advance_5k_to_10k": "improved FID, FID within 2 points, or FID/KID disagreement",
     "replication_gate": "10k FID improvement >= 2 points versus v23 with lower KID",
-    "replication_seeds": [2, 3]
+    "replication_seeds": [2, 3],
+    "replication_5k_rule": "paired improvement, paired FID within 2 points, or paired FID/KID disagreement advances to 10k",
+    "global_promotion_rule": "FID win in at least 2 of 3 tokenizer seeds, improved three-seed mean FID and KID, and no concordant FID regression greater than 2 points"
   },
   "control": {
     "name": "v23-residual-e7p1-det-jitter05-n64d16-s1-prior-s1-060000",
@@ -37,7 +39,12 @@
       "kid_5k": 0.017544608563184738,
       "fid_delta_vs_control_5k": -2.122460027708826,
       "kid_delta_vs_control_5k": -0.002128494903445244,
-      "advance_to_10k": true
+      "advance_to_10k": true,
+      "fid_10k": 24.79815293326493,
+      "kid_10k": 0.01755520887672901,
+      "fid_delta_vs_control_10k": -1.9065606400920956,
+      "kid_delta_vs_control_10k": -0.001652769744396211,
+      "advance_to_seed_replication": false
     },
     "slot": {
       "name": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s1-prior-s1-060000",
@@ -57,8 +64,14 @@
       "kid_5k": 0.019153188914060593,
       "fid_delta_vs_control_5k": -2.08978223684926,
       "kid_delta_vs_control_5k": -0.0005199145525693893,
-      "advance_to_10k": true
+      "advance_to_10k": true,
+      "fid_10k": 24.166465793224802,
+      "kid_10k": 0.018167514353990555,
+      "fid_delta_vs_control_10k": -2.538247780132224,
+      "kid_delta_vs_control_10k": -0.001040464267134664,
+      "advance_to_seed_replication": true
     }
   },
-  "decision_5k": "Both mechanisms worked without harming codec health, and both improved FID by just over two points with KID agreeing. Advance both to the predeclared 10k gate; no global design change is permitted from seed 1 alone."
+  "decision_5k": "Both mechanisms worked without harming codec health, and both improved FID by just over two points with KID agreeing. Advance both to the predeclared 10k gate; no global design change is permitted from seed 1 alone.",
+  "decision_10k": "Slot balancing improves FID by 2.538 points with KID agreeing and advances to tokenizer seeds 2 and 3. Marginal Gaussianity improves KID but its 1.907-point FID gain misses the fixed 2-point replication gate by 0.093 and stops."
 }

@@ -43,6 +43,13 @@ verdicts live under `reports/` and are linked here.
   verified. Both advance to the predeclared 10k test. Seed-1 evidence remains
   insufficient for global promotion.
   [Exact screen](reports/2026-08-26_autoencoder_program/representation_regularizer_screen.json).
+  The 10k check separates the arms: slot balancing reaches
+  **24.166/0.01817**, a 2.538-FID and 0.00104-KID improvement over v23, and
+  earns tokenizer-seed-2/3 replication. Marginal reaches
+  **24.798/0.01756**, but its 1.907-FID gain misses the fixed threshold by
+  0.093 and stops. Replication is paired to residual+jitter v20/v24 with prior
+  seed 1; promotion requires two of three FID wins, improved mean FID and KID,
+  and no >2-FID concordant regression.
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-03 — register formation x decoder jitter factorial complete:**
   three new seed-matched tokenizers combine v13's bidirectional

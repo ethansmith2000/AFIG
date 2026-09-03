@@ -1212,3 +1212,18 @@ dispersion falls from 0.03624 to 0.000399. Slot balancing also compresses the
 full-test slot-RMS range from v23's 0.322-0.989 to 0.937-0.965. Reconstruction
 remains healthy (38.25/38.24 dB and clean rFID 5.10/5.15) but does not enter the
 ranking decision. Exact evidence is in `representation_regularizer_screen.json`.
+
+At 10k, the arms separate. Slot balancing reaches
+**24.16647/0.0181675**, improving on v23 by **2.53825 FID and 0.0010405 KID**;
+it clears the fixed gate and advances to tokenizer seeds 2 and 3. Marginal
+Gaussianity reaches **24.79815/0.0175552**, an improvement of 1.90656 FID and
+0.0016528 KID. Despite the favorable KID, it misses the exact 2-FID gate by
+0.09344 and stops without replication.
+
+For the slot replication, hold prior seed 1 and every non-tokenizer detail
+fixed. Pair seed 2 with residual+jitter v20 (5k 27.74280/0.0160268; 10k
+25.35326/0.0156761) and seed 3 with v24 (5k 27.75492/0.0183005; 10k
+25.04512/0.0179849). The existing continuation rule decides 10k evaluation.
+Promote slot balancing globally only if it wins FID in at least two of three
+tokenizer seeds, improves three-seed mean FID and KID, and has no paired
+concordant regression greater than two FID.

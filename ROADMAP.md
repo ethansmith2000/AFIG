@@ -417,6 +417,15 @@ diagnostics establish intervention fidelity, not selection. Advance both to
 10k; only the predeclared >=2-FID gain with lower KID can earn seed-2/3
 replication.
 
+10k result: slot balancing is the sole replication winner at
+**24.166/0.01817**, improving on v23 by **2.538 FID and 0.00104 KID**.
+Marginal Gaussianity remains promising at **24.798/0.01756**, but its
+1.907-FID gain misses the fixed 2-point gate by 0.093 and stops. Replicate slot
+balancing at tokenizer seeds 2 and 3 with prior seed 1. Compare against the
+paired residual+jitter controls v20 and v24; apply the same 5k continuation
+rule. Global promotion requires at least two of three tokenizer-seed FID wins,
+better mean FID and KID, and no concordant regression larger than two FID.
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality
