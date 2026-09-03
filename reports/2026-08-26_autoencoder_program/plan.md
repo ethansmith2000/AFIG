@@ -1400,3 +1400,4 @@ versus 70,293,520. Twenty focused tokenizer tests pass.
 Both supervisor-owned chains acquired shared lifetime GPU locks at 2026-09-03
 22:55 UTC and entered tokenizer startup while respecting four foreign claims.
 Tokenizer W&B runs are `bm5ih5cx` for `32x32` and `y67pbcqn` for `128x8`.
+Both entered finite training after compilation, near 4.64k and 3.87k images/s.

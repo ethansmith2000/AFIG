@@ -537,6 +537,8 @@ and all train settings remain fixed.
 Launch record (2026-09-03 22:55 UTC): both supervisor-owned chains acquired
 shared lifetime GPU locks and began tokenizer training without contention.
 Tokenizer W&B runs are `bm5ih5cx` (`32x32`) and `y67pbcqn` (`128x8`).
+After compilation they entered finite training near 4.64k and 3.87k images/s,
+respectively.
 
 ### Decoder-objective screen (predeclared)
 

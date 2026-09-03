@@ -20,7 +20,8 @@
       "coordinates": 1024,
       "tokenizer_parameters": 60032208,
       "prior_parameters": 70293536,
-      "wandb_tokenizer_run": "bm5ih5cx"
+      "wandb_tokenizer_run": "bm5ih5cx",
+      "observed_tokenizer_images_per_second": 4640
     },
     "n128d8": {
       "version": "v31",
@@ -29,7 +30,8 @@
       "coordinates": 1024,
       "tokenizer_parameters": 60105912,
       "prior_parameters": 70318088,
-      "wandb_tokenizer_run": "y67pbcqn"
+      "wandb_tokenizer_run": "y67pbcqn",
+      "observed_tokenizer_images_per_second": 3870
     }
   },
   "common_configuration": {
