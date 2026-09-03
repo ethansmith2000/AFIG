@@ -471,6 +471,11 @@ Launch record (2026-09-03 16:18 UTC): the supervisor-owned chain acquired a
 shared lifetime GPU lock and entered finite prior training at roughly 21.5
 steps/s. W&B run: `ptfm3rzt`.
 
+5k result: slot balance reaches **25.708/0.01648** versus the prior-seed-2
+control's 25.738/0.01384. FID is effectively tied (-0.030) while KID worsens
+by 0.00263. This is not confirmation, but it advances to 10k under the frozen
+within-two/metric-disagreement rule.
+
 ### Roadmap after the robustness check
 
 1. **Restrained decoder objectives:** with encoder formation stabilized, isolate

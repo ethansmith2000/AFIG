@@ -1292,3 +1292,8 @@ the default. Launchers are `scripts/run_slot_balance_prior_seed2.sh` and
 The supervisor-owned chain acquired a shared lifetime GPU lock at 2026-09-03
 16:18 UTC and entered finite training near 21.5 steps/s. Prior W&B run:
 [`ptfm3rzt`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/ptfm3rzt).
+
+The 5k evaluation reaches FID/KID **25.70832/0.0164760** against the paired
+control's 25.73800/0.0138424. The -0.02968 FID difference is an effective tie,
+while KID worsens by 0.0026337. This does not confirm robustness, but the frozen
+continuation rule advances the metric-discordant result to 10k.

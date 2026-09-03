@@ -79,6 +79,9 @@ verdicts live under `reports/` and are linked here.
   The supervisor-owned chain acquired a shared lifetime GPU lock at 16:18 UTC
   and began finite training near 21.5 steps/s. Prior W&B run:
   [`ptfm3rzt`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/ptfm3rzt).
+  At 5k it reaches **25.708/0.01648** versus 25.738/0.01384: FID is tied
+  (-0.030) and KID is worse (+0.00263). The frozen metric-disagreement rule
+  advances it to 10k, but this checkpoint is not a robustness confirmation.
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-03 — register formation x decoder jitter factorial complete:**
   three new seed-matched tokenizers combine v13's bidirectional

@@ -140,7 +140,7 @@
     "verdict": "Promote slot balancing at weight 0.002 into the leading deterministic residual-pool, sigma-0.05 decoder-jitter tokenizer. FID improves at all three tokenizer seeds, mean FID and KID improve, and there is no paired FID regression. Retain the seed-2 KID regression as an explicit caveat."
   },
   "prior_seed_2_confirmation": {
-    "status": "running",
+    "status": "fid_kid_5k_complete_advance_to_10k",
     "launched_utc": "2026-09-03T16:18:10Z",
     "wandb_run": "ptfm3rzt",
     "tokenizer_seed": 2,
@@ -156,6 +156,12 @@
       "fid_only_confirmation": "10k FID improves and KID worsens",
       "prior_sensitive": "10k FID is worse by less than 2 points or FID/KID disagree without an FID win",
       "revoke_default_promotion": "10k FID worsens by at least 2 points and KID also worsens"
-    }
+    },
+    "fid_5k": 25.708322945224097,
+    "kid_5k": 0.01647602953016758,
+    "fid_delta_vs_control_5k": -0.029675027244707052,
+    "kid_delta_vs_control_5k": 0.002633675932884217,
+    "advance_to_10k": true,
+    "continuation_reason": "FID is effectively tied and KID disagrees"
   }
 }
