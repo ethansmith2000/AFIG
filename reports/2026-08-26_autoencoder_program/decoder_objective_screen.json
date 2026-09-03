@@ -1,0 +1,62 @@
+{
+  "date": "2026-09-03",
+  "status": "predeclared_ready_to_launch",
+  "hypothesis": "A weak decoder-side frequency or perceptual reconstruction signal can improve latent modelability after residual formation, decoder jitter, and slot utilization have stabilized.",
+  "control": {
+    "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
+    "prior": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2-prior-s1",
+    "fid_5k": 26.742993129687875,
+    "kid_5k": 0.017538033425807953,
+    "fid_10k": 24.534106902736653,
+    "kid_10k": 0.017646966502070427
+  },
+  "common_configuration": {
+    "tokenizer_seed": 2,
+    "prior_seed": 1,
+    "latent_shape": [64, 16],
+    "pool": "residual_e7_p1",
+    "variational": false,
+    "decoder_jitter_std": 0.05,
+    "slot_balance_weight": 0.002,
+    "tokenizer_steps": 15000,
+    "prior_steps": 60000,
+    "parameters": 60048576
+  },
+  "calibration": {
+    "checkpoint": "tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/checkpoint_final.pt",
+    "examples": 128,
+    "target_weighted_output_gradient_ratio": 0.1,
+    "artifact": "decoder_objective_calibration.json"
+  },
+  "arms": {
+    "radial": {
+      "tokenizer": "v28-residual-e7p1-det-jitter05-slotbal2e3-radial6e5-n64d16-s2",
+      "objective": "equal-weight mean absolute radial log-power error per image and RGB channel",
+      "signal_relative_power_floor": 0.001,
+      "weight": 0.00006,
+      "calibrated_weighted_gradient_ratio": 0.09943072631835938,
+      "estimated_weighted_loss_ratio": 0.013424858076422236
+    },
+    "perceptual": {
+      "tokenizer": "v29-residual-e7p1-det-jitter05-slotbal2e3-lpips2e2-n64d16-s2",
+      "objective": "frozen LPIPS 0.1 AlexNet features on native [-1, 1] CIFAR images",
+      "weight": 0.02,
+      "calibrated_weighted_gradient_ratio": 0.09341,
+      "estimated_weighted_loss_ratio": 0.007545536476644297,
+      "dependency": "lpips==0.1.4"
+    }
+  },
+  "selection": {
+    "reconstruction_role": "permissive codec-health veto only",
+    "primary_metrics": ["decoded_fid", "decoded_kid"],
+    "advance_5k_to_10k": "candidate FID improves, is within 2 points of control, or FID/KID disagree",
+    "replication_gate": "10k FID improves by at least 2 points and KID also improves",
+    "replication_seeds": [1, 3],
+    "combination_policy": "do not combine radial and perceptual objectives in this screen"
+  },
+  "verification": {
+    "focused_tests": "20 passed",
+    "cpu_end_to_end_smokes": ["radial", "lpips"],
+    "full_architecture_batch_512_gpu_smokes": ["radial", "lpips"]
+  }
+}

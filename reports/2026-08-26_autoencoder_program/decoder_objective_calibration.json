@@ -1,0 +1,51 @@
+{
+  "batch_size": 32,
+  "checkpoint": "/workspace/AFIG/tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/checkpoint_final.pt",
+  "estimated_weighted_loss_ratio": {
+    "lpips_alex_to_pixel_mse": 0.008077869144076688,
+    "radial_log_power_to_pixel_mse": 0.013424858076422236
+  },
+  "examples": 128,
+  "lpips": {
+    "network": "alex",
+    "package_version": "0.1.4",
+    "version": "0.1"
+  },
+  "raw": {
+    "lpips_alex": {
+      "max": 0.0003476568090263754,
+      "mean": 0.0002816598025674466,
+      "median": 0.0002677788434084505,
+      "min": 0.00024342471442651004
+    },
+    "lpips_gradient_ratio": {
+      "max": 4.948853492736816,
+      "mean": 4.652594685554504,
+      "median": 4.670499324798584,
+      "min": 4.320526599884033
+    },
+    "pixel_mse": {
+      "max": 0.0007600928074680269,
+      "mean": 0.0007081022631609812,
+      "median": 0.0007097675406839699,
+      "min": 0.0006527811638079584
+    },
+    "radial_gradient_ratio": {
+      "max": 1844.3948974609375,
+      "mean": 1692.9822082519531,
+      "median": 1657.1787719726562,
+      "min": 1613.1763916015625
+    },
+    "radial_log_power": {
+      "max": 0.1694716364145279,
+      "mean": 0.15947015956044197,
+      "median": 0.157904751598835,
+      "min": 0.15259949862957
+    }
+  },
+  "recommended_weights": {
+    "lpips_alex": 0.02141098693003505,
+    "radial_log_power": 6.0343519776664155e-05
+  },
+  "target_weighted_gradient_ratio": 0.1
+}

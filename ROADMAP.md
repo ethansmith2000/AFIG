@@ -508,6 +508,30 @@ Deprioritize marginal kurtosis, static token-magnitude schedules, the tested
 tokenwise time warps, direct `2x2` patching, and register+jitter without a new
 mechanistic hypothesis; each has already missed a declared gate.
 
+### Decoder-objective screen (predeclared)
+
+Use tokenizer seed 2 and the promoted residual+jitter+slot configuration. Hold
+all architecture, optimization, latent, and prior details fixed against v27;
+add one decoder-side objective per arm:
+
+- v28 radial: per-image/channel radial log-power error with a target-relative
+  `1e-3` power floor, weight `6e-5`;
+- v29 perceptual: frozen LPIPS-0.1 AlexNet features, weight `0.02`.
+
+Raw complex FFT MSE is excluded because an orthonormal FFT makes it equivalent
+to pixel MSE. The signal-relative radial floor prevents near-zero/noise-floor
+bands from dominating gradients. On 128 frozen v27 reconstructions, the two
+rounded coefficients contribute approximately 9.94% and 9.34% of the pixel-MSE
+output-gradient norm, while their scalar losses are only about 1.34% and 0.75%
+of MSE. Do not combine them in this screen.
+
+Both healthy tokenizers receive matched prior-seed-1 60k runs regardless of
+reconstruction ordering. Compare to v27 seed 2 at FID/KID
+26.743/0.01754 (5k) and 24.534/0.01765 (10k). Advance when FID improves, is
+within two points, or FID/KID disagree. Only a 10k gain of at least two FID
+with lower KID earns tokenizer-seed-1/3 replication. Twenty focused tests, two
+CPU end-to-end smokes, and two full-architecture batch-512 GPU smokes pass.
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality

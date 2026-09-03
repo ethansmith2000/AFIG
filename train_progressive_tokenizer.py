@@ -25,9 +25,11 @@ from progressive_tokenizer import ProgressiveTokenizer, TokenizerConfig
 from progressive_tokenizer.training import (
     LatentMomentAccumulator,
     count_parameters,
+    lpips_reconstruction_loss,
     marginal_kurtosis_penalty,
     optimizer_parameter_groups,
     pixel_psnr,
+    radial_log_power_reconstruction_loss,
     slot_variance_balance_penalty,
 )
 from progressive_tokenizer.tracking import WandbTracker
@@ -87,6 +89,21 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "Weight on scale-invariant equalization of sample-varying power "
             "across latent slots."
         ),
+    )
+    parser.add_argument(
+        "--radial_log_power_weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Weight on per-image/channel radial log-power reconstruction. "
+            "Unlike raw FFT MSE, this does not duplicate pixel MSE."
+        ),
+    )
+    parser.add_argument(
+        "--perceptual_loss_weight",
+        type=float,
+        default=0.0,
+        help="Weight on frozen LPIPS-Alex reconstruction in the [-1, 1] image gauge.",
     )
     parser.add_argument(
         "--latent_shaping",
@@ -200,6 +217,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         or args.shaping_loss_weight < 0
         or args.energy_reg_weight < 0
         or args.slot_balance_weight < 0
+        or args.radial_log_power_weight < 0
+        or args.perceptual_loss_weight < 0
     ):
         parser.error("loss weights must be non-negative")
     if args.kl_weight > 0 and not args.variational:
@@ -538,6 +557,16 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         args, train_dataset, test_dataset
     )
     model = ProgressiveTokenizer(model_config).to(device)
+    perceptual_model: Optional[torch.nn.Module] = None
+    if args.perceptual_loss_weight > 0:
+        try:
+            import lpips
+        except ImportError as error:
+            raise RuntimeError(
+                "--perceptual_loss_weight requires lpips==0.1.4"
+            ) from error
+        perceptual_model = lpips.LPIPS(net="alex", verbose=True)
+        perceptual_model.requires_grad_(False).eval().to(device)
     groups = optimizer_parameter_groups(model, args.weight_decay)
     optimizer = torch.optim.AdamW(
         groups,
@@ -600,6 +629,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     rolling_kurtosis = 0.0
     rolling_energy_cv = 0.0
     rolling_slot_balance = 0.0
+    rolling_radial_log_power = 0.0
+    rolling_perceptual = 0.0
     rolling_count = 0
     rolling_start = time.monotonic()
 
@@ -671,6 +702,20 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 + args.prefix_loss_weight * prefix_loss
                 + args.shaping_loss_weight * shaping_loss
             )
+        radial_log_power_loss = loss.new_zeros(())
+        if args.radial_log_power_weight > 0:
+            radial_log_power_loss = radial_log_power_reconstruction_loss(
+                images, full_reconstruction
+            )
+            loss = loss + args.radial_log_power_weight * radial_log_power_loss
+        perceptual_loss = loss.new_zeros(())
+        if args.perceptual_loss_weight > 0:
+            assert perceptual_model is not None
+            with torch.autocast(device_type=device.type, enabled=False):
+                perceptual_loss = lpips_reconstruction_loss(
+                    perceptual_model, images, full_reconstruction
+                )
+            loss = loss + args.perceptual_loss_weight * perceptual_loss
         kl_per_dim = loss.new_zeros(())
         posterior_log_variance_mean = loss.new_zeros(())
         posterior_log_variance_std = loss.new_zeros(())
@@ -722,6 +767,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         rolling_kurtosis += float(kurtosis_penalty.detach())
         rolling_energy_cv += float(token_energy_cv.detach())
         rolling_slot_balance += float(slot_balance_penalty.detach())
+        rolling_radial_log_power += float(radial_log_power_loss.detach())
+        rolling_perceptual += float(perceptual_loss.detach())
         rolling_count += 1
         if completed_step % args.log_every == 0 or completed_step == 1:
             if device.type == "cuda":
@@ -737,6 +784,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 "kurtosis_penalty": rolling_kurtosis / rolling_count,
                 "token_energy_cv": rolling_energy_cv / rolling_count,
                 "slot_balance_penalty": rolling_slot_balance / rolling_count,
+                "radial_log_power_loss": (
+                    rolling_radial_log_power / rolling_count
+                ),
+                "perceptual_loss": rolling_perceptual / rolling_count,
                 "prefix_mean": prefix_mean,
                 "psnr_db": pixel_psnr(rolling_full / rolling_count),
                 "learning_rate": learning_rate,
@@ -767,6 +818,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             rolling_log_variance_mean = rolling_log_variance_std = 0.0
             rolling_sigma_mean = rolling_floor_fraction = 0.0
             rolling_kurtosis = rolling_energy_cv = rolling_slot_balance = 0.0
+            rolling_radial_log_power = rolling_perceptual = 0.0
             rolling_count = 0
             rolling_start = time.monotonic()
 

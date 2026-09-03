@@ -7,6 +7,7 @@ from typing import Iterable
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 def optimizer_parameter_groups(
@@ -59,6 +60,66 @@ def slot_variance_balance_penalty(latents: torch.Tensor) -> torch.Tensor:
     slot_power = centered.square().mean(dim=(0, 2))
     relative_power = slot_power / slot_power.mean().clamp_min(1e-8)
     return (relative_power - 1.0).square().mean()
+
+
+def radial_log_power_reconstruction_loss(
+    target: torch.Tensor,
+    reconstruction: torch.Tensor,
+    relative_floor: float = 1e-3,
+) -> torch.Tensor:
+    """Match radial spectra with a signal-relative floor for low-SNR bands."""
+
+    if target.ndim != 4 or reconstruction.shape != target.shape:
+        raise ValueError("target and reconstruction must share [batch, channel, H, W]")
+    if relative_floor <= 0:
+        raise ValueError("relative_floor must be positive")
+    target_fft = torch.fft.fft2(target.float(), norm="ortho")
+    reconstruction_fft = torch.fft.fft2(reconstruction.float(), norm="ortho")
+    reference_power = (
+        target_fft.abs().square().mean(dim=(-2, -1)) * relative_floor + 1e-8
+    )
+    height, width = target.shape[-2:]
+    vertical = torch.fft.fftfreq(height, device=target.device) * height
+    horizontal = torch.fft.fftfreq(width, device=target.device) * width
+    grid_vertical, grid_horizontal = torch.meshgrid(
+        vertical, horizontal, indexing="ij"
+    )
+    radius = torch.floor(
+        torch.sqrt(grid_vertical.square() + grid_horizontal.square())
+    ).long()
+    terms = []
+    for band in torch.unique(radius):
+        select = radius == band
+        target_power = target_fft[..., select].abs().square().mean(dim=-1)
+        reconstruction_power = (
+            reconstruction_fft[..., select].abs().square().mean(dim=-1)
+        )
+        terms.append(
+            (
+                torch.log(reconstruction_power + reference_power)
+                - torch.log(target_power + reference_power)
+            ).abs()
+        )
+    return torch.stack(terms, dim=-1).mean()
+
+
+def lpips_reconstruction_loss(
+    perceptual_model: nn.Module,
+    target: torch.Tensor,
+    reconstruction: torch.Tensor,
+) -> torch.Tensor:
+    """Evaluate frozen LPIPS on [-1, 1] images, upsampling tiny smokes safely."""
+
+    if target.ndim != 4 or reconstruction.shape != target.shape:
+        raise ValueError("target and reconstruction must share [batch, channel, H, W]")
+    target = target.float()
+    reconstruction = reconstruction.float()
+    if min(target.shape[-2:]) < 32:
+        target = F.interpolate(target, size=(32, 32), mode="bilinear", align_corners=False)
+        reconstruction = F.interpolate(
+            reconstruction, size=(32, 32), mode="bilinear", align_corners=False
+        )
+    return perceptual_model(reconstruction, target, normalize=False).mean()
 
 
 class LatentMomentAccumulator:

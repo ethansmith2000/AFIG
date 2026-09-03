@@ -14,8 +14,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from progressive_tokenizer import ProgressiveTokenizer, TokenizerConfig  # noqa: E402
 from progressive_tokenizer.model import Rotary2D  # noqa: E402
 from progressive_tokenizer.training import (  # noqa: E402
+    lpips_reconstruction_loss,
     marginal_kurtosis_penalty,
     optimizer_parameter_groups,
+    radial_log_power_reconstruction_loss,
     slot_variance_balance_penalty,
 )
 
@@ -36,6 +38,38 @@ def tiny_config() -> TokenizerConfig:
 
 
 class TestProgressiveTokenizer(unittest.TestCase):
+    def test_radial_log_power_loss_is_distinct_finite_and_differentiable(self):
+        torch.manual_seed(1)
+        target = torch.randn(2, 3, 8, 8)
+        reconstruction = (target + 0.1 * torch.randn_like(target)).requires_grad_()
+        identical = radial_log_power_reconstruction_loss(target, target)
+        loss = radial_log_power_reconstruction_loss(target, reconstruction)
+        self.assertLess(float(identical), 1e-7)
+        self.assertGreater(float(loss.detach()), 0.0)
+        loss.backward()
+        self.assertTrue(torch.isfinite(reconstruction.grad).all())
+        self.assertGreater(float(reconstruction.grad.abs().sum()), 0.0)
+        with self.assertRaises(ValueError):
+            radial_log_power_reconstruction_loss(
+                target, reconstruction.detach(), relative_floor=0.0
+            )
+
+    def test_lpips_adapter_preserves_reconstruction_gradients_for_tiny_images(self):
+        class SquaredFeatureDistance(torch.nn.Module):
+            def forward(self, first, second, normalize=False):
+                self.normalize = normalize
+                self.shape = first.shape
+                return (first - second).square().mean(dim=(1, 2, 3), keepdim=True)
+
+        model = SquaredFeatureDistance()
+        target = torch.randn(2, 3, 8, 8)
+        reconstruction = torch.randn_like(target, requires_grad=True)
+        loss = lpips_reconstruction_loss(model, target, reconstruction)
+        loss.backward()
+        self.assertEqual(model.shape, (2, 3, 32, 32))
+        self.assertFalse(model.normalize)
+        self.assertTrue(torch.isfinite(reconstruction.grad).all())
+
     def test_slot_variance_balance_is_scale_invariant_and_has_gradients(self):
         torch.manual_seed(2)
         base = torch.randn(32, 1, 3)

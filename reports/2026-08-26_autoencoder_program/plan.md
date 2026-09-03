@@ -1310,3 +1310,30 @@ but narrow the claim. Slot balancing is a leading modifier with two strong
 tokenizer-seed wins, not a universally robust improvement. No additional seed
 sweeps are warranted before testing a genuinely different objective; carry the
 unregularized residual+jitter checkpoint as the paired control in future work.
+
+### Decoder-objective screen (predeclared 2026-09-03)
+
+With encoder formation now stable enough to attribute a decoder objective,
+compare two isolated additions on the exact v27 tokenizer-seed-2 configuration.
+V28 adds per-image/channel radial log-power matching with a target-relative
+`1e-3` floor; v29 adds frozen LPIPS-0.1 AlexNet feature distance on native
+`[-1,1]` images. Raw complex FFT MSE is deliberately excluded because Parseval
+makes it a rescaled duplicate of pixel MSE. Do not combine the objectives.
+
+Calibrate on 128 frozen v27 test reconstructions by gradient with respect to the
+decoder output, targeting 10% of the pixel-MSE gradient norm. Raw median
+auxiliary/base ratios are 1657.18 for radial and 4.6705 for LPIPS. Rounded
+weights `6e-5` and `0.02` yield approximately 9.94%/9.34% weighted gradient
+ratios and only 1.34%/0.75% scalar-loss ratios. Exact calibration is in
+`decoder_objective_calibration.json`.
+
+Hold residual `e7+p1`, deterministic `64x16` latents, sigma-0.05 decoder
+jitter, slot balance `0.002`, tokenizer seed 2, 15k budget, prior seed 1, and
+60k prior recipe fixed. The exact v27 paired control is 26.74299/0.0175380 at
+5k and 24.53411/0.0176470 at 10k. Reconstruction is only a health veto. Advance
+an arm to 10k if FID improves, is within two FID, or FID/KID disagree. Only a
+10k gain of at least two FID with KID agreeing earns tokenizer seeds 1 and 3.
+Twenty focused tests, both CPU end-to-end smokes, and both full 60M-parameter
+batch-512 GPU smokes pass. Launchers:
+`scripts/run_decoder_objective_arm.sh {radial|perceptual}` and
+`scripts/run_decoder_objective_10k.sh {radial|perceptual}`.

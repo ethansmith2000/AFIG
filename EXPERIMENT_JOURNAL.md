@@ -22,6 +22,17 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-03 — decoder-objective screen predeclared:** on the promoted v27
+  tokenizer-seed-2 residual+jitter+slot design, isolate weak radial log-power
+  matching from frozen LPIPS-Alex feature matching. A signal-relative `1e-3`
+  floor makes the radial term finite near the spectral noise floor; raw FFT MSE
+  is excluded as a duplicate of pixel MSE. Frozen-checkpoint gradient
+  calibration sets weights `6e-5` and `0.02`, giving approximately 10% of the
+  pixel-loss output gradient with only 1.34%/0.75% scalar contributions. Both
+  healthy codecs receive matched priors; generation selects. Only a >=2-FID
+  10k gain with lower KID earns seed replication. Twenty focused tests and four
+  end-to-end smokes pass.
+  [Exact protocol](reports/2026-08-26_autoencoder_program/decoder_objective_screen.json).
 - **2026-09-03 — weak representation-regularizer screen predeclared:** on the
   weak seed-1 residual+jitter checkpoint, compare marginal kurtosis-to-Gaussian
   regularization at weight `1e-4` with scale-invariant sample-varying slot-power
