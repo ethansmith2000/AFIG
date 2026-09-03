@@ -55,6 +55,12 @@ verdicts live under `reports/` and are linked here.
   [`wi7qqx8s`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/wi7qqx8s)
   and seed 3
   [`v2avcbeh`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/v2avcbeh).
+  Both chains complete through 5k. Seed 2 reaches **26.743/0.01754** versus
+  27.743/0.01603: FID improves by 1.000 but KID disagrees. Seed 3 reaches
+  **25.171/0.01665** versus 27.755/0.01830, improving by 2.584 FID and
+  0.00165 KID. Both advance to 10k under the frozen continuation rule. Codec
+  health passes and the slot-balance mechanism repeats strongly; these remain
+  diagnostics rather than selection evidence.
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-03 — register formation x decoder jitter factorial complete:**
   three new seed-matched tokenizers combine v13's bidirectional

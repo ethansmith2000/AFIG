@@ -430,6 +430,14 @@ Replication launch (2026-09-03 14:28 UTC): both supervisor chains acquired
 shared lifetime GPU locks and began finite training near 4.3k images/s. W&B
 tokenizer runs are seed 2 `wi7qqx8s` and seed 3 `v2avcbeh`.
 
+Replication 5k result: seed 2 reaches **26.743/0.01754** versus v20
+27.743/0.01603, a 1.000-FID improvement with KID disagreement. Seed 3 reaches
+**25.171/0.01665** versus v24 27.755/0.01830, a clear 2.584-FID and
+0.00165-KID improvement. Both advance to paired 10k evaluations under the
+predeclared continuation rule. Slot-power dispersion remains tightly
+controlled at 0.000352/0.000426 and both codecs pass the health veto; neither
+diagnostic selects the result.
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality

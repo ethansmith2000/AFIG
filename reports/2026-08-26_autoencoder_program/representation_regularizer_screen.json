@@ -1,6 +1,6 @@
 {
   "date": "2026-09-03",
-  "status": "fid_kid_10k_complete_slot_advances_to_seed_replication",
+  "status": "replication_5k_complete_both_advance_to_10k",
   "selection_rule": {
     "reconstruction_role": "health_veto_only",
     "advance_5k_to_10k": "improved FID, FID within 2 points, or FID/KID disagreement",
@@ -75,10 +75,42 @@
   "decision_5k": "Both mechanisms worked without harming codec health, and both improved FID by just over two points with KID agreeing. Advance both to the predeclared 10k gate; no global design change is permitted from seed 1 alone.",
   "decision_10k": "Slot balancing improves FID by 2.538 points with KID agreeing and advances to tokenizer seeds 2 and 3. Marginal Gaussianity improves KID but its 1.907-point FID gain misses the fixed 2-point replication gate by 0.093 and stops.",
   "replication": {
-    "status": "running",
+    "status": "fid_kid_5k_complete_both_advance_to_10k",
     "launched_utc": "2026-09-03T14:28:04Z",
     "tokenizer_seed_2_wandb": "wi7qqx8s",
     "tokenizer_seed_3_wandb": "v2avcbeh",
-    "prior_seed": 1
+    "prior_seed": 1,
+    "seed_2": {
+      "control": "v20-residual-e7p1-det-jitter05-n64d16-s2-prior-s1-060000",
+      "control_fid_5k": 27.74280050916525,
+      "control_kid_5k": 0.016026753932237625,
+      "tokenizer_psnr_db": 37.868307376268284,
+      "clean_reconstruction_fid": 5.305841790906925,
+      "terminal_slot_balance_penalty": 0.0003522207838250324,
+      "slot_rms_min": 0.8966265317356403,
+      "slot_rms_max": 0.9188611918927451,
+      "fid_5k": 26.742993129687875,
+      "kid_5k": 0.017538033425807953,
+      "fid_delta_vs_control_5k": -0.9998073794773747,
+      "kid_delta_vs_control_5k": 0.001511279493570328,
+      "advance_to_10k": true,
+      "continuation_reason": "FID improves while KID disagrees"
+    },
+    "seed_3": {
+      "control": "v24-residual-e7p1-det-jitter05-n64d16-s3-prior-s1-060000",
+      "control_fid_5k": 27.75492479468062,
+      "control_kid_5k": 0.01830054260790348,
+      "tokenizer_psnr_db": 37.737040905503974,
+      "clean_reconstruction_fid": 5.289272296689774,
+      "terminal_slot_balance_penalty": 0.00042557852691970765,
+      "slot_rms_min": 0.804070091946351,
+      "slot_rms_max": 0.8246347262218618,
+      "fid_5k": 25.170539484532014,
+      "kid_5k": 0.01665312796831131,
+      "fid_delta_vs_control_5k": -2.584385310148605,
+      "kid_delta_vs_control_5k": -0.0016474146395921704,
+      "advance_to_10k": true,
+      "continuation_reason": "FID and KID both improve"
+    }
   }
 }

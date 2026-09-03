@@ -1234,3 +1234,16 @@ approximately 4.3k images/s. Tokenizer W&B runs are seed 2
 [`wi7qqx8s`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/wi7qqx8s)
 and seed 3
 [`v2avcbeh`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/v2avcbeh).
+
+Both replication chains completed through FID/KID-5k. Seed 2 records
+**26.74299/0.0175380** against v20's 27.74280/0.0160268: FID improves by
+0.99981 while KID worsens by 0.0015113, so metric disagreement advances it to
+10k without counting it as a win. Seed 3 records **25.17054/0.0166531** against
+v24's 27.75492/0.0183005, improving by 2.58439 FID and 0.0016474 KID. It is a
+clear replication and also advances.
+
+Both codecs are healthy at 37.87/37.74 dB and clean rFID 5.31/5.29. More
+importantly for intervention fidelity, terminal slot penalties are
+0.000352/0.000426 and slot-RMS ranges are only 0.897-0.919 and 0.804-0.825.
+These diagnostics verify that the mechanism repeats; the paired 10k generation
+results decide global promotion.
