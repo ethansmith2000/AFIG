@@ -1193,3 +1193,11 @@ KID agreeing justifies seed-2/3 replication. A seed-1 result alone cannot
 replace residual+jitter globally. Launchers:
 `scripts/run_representation_regularizer_arm.sh {marginal|slot}` and
 `scripts/run_representation_regularizer_10k.sh {marginal|slot}`.
+
+Launch record: both supervisor-owned chains acquired shared lifetime GPU locks
+at 2026-09-03 04:30 UTC. Their first finite records follow the unregularized
+reconstruction trajectory. At step 25, marginal Gaussianity contributes about
+`4.4e-5`; slot balance contributes `3.8e-6` before any late slot imbalance has
+formed. Tokenizer W&B runs are
+[`gmudbr8y`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/gmudbr8y)
+and [`h43ihnea`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/h43ihnea).

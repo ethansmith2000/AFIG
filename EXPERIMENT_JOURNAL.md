@@ -29,7 +29,12 @@ verdicts live under `reports/` and are linked here.
   mature contributions 7-10% of reconstruction loss. They are separate arms,
   add no parameters, and retain the full matched-prior generation protocol;
   reconstruction is only a health veto. A seed-1 10k gain of at least two FID
-  with KID agreeing is required before seeds 2/3.
+  with KID agreeing is required before seeds 2/3. Both supervisor chains
+  acquired shared GPU locks at 04:30 UTC and emitted finite, control-like
+  reconstruction trajectories. Tokenizer W&B runs are marginal
+  [`gmudbr8y`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/gmudbr8y)
+  and slot balance
+  [`h43ihnea`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/h43ihnea).
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-03 — register formation x decoder jitter factorial complete:**
   three new seed-matched tokenizers combine v13's bidirectional

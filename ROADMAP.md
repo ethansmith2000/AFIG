@@ -401,6 +401,12 @@ replication; nothing from seed 1 alone changes the global design.
 Launchers: `scripts/run_representation_regularizer_arm.sh {marginal|slot}` and
 `scripts/run_representation_regularizer_10k.sh {marginal|slot}`.
 
+Launch record (2026-09-03 04:30 UTC): both supervisor-owned chains acquired
+lifetime GPU locks and began finite training at approximately 4.2k images/s.
+Marginal Gaussianity is W&B `gmudbr8y`; slot balance is `h43ihnea`. Their early
+reconstruction trajectories match the control, and the regularizer terms are
+small by design.
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality
