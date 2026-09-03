@@ -1,0 +1,72 @@
+{
+  "date": "2026-09-03",
+  "status": "predeclared",
+  "hypothesis": "At fixed 1,024-coordinate capacity, a tokenizer trained natively for a different token/feature factorization may learn geometry that compensates for the prior penalty seen under forced cache reshaping.",
+  "control": {
+    "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
+    "prior": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2-prior-s1",
+    "shape": [64, 16],
+    "fid_5k": 26.742993129687875,
+    "kid_5k": 0.017538033425807953,
+    "fid_10k": 24.534106902736653,
+    "kid_10k": 0.017646966502070427
+  },
+  "arms": {
+    "n32d32": {
+      "version": "v30",
+      "tokenizer": "v30-residual-e7p1-det-jitter05-slotbal2e3-n32d32-s2",
+      "shape": [32, 32],
+      "coordinates": 1024,
+      "tokenizer_parameters": 60032208,
+      "prior_parameters": 70293536
+    },
+    "n128d8": {
+      "version": "v31",
+      "tokenizer": "v31-residual-e7p1-det-jitter05-slotbal2e3-n128d8-s2",
+      "shape": [128, 8],
+      "coordinates": 1024,
+      "tokenizer_parameters": 60105912,
+      "prior_parameters": 70318088
+    }
+  },
+  "common_configuration": {
+    "tokenizer_seed": 2,
+    "prior_seed": 1,
+    "pool": "residual_e7_p1",
+    "objective": "full_pixel_mse",
+    "variational": false,
+    "decoder_jitter_std": 0.05,
+    "slot_balance_weight": 0.002,
+    "tokenizer_steps": 15000,
+    "prior_steps": 60000,
+    "tokenizer_batch_size": 512,
+    "prior_batch_size": 256,
+    "hidden_width": 512,
+    "prior_depth": 12
+  },
+  "historical_fixed_representation_evidence": {
+    "description": "Exact consecutive reshapes of the older v8 64x16 cache, inverted before its unchanged decoder.",
+    "fid": {
+      "n32d32": 43.12,
+      "n64d16": 29.925,
+      "n128d8": 32.28
+    },
+    "interpretation_boundary": "Those results isolate prior layout for one fixed representation. The new screen retrains encoder and decoder natively and therefore measures end-to-end learned factorization."
+  },
+  "selection": {
+    "reconstruction_role": "permissive codec-health veto only",
+    "primary_metrics": ["decoded_fid", "decoded_kid"],
+    "advance_5k_to_10k": "candidate FID improves, is within 2 points of control, or FID/KID disagree",
+    "replication_gate": "10k FID improves by at least 2 points and KID also improves",
+    "replication_tokenizer_seeds": [1, 3],
+    "default_if_no_arm_passes": "retain native 64x16",
+    "decoder_objectives": "none; do not combine radial or LPIPS with this screen"
+  },
+  "verification": {
+    "focused_tests": "20 passed",
+    "full_architecture_batch_512_gpu_smokes": {
+      "n32d32_peak_allocated_gib": 18.86978054046631,
+      "n128d8_peak_allocated_gib": 23.86051845550537
+    }
+  }
+}

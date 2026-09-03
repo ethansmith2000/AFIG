@@ -496,10 +496,10 @@ seed-interactive.
    interpretable partial decoding is valuable, use 4-8 additive residual/DoG
    groups with cumulative low-pass targets. Pair any block-causal register mask
    with an innovation constraint; causality alone does not create hierarchy.
-3. **Latent factorization under the new objective:** revisit nearby fixed-budget
-   shapes such as `32x32`, `64x16`, and `128x8` only after the objective test.
-   Slot balancing may change the earlier token-count/channel-width tradeoff, but
-   the established `64x16` point remains the control.
+3. **Latent factorization under the stabilized baseline:** revisit nearby
+   fixed-budget shapes such as `32x32`, `64x16`, and `128x8` after closing the
+   objective test. Slot balancing may change the earlier token-count/channel-
+   width tradeoff, but the established `64x16` point remains the control.
 4. **Decoder capacity/locality:** test only after an objective or hierarchy arm
    gives a representation-side gain, so encoder and decoder effects remain
    attributable.
@@ -507,6 +507,32 @@ seed-interactive.
 Deprioritize marginal kurtosis, static token-magnitude schedules, the tested
 tokenwise time warps, direct `2x2` patching, and register+jitter without a new
 mechanistic hypothesis; each has already missed a declared gate.
+
+### Learned latent-factorization screen (predeclared 2026-09-03)
+
+The decoder-objective screen is closed before changing shape. Retrain native
+`32x32` and `128x8` tokenizers at the same 1,024-coordinate capacity against
+the established native `64x16` v27 seed-2 control. Hold residual `e7+p1`,
+deterministic decoding with sigma-0.05 training jitter, slot balance `0.002`,
+pixel MSE, optimizer, batches, steps, and matched prior seed fixed. Do not carry
+radial or LPIPS into this screen.
+
+This is not a rerun of the completed exact-cache reshapes. Those held the v8
+representation and decoder fixed and found FID 43.12/29.925/32.28 for
+`32x32/64x16/128x8`; the new screen permits the encoder and decoder to organize
+natively around each factorization. That answers whether learned geometry can
+compensate for the prior's literal-layout preference.
+
+Reconstruction remains a health veto. Both healthy arms receive 60k matched
+priors. Advance 5k to 10k when FID improves, lies within two points of the v27
+control, or FID/KID disagree. Only a concordant 10k gain of at least two FID
+earns tokenizer-seed-1/3 replication; otherwise retain `64x16`.
+
+Preflight: both full 60M-parameter tokenizers pass batch-512 GPU
+forward/backward smokes at 18.9/23.9 GiB peak allocation for `32x32/128x8`,
+and 20 focused tokenizer tests pass. The tokenizer parameter differences from
+the 60,048,576-parameter control are -0.027% and +0.095%; hidden architecture
+and all train settings remain fixed.
 
 ### Decoder-objective screen (predeclared)
 

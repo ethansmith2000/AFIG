@@ -1365,3 +1365,34 @@ two-FID replication bar. Perceptual obtains **24.77091/0.0188098**, worsening
 FID by 0.23680 and KID by 0.0011629. Neither arm earns tokenizer-seed-1/3
 replication or promotion. Preserve radial as a possible later modifier, reject
 LPIPS in this context, and keep the next experiment isolated from both.
+
+### Learned latent-factorization screen (predeclared 2026-09-03)
+
+Now isolate native token/feature aspect ratio at fixed dimensional capacity.
+Train v30 `32x32` and v31 `128x8` from scratch on tokenizer seed 2 and compare
+them to v27 `64x16`; every arm has exactly 1,024 latent coordinates. Hold the
+residual `e7+p1` encoder, deterministic sigma-0.05 decoder jitter, slot balance
+`0.002`, plain pixel MSE, optimization, 15k tokenizer budget, prior seed 1,
+and 60k joint-prior recipe fixed. Small input/output and learned-position
+parameter-count differences are intrinsic to the tested native factorization;
+the hidden width and depth remain fixed. Do not add the radial signal despite
+its directional result, because doing so would confound the shape attribution.
+
+The completed v8 exact-cache controls found 43.12 FID for forced `32x32`,
+29.925 for native `64x16`, and 32.28 for forced `128x8`. They establish that
+the prior cares about literal layout when information is fixed. This new screen
+asks whether a tokenizer trained natively at each shape can compensate by
+learning different geometry; it must not be described as another exact-reshape
+test.
+
+Reconstruction is a permissive health veto only. Both healthy arms receive the
+matched prior. The paired v27 control is 26.74299/0.0175380 at 5k and
+24.53411/0.0176470 at 10k. Advance an arm when 5k FID improves, is within two
+points, or FID/KID disagree. A 10k improvement of at least two FID with lower
+KID earns tokenizer seeds 1 and 3. Otherwise retain native `64x16`.
+
+Preflight passes for both arms: full-architecture batch-512 forward/backward
+smokes peak at 18.87 GiB (`32x32`) and 23.86 GiB (`128x8`), so no batch-size
+change is required. Tokenizer parameter counts are 60,032,208 and 60,105,912
+versus 60,048,576 for the control; prior counts are 70,293,536 and 70,318,088
+versus 70,293,520. Twenty focused tokenizer tests pass.
