@@ -277,6 +277,18 @@ yet met. The prior-seed-2 seed-2 replication is strongly positive:
 both prior-seed-2 arms. Exact screen values are in
 `reports/2026-08-26_autoencoder_program/phase_c_jitter_confirmation.json`.
 
+**10k outcome and selection:** the positive directions strengthen. At
+tokenizer seed 3, jitter reaches FID/KID **25.045/0.01798** versus v12
+**35.750/0.02762**, deltas -10.704/-0.00964. At tokenizer seed 2 with prior
+seed 2, jitter reaches **22.861/0.01315** versus **30.133/0.02244**, deltas
+-7.272/-0.00929. Together with the prior-seed-1 seed-2 gain, this establishes
+that the effect is neither one-prior-seed luck nor one-tokenizer-seed luck.
+It is still tokenizer-seed dependent because seed 1 regresses. Honor the
+conservative gate: retain v12 as the global control, while making
+deterministic sigma-0.05 decoder jitter the leading expected-value design for
+the next representation experiments. Always report the interaction rather
+than claiming universal dominance.
+
 ## Phase D — explicit progressive semantics (conditional)
 
 Only pursue this phase if partial decoding is itself valuable or Phase B gives

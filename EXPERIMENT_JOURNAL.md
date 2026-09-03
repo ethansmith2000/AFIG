@@ -22,7 +22,7 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
-- **2026-09-02 — decoder-jitter robustness confirmation predeclared:** the
+- **2026-09-03 — decoder-jitter robustness confirmation complete:** the
   v20 sigma-0.05 result is being tested at fresh tokenizer seeds 1 and 3 with
   matched prior seed 1, and the frozen seed-2 v12/v20 caches are being compared
   with fresh prior seed 2. All four chains use the shared lifetime GPU queue,
@@ -46,6 +46,12 @@ verdicts live under `reports/` and are linked here.
   the declared clear-regression boundary. Under prior seed 2 at tokenizer seed
   2, jitter repeats strongly at 25.738/0.01384 versus 32.453/0.02258. Seed 3
   and both prior-seed-2 arms advance to 10k; seed 1 stops at 5k as predeclared.
+  At 10k, seed-3 jitter reaches **25.045/0.01798** versus v12
+  **35.750/0.02762**, while the seed-2 prior-seed-2 pair reaches
+  **22.861/0.01315** versus **30.133/0.02244**. Thus the gain repeats across a
+  second tokenizer seed and a second prior seed, but it is not universal due
+  to seed 1. Retain v12 as the conservative control and carry deterministic
+  sigma-0.05 decoder jitter as the leading expected-value experimental design.
   [Full specification](reports/2026-08-26_autoencoder_program/plan.md).
 - **2026-09-02 — Phase C posterior/noise study complete:** the selected v12
   seed-2 residual baseline is held fixed while four arms test clean

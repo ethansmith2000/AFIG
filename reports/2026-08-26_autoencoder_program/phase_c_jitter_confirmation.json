@@ -15,17 +15,18 @@
       "advance_to_10k": false
     },
     "seed_2": {
-      "v12_control": {"fid_5k": 31.970390583176822, "kid_5k": 0.022703023627400398},
-      "jitter05": {"fid_5k": 27.74280050916525, "kid_5k": 0.016026753932237625},
-      "jitter_minus_control": {"fid_5k": -4.227590074011572, "kid_5k": -0.006676269695162773},
+      "v12_control": {"fid_5k": 31.970390583176822, "kid_5k": 0.022703023627400398, "fid_10k": 29.588492661663338, "kid_10k": 0.022549204528331757},
+      "jitter05": {"fid_5k": 27.74280050916525, "kid_5k": 0.016026753932237625, "fid_10k": 25.353261144921817, "kid_10k": 0.015676116570830345},
+      "jitter_minus_control": {"fid_5k": -4.227590074011572, "kid_5k": -0.006676269695162773, "fid_10k": -4.235231516741521, "kid_10k": -0.0068730879575014114},
       "advance_to_10k": true,
       "status": "10k complete in Phase C screen"
     },
     "seed_3": {
-      "v12_control": {"fid_5k": 37.737260274987705, "kid_5k": 0.027035469189286232},
-      "jitter05": {"fid_5k": 27.75492479468062, "kid_5k": 0.01830054260790348},
-      "jitter_minus_control": {"fid_5k": -9.982335480307086, "kid_5k": -0.008734926581382751},
-      "advance_to_10k": true
+      "v12_control": {"fid_5k": 37.737260274987705, "kid_5k": 0.027035469189286232, "fid_10k": 35.74953908042306, "kid_10k": 0.02762223221361637},
+      "jitter05": {"fid_5k": 27.75492479468062, "kid_5k": 0.01830054260790348, "fid_10k": 25.045121760295842, "kid_10k": 0.017984895035624504},
+      "jitter_minus_control": {"fid_5k": -9.982335480307086, "kid_5k": -0.008734926581382751, "fid_10k": -10.70441732012722, "kid_10k": -0.009637337177991867},
+      "advance_to_10k": true,
+      "status": "10k complete"
     },
     "aggregate_5k": {
       "v12_fid_mean": 32.28087980342087,
@@ -39,15 +40,17 @@
     }
   },
   "tokenizer_seed_2_prior_seed_2": {
-    "v12_control": {"fid_5k": 32.45338334391897, "kid_5k": 0.02257709950208664},
-    "jitter05": {"fid_5k": 25.737997972468804, "kid_5k": 0.013842353597283363},
-    "jitter_minus_control": {"fid_5k": -6.715385371450168, "kid_5k": -0.008734745904803276},
-    "advance_both_to_10k": true
+    "v12_control": {"fid_5k": 32.45338334391897, "kid_5k": 0.02257709950208664, "fid_10k": 30.13300076851999, "kid_10k": 0.022439993917942047},
+    "jitter05": {"fid_5k": 25.737997972468804, "kid_5k": 0.013842353597283363, "fid_10k": 22.8606352511282, "kid_10k": 0.013149376027286053},
+    "jitter_minus_control": {"fid_5k": -6.715385371450168, "kid_5k": -0.008734745904803276, "fid_10k": -7.2723655173917905, "kid_10k": -0.009290617890655994},
+    "advance_both_to_10k": true,
+    "status": "10k complete"
   },
   "screen_verdict": {
     "tokenizer_seed_1": "clear concordant regression just beyond the declared two-FID boundary; stop at 5k",
     "tokenizer_seed_3": "clear concordant improvement; advance to 10k",
     "prior_seed_2": "clear concordant seed-2 replication; advance both matched arms to 10k",
-    "global_status": "jitter wins two of three tokenizer seeds and improves 5k mean FID/KID, but the seed-1 regression means the conservative no-clear-regression promotion condition is not yet satisfied"
+    "global_status": "jitter wins two of three tokenizer seeds, improves 5k mean FID/KID, repeats with a second prior seed, and strengthens at 10k for seeds 2 and 3; the seed-1 regression means the conservative universal-replacement condition is not satisfied",
+    "selection": "retain v12 as the conservative global control; use deterministic sigma-0.05 decoder jitter as the leading expected-value experimental design and explicitly report its tokenizer-seed interaction"
   }
 }

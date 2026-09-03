@@ -1041,3 +1041,27 @@ original direction: v20 reaches FID/KID 25.738/0.01384 versus v12 at
 32.453/0.02258, deltas -6.715/-0.008735. Advance both members of this pair and
 the tokenizer-seed-3 jitter arm to 10k. Exact values and decisions are in
 `phase_c_jitter_confirmation.json`.
+
+### Phase C decoder-jitter confirmation 10k outcome
+
+All three qualifying evaluations completed:
+
+| comparison | v12 FID/KID-10k | jitter-0.05 FID/KID-10k | FID delta | KID delta |
+|---|---:|---:|---:|---:|
+| tokenizer seed 2, prior seed 1 | 29.588/0.02255 | 25.353/0.01568 | -4.235 | -0.00687 |
+| tokenizer seed 3, prior seed 1 | 35.750/0.02762 | 25.045/0.01798 | -10.704 | -0.00964 |
+| tokenizer seed 2, prior seed 2 | 30.133/0.02244 | **22.861/0.01315** | -7.272 | -0.00929 |
+
+The second tokenizer seed and second prior seed both strengthen rather than
+merely preserve the original result. Modest decoder-input noise therefore has
+a real representation-modelability effect; the result cannot be explained by
+one favorable prior optimization or one favorable tokenizer checkpoint. The
+seed-1 5k regression remains equally real, so the effect is not universal.
+
+Honor the declared conservative gate by retaining hard-VAE v12 as the global
+control. For expected generation quality, however, deterministic residual
+pooling with sigma-0.05 decoder-only jitter is now the leading experimental
+design: it wins two of three tokenizer seeds, improves three-seed mean FID/KID
+at 5k, and replicates under the second prior seed. Carry both into the next
+phase and report tokenizer-seed interaction explicitly. This is stronger than
+a checkpoint-local result but weaker than universal architecture dominance.
