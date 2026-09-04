@@ -1463,3 +1463,10 @@ requires mechanism success and 10k FID within two points of control.
 Twenty-three focused tests and both CPU end-to-end smokes pass. Full batch-512
 eager smokes peak at 23.31/26.22 GiB and exact compiled smokes at
 15.98/17.55 GiB for cumulative/innovation, so training keeps the matched batch.
+
+Launch record: the first supervisor invocation exposed missing executable bits
+and exited before starting Python or taking a GPU. Commit `0c45336` fixed the
+packaging error. At 2026-09-04 03:11 UTC both unchanged, predeclared chains
+acquired shared lifetime locks and entered finite training near 3.51k images/s
+for cumulative and 3.15k for innovation. Tokenizer W&B runs are `kc8ug18o` and
+`obu5zpi3`.

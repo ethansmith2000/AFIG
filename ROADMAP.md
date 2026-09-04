@@ -402,6 +402,12 @@ innovation win must also raise increment cosine. Only an arm passing its
 mechanism gate and staying within two FID at 10k can motivate a block-causal
 formation follow-up. No causal mask or tokenwise noise schedule is included yet.
 
+Launch record (2026-09-04 03:11 UTC): an initial permission-only supervisor
+start failed before process or GPU creation; commit `0c45336` corrected the
+launcher modes. Both restarted chains then acquired shared lifetime locks and
+entered finite training near 3.51k/3.15k images/s. Tokenizer W&B runs are
+`kc8ug18o` (cumulative) and `obu5zpi3` (innovation).
+
 ## Phase E — representation and decoder objectives
 
 After the encoder and posterior stabilize:

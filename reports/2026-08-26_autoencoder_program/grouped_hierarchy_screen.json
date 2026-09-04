@@ -1,6 +1,7 @@
 {
   "date": "2026-09-04",
-  "status": "predeclared",
+  "status": "running",
+  "launched_utc": "2026-09-04T03:11:13Z",
   "hypothesis": "A small number of explicitly supervised coarse-to-fine groups can create genuine scale semantics without the full-generation tax of 64-way random-prefix reconstruction; additive DoG supervision may create stronger innovation semantics than cumulative targets alone.",
   "control": {
     "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
@@ -30,7 +31,9 @@
       "objective": "MSE between the sampled prefix reconstruction and its cumulative Gaussian low-pass target",
       "weight": 0.03,
       "calibrated_weighted_output_gradient_ratio": 0.25038886070251465,
-      "frozen_control_estimated_weighted_loss_ratio": 2.1975880735593796
+      "frozen_control_estimated_weighted_loss_ratio": 2.1975880735593796,
+      "wandb_tokenizer_run": "kc8ug18o",
+      "observed_tokenizer_images_per_second": 3510
     },
     "innovation": {
       "version": "v33",
@@ -38,7 +41,9 @@
       "objective": "MSE between adjacent prefix-decoder increments and the matching telescoping DoG residual",
       "weight": 0.023,
       "calibrated_weighted_output_gradient_ratio": 0.2505150284767151,
-      "frozen_control_estimated_weighted_loss_ratio": 1.7386445669729733
+      "frozen_control_estimated_weighted_loss_ratio": 1.7386445669729733,
+      "wandb_tokenizer_run": "obu5zpi3",
+      "observed_tokenizer_images_per_second": 3150
     }
   },
   "common_configuration": {
@@ -89,6 +94,7 @@
     "full_architecture_batch_512_compiled_peak_gib": {
       "cumulative": 15.978221416473389,
       "innovation": 17.54735040664673
-    }
+    },
+    "launch_retry": "initial supervisor start failed before process creation because launcher executable bits were absent; fixed in commit 0c45336 and no GPU or experiment state was consumed"
   }
 }

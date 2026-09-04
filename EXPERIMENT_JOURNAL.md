@@ -32,6 +32,11 @@ verdicts live under `reports/` and are linked here.
   prior FID/KID. No causal mask or per-token schedule is added until an objective
   proves hierarchy without a decisive generation loss. Twenty-three tests and
   CPU, eager-GPU, and compiled-GPU smokes pass.
+  An initial supervisor start failed before Python/GPU acquisition because the
+  launchers lacked executable bits; commit `0c45336` fixed the modes. Both
+  unchanged chains acquired lifetime locks at 03:11 UTC and entered finite
+  training near 3.51k/3.15k images/s. Tokenizer W&B: cumulative `kc8ug18o`,
+  innovation `obu5zpi3`.
   [Exact protocol](reports/2026-08-26_autoencoder_program/grouped_hierarchy_screen.json).
 - **2026-09-04 — learned latent-factorization screen complete:** native
   `32x32` is decisively destructive at 44.324/0.03289 FID/KID-5k. Native
