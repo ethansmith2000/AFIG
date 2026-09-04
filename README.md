@@ -82,7 +82,9 @@ line, v34's final evidence, reusable analysis/evaluation infrastructure, and
 small ablation controls while removing redundant intermediate checkpoints,
 obsolete launch surfaces, and genuinely dead legacy modules/tests. Details of
 the final screen are in
-`reports/2026-08-26_autoencoder_program/input_register_soft_snr_screen.json`.
+`reports/2026-08-26_autoencoder_program/input_register_soft_snr_screen.json`;
+the read-only cleanup inventory and proposed retention boundary are in
+`reports/2026-09-04_cleanup_audit.md`.
 
 ## Running safely
 
