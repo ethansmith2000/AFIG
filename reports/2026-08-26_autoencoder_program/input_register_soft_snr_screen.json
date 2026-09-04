@@ -1,6 +1,6 @@
 {
   "date": "2026-09-04",
-  "status": "running_10k_evaluation",
+  "status": "complete",
   "launch": {
     "launched_utc": "2026-09-04T17:26:12Z",
     "code_commit": "4eeef6c",
@@ -9,6 +9,10 @@
     "soft25_prior_supervisor": "afig_input_register_soft25",
     "tokenizer_wandb_run_id": "rheoy5s1",
     "tokenizer_wandb_url": "https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/rheoy5s1",
+    "common_prior_wandb_run_id": "ym104mnb",
+    "common_prior_wandb_url": "https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/ym104mnb",
+    "soft25_prior_wandb_run_id": "x9dm83oa",
+    "soft25_prior_wandb_url": "https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/x9dm83oa",
     "startup_check": "healthy through step 325: all reported losses and gradients finite, full-image MSE fell from 0.46670 at step 1 to 0.11495, and post-compile throughput was about 3,200 images/s",
     "orchestration": "the tokenizer holds one lifetime gpu-claim; both prior services wait without a GPU claim for the tokenizer cache and codec-health marker, then independently enter the shared queue"
   },
@@ -132,6 +136,35 @@
     "gate": "both arms are within two FID of their relevant control and therefore advance to the frozen 10k evaluation",
     "eval_10k_launched_utc": "2026-09-04T21:00:00Z"
   },
+  "results_10k": {
+    "completed_utc": "2026-09-04T21:02:14Z",
+    "common": {
+      "fid": 24.274310208986435,
+      "kid": 0.017473120242357254,
+      "fid_delta_vs_v27": -0.25979669375021786,
+      "kid_delta_vs_v27": -0.0001738462597131729
+    },
+    "soft25": {
+      "fid": 25.59875824399245,
+      "kid": 0.017961397767066956,
+      "fid_delta_vs_common": 1.3244480350060144,
+      "kid_delta_vs_common": 0.00048827752470970154,
+      "fid_delta_vs_v27": 1.0646513412557965,
+      "kid_delta_vs_v27": 0.0003144312649965286
+    },
+    "architecture_verdict": "full-depth input registers are a credible tie but improve v27 by only 0.260 FID, far below the predeclared two-FID replication threshold; they also use more encoder attention compute, reconstruct slightly worse, and reduce effective rank by 7.84 percent, so retain v27",
+    "schedule_verdict": "soft25 is concordantly worse than its exact-cache common-time control at both 5k and 10k; do not promote or replicate the asymmetric schedule",
+    "program_verdict": "retain v27 residual Perceiver pooling with common time as the selected design; preserve input registers and configurable soft token timing as tested research controls"
+  },
+  "artifacts": {
+    "tokenizer": "tokenizer_runs/v34-inputreg-e8-det-jitter05-slotbal2e3-n64d16-s2",
+    "common_prior": "prior_runs/v34-inputreg-e8-det-jitter05-slotbal2e3-n64d16-s2-prior-common-s1",
+    "soft25_prior": "prior_runs/v34-inputreg-e8-det-jitter05-slotbal2e3-n64d16-s2-prior-softsnr25-s1",
+    "common_eval_5k": "prior_evals/v34-inputreg-e8-det-jitter05-slotbal2e3-n64d16-s2-prior-common-s1-060000",
+    "soft25_eval_5k": "prior_evals/v34-inputreg-e8-det-jitter05-slotbal2e3-n64d16-s2-prior-softsnr25-s1-060000",
+    "common_eval_10k": "prior_evals/v34-inputreg-e8-det-jitter05-slotbal2e3-n64d16-s2-prior-common-s1-060000-n10k",
+    "soft25_eval_10k": "prior_evals/v34-inputreg-e8-det-jitter05-slotbal2e3-n64d16-s2-prior-softsnr25-s1-060000-n10k"
+  },
   "selection": {
     "reconstruction_role": "permissive codec-health veto only: manually review only if PSNR is below 28 dB together with clean reconstruction FID above 25, or if outputs/statistics are non-finite or visibly corrupted",
     "primary_metrics": [
@@ -157,5 +190,5 @@
     "gpu_preflight": "full-size eager and compiled checks passed through gpu-claim",
     "incident": "the first two-step tiny smoke inherited visible CUDA and ran for about seven seconds without gpu-claim; it completed without observed contention, was immediately rerun with CUDA hidden, and no subsequent GPU action bypasses the queue"
   },
-  "cleanup_policy": "tag and debloat only after this final screen so its required code and checkpoints are not removed mid-campaign"
+  "cleanup_policy": "the final screen is closed; repository and generated-artifact cleanup may proceed while preserving v27, the v34 final checkpoints/cache, durable metrics, and the configurable research controls"
 }

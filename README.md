@@ -56,6 +56,14 @@ retaining the hard-VAE path as a conservative stability control.
 - The prior "register-token" controls introduced learned registers only for the
   final shared encoder block. They are late-register controls, not tests of
   registers participating from encoder input through the complete trunk.
+- Full-depth input registers subsequently reached `24.27` FID at 10k versus
+  `24.53` for residual Perceiver pooling. The small gain misses the replication
+  threshold and costs more encoder attention, so it remains a tested control
+  rather than replacing the leading design.
+- A one-quarter-strength CIFAR-like tokenwise SNR schedule worsened the exact
+  full-depth-register control at both 5k and 10k (`25.60` versus `24.27` FID at
+  10k). Keep common time; latent register index did not inherit the useful
+  frequency ordering of image space under this construction.
 - Decoder-only sigma-0.05 latent jitter improves expected matched-prior
   generation across tokenizer and prior seeds, although one tokenizer seed
   regresses; it is the retained expected-value training design.
@@ -68,13 +76,12 @@ retaining the hard-VAE path as a conservative stability control.
 
 ## Current follow-up
 
-One final architecture correction is active before repository cleanup. V34
-places 64 learned registers beside the patch embeddings before encoder block 1,
-so they participate in all eight bidirectional blocks. Its frozen cache receives
-matched common-time and one-quarter-strength image-spectral log-SNR priors. The
-soft arm changes only tokenwise noise/time trajectories; clean magnitudes and
-uniform loss remain unchanged. Reconstruction is a permissive health veto and
-decoded FID/KID selects. Details and exact stop rules are in
+The planned representation screen is closed with v27 retained. The immediate
+work is repository and generated-artifact cleanup: preserve the selected v27
+line, v34's final evidence, reusable analysis/evaluation infrastructure, and
+small ablation controls while removing redundant intermediate checkpoints,
+obsolete launch surfaces, and genuinely dead legacy modules/tests. Details of
+the final screen are in
 `reports/2026-08-26_autoencoder_program/input_register_soft_snr_screen.json`.
 
 ## Running safely

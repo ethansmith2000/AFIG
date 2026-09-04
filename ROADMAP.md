@@ -580,7 +580,7 @@ Deprioritize marginal kurtosis, static token-magnitude schedules, the tested
 tokenwise time warps, direct `2x2` patching, and register+jitter without a new
 mechanistic hypothesis; each has already missed a declared gate.
 
-## Phase F — full-depth input registers with soft SNR (predeclared 2026-09-04)
+## Phase F — full-depth input registers with soft SNR (complete 2026-09-04)
 
 Correct the scope of the earlier v13/v25 result: those arms inserted registers
 only for one terminal joint block. V34 concatenates 64 learned registers with
@@ -615,6 +615,18 @@ Thirty-six directly affected tests and 53 active progressive-path tests pass,
 along with CPU/tokenwise-time end-to-end smokes. Exact
 batch-512 eager/compiled peaks are 27.71/19.17 GiB under `gpu-claim`.
 Repository tagging and artifact cleanup wait until this screen closes.
+
+Result: v34 is a healthy codec (`36.37` dB PSNR, `5.77` clean rFID) and its
+common-time prior reaches `26.884/.01777` at 5k and `24.274/.01747` at 10k.
+Against v27's `26.743/.01754` and `24.534/.01765`, that is effectively parity:
+the 10k advantage is only `0.260` FID and `.000174` KID, far below the two-FID
+replication gate. Full-depth registers also use more encoder attention compute
+and reduce effective rank from `377.43` to `347.84`, so they do not replace
+residual Perceiver pooling. Soft25 reaches `28.296/.01873` at 5k and
+`25.599/.01796` at 10k, consistently worse than its exact-cache common-time
+control. No seed replication is warranted. Retain v27 and common time; preserve
+both v34 mechanisms only as tested controls. Repository and artifact cleanup is
+now unblocked.
 
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 

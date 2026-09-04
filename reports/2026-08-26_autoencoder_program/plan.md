@@ -1532,3 +1532,13 @@ are 27.71/19.17 GiB. Six unrelated legacy test files still reference the
 already-removed `frequency.py`/`diffusion_decoder.py` modules and fail collection;
 that pre-existing stale surface is explicitly deferred to repository cleanup.
 The exact machine-readable protocol is `input_register_soft_snr_screen.json`.
+
+Outcome (2026-09-04): v34 passes codec health at `36.369` dB PSNR and `5.767`
+clean rFID. Common time produces FID/KID `26.884/.017767` at 5k and
+`24.274/.017473` at 10k, versus v27 at `26.743/.017538` and
+`24.534/.017647`. The `0.260` 10k FID gain is parity rather than the declared
+two-point architecture improvement, especially given the larger full-depth
+attention cost and effective-rank decrease from `377.43` to `347.84`. Soft25
+produces `28.296/.018725` at 5k and `25.599/.017961` at 10k, worsening its
+exact-cache common control on both metrics and both sample counts. Retain v27
+residual pooling with common time; no replication. Cleanup may now proceed.

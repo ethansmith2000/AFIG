@@ -22,7 +22,8 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
-- **2026-09-04 — full-depth input registers plus soft SNR predeclared:** correct
+- **2026-09-04 — full-depth input registers reach parity; soft SNR is not
+  selected:** correct
   the earlier late-register scope by placing 64 learned registers beside the
   patch embeddings before encoder block 1 and carrying them through all eight
   bidirectional blocks. V34 remains parameter-exact with v27 and retains
@@ -47,6 +48,14 @@ verdicts live under `reports/` and are linked here.
   `28.296/.01873`, a `+1.412` FID and `+.000958` KID delta from its exact-cache
   control. Both remain inside the frozen two-FID band, so their 10k evaluations
   launched through `gpu-claim` at `2026-09-04T21:00:00Z`.
+  At 10k, common v34 reaches **24.274/.01747**, only `-0.260/-0.000174`
+  FID/KID versus v27's **24.534/.01765**. This is a credible tie, not the
+  predeclared two-FID architecture gain, and comes with greater encoder
+  attention compute, lower PSNR (`36.37` versus `37.87`), and 7.84% lower
+  effective rank. Soft25 reaches **25.599/.01796**, concordantly worse than
+  common v34 by `+1.324/+0.000488`. Retain v27 residual Perceiver pooling and
+  common time; do not replicate either v34 arm. Preserve both mechanisms as
+  tested controls, then proceed to repository/artifact cleanup.
   [Exact protocol](reports/2026-08-26_autoencoder_program/input_register_soft_snr_screen.json).
 - **2026-09-04 — grouped Gaussian/DoG hierarchy succeeds mechanically but is
   rejected for generation:** both six-group objectives produce a clear
