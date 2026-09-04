@@ -1,0 +1,72 @@
+{
+  "date": "2026-09-04",
+  "status": "predeclared_prelaunch",
+  "question": "Which covariance views of the selected v27 latent have a broad, sample-consistent magnitude hierarchy; what decoded image roles do their stable bands control; and does a trained prior recover those bands from known noisy real latents in the magnitude-predicted order?",
+  "scope": {
+    "representation": "selected v27 tokenizer seed 2, deterministic residual Perceiver, decoder jitter 0.05, slot balance 0.002, native 64x16 latent",
+    "prior": "selected matched common-time prior seed 1",
+    "training": "none; this phase is analysis-only",
+    "normalization": "the prior checkpoint's tensor-wide population mean and standard deviation, followed by an elementwise training-population mean for covariance analysis"
+  },
+  "data": {
+    "basis_fit": "first 25000 training-cache examples",
+    "sample_consistency": "all 10000 disjoint test-cache examples",
+    "decoder_role_examples": 256,
+    "known_clean_denoising_examples": 2048,
+    "known_clean_decoded_examples": 256,
+    "seed": 1729
+  },
+  "axes": {
+    "channel": "16x16 covariance after averaging over samples and sequence positions; per-sample mode energy averages over all 64 tokens",
+    "sequence": "64x64 covariance after averaging over samples and channels; per-sample mode energy averages over all 16 channels",
+    "flattened": "1024x1024 covariance of vec(latent), retaining all token-channel interactions",
+    "per_token": "mean squared centered feature energy for each of the 64 native tokens; this is distinct as an explicit prior-facing grouping even though it is related to the sequence covariance diagonal"
+  },
+  "rank_bands": {
+    "channel": [0, 1, 2, 4, 8, 16],
+    "sequence": [0, 2, 4, 8, 16, 32, 64],
+    "flattened": [0, 8, 32, 128, 512, 1024],
+    "per_token": "eight groups of eight native tokens, sorted only for the magnitude audit by descending population content power; original indices are retained"
+  },
+  "measurements": {
+    "spectrum_shape": [
+      "complete eigenvalue or token-power curve",
+      "cumulative variance curve",
+      "effective rank, stable rank, and head/tail ratios",
+      "analytic SNR=1 crossing t*=1/(1+sqrt(power))"
+    ],
+    "sample_consistency": [
+      "per-sample band-energy and SNR-crossing quantiles",
+      "probability each population-ordered band exceeds the following band",
+      "per-sample rank correlation with the population mode order"
+    ],
+    "factorization": "best-scaled Frobenius residual and squared covariance cosine between the full covariance and channel/sequence marginal Kronecker product",
+    "decoded_roles": "shuffle one latent band between held-out examples, preserving its marginal; report decoded delta RMS, RGB-mean change, Inception-feature change, and the radial FFT distribution of the decoded change",
+    "known_clean_denoising": "noise held-out real latents at t=.1,.2,...,.9, predict their clean endpoints with the trained prior, and report relative MSE/correlation in every axis band plus decoded image, FFT, and Inception recovery against the known clean reconstruction"
+  },
+  "interpretation_rules": [
+    "PCA rank order is definitional; a useful hierarchy additionally requires a nontrivial spectrum, samplewise band consistency, and a decoded or conditional role.",
+    "Single eigenvectors are not expected to preserve samplewise order. Decisions use predeclared bands and retain the full unbinned curves.",
+    "Decoder band swaps are model-specific interventions and can leave the joint latent manifold; local/small effects and agreement across examples are more credible than an isolated large ablation.",
+    "Known-clean noising separates analytic visibility, trained-denoiser recoverability, and decoded meaning without relying on a generated endpoint.",
+    "Native token scheduling is not justified when native-token magnitude order is weak or sample-inconsistent. In that case an ordered invertible readout or sequence/flattened eigenmode grouping is required first.",
+    "Factorized whitening is preferred only if it removes most full covariance structure and its resulting sequence bands have stable roles; otherwise flattened whitening is the scientific control.",
+    "No whitening prior or schedule/loss training launches in this phase. Any later factorial must compare common versus ordered time and uniform versus latent-derived tempered loss on the same frozen whitened cache."
+  ],
+  "existing_evidence": {
+    "v27_flattened_variance_share": {
+      "top8": 0.21287870613684498,
+      "top32": 0.36428247688482474,
+      "top128": 0.5784102702106986,
+      "effective_rank": 377.42679253589165
+    },
+    "v27_flattened_adjacent_band_order_probability": [
+      0.9692800045013428,
+      0.9912400245666504,
+      0.9994400143623352,
+      1.0
+    ],
+    "v27_native_token_sample_to_population_profile_correlation_mean": 0.03356273637697018,
+    "caveat": "Existing channel consistency was computed per sample-token row rather than after aggregating channel-mode power within each sample; sequence-axis and decoded-role measurements are missing."
+  }
+}

@@ -83,16 +83,18 @@ retaining the hard-VAE path as a conservative stability control.
 ## Current follow-up
 
 The planned representation screen and direct trajectory diagnosis are closed
-with v27 retained. If hierarchy is revisited, the evidence favors an auxiliary
-ordered subspace or multiscale readout over native token scheduling. The
-immediate work is repository and generated-artifact cleanup: preserve the selected v27
-line, v34's final evidence, reusable analysis/evaluation infrastructure, and
-small ablation controls while removing redundant intermediate checkpoints,
-obsolete launch surfaces, and genuinely dead legacy modules/tests. Details of
-the final screen are in
+with v27 retained. An analysis-only latent-axis audit now precedes any further
+training: measure complete channel, sequence, flattened, and per-token spectra;
+test samplewise ordering, decoded roles, covariance separability, and recovery
+from known noisy real latents. This decides whether a later experiment should
+use factorized or flattened whitening and prevents another arbitrary native-
+index schedule. The repository cleanup boundary remains valid and can follow
+the audit. Details of the final training screen are in
 `reports/2026-08-26_autoencoder_program/input_register_soft_snr_screen.json`;
 the direct emergence analysis is in
 `reports/2026-08-26_autoencoder_program/generation_trajectory/results.md`;
+the frozen audit is in
+`reports/2026-08-26_autoencoder_program/latent_axis_audit_protocol.json`;
 the read-only cleanup inventory and proposed retention boundary are in
 `reports/2026-09-04_cleanup_audit.md`.
 

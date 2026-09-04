@@ -22,6 +22,19 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-04 — latent-axis geometry audit predeclared:** before any whitening
+  or new prior training, audit the selected v27 `64x16` code along channel,
+  sequence, flattened, and explicit per-token views. Preserve complete spectra;
+  measure individual-sample band consistency on held-out data, the residual of
+  a factorized channel/sequence covariance model, decoded roles under
+  marginal-preserving band swaps, and trained-prior recovery from known noisy
+  real latents. Existing evidence already shows that broad flattened PCA bands
+  are ordered on 96.9/99.1/99.94/100% of samples while native token profiles
+  are not stable. No training is authorized by this phase; its result chooses
+  whether factorized or flattened whitening and which ordered readout, if any,
+  deserves a later schedule x loss factorial.
+  [Frozen protocol](reports/2026-08-26_autoencoder_program/latent_axis_audit_protocol.json).
+
 - **2026-09-04 — generation is coarse-to-fine in distributed subspaces, not
   native token order:** compare
   selected v27, v34 common time, and v34 soft25 from identical standardized

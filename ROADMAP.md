@@ -658,6 +658,43 @@ demonstrate context gain before matched-prior training.
 
 [Full result and figures](reports/2026-08-26_autoencoder_program/generation_trajectory/results.md).
 
+## Phase H — latent-axis geometry before whitening (predeclared 2026-09-04)
+
+Do not infer a useful hierarchy from PCA rank alone. On the selected v27 code,
+separately characterize the channel covariance, sequence covariance, complete
+flattened covariance, and literal per-token power. These are related views but
+answer different architectural questions: flattened covariance retains every
+token-channel interaction, whereas per-token power is the scalar grouping that
+a tokenwise path and shared token projections directly expose.
+
+Fit every basis on 25k training latents and evaluate sample consistency on the
+disjoint 10k test cache. Save full unbinned spectra and analytic SNR=1 crossing
+curves, then use fixed rank bands to report individual-sample ordering. The
+existing v27 scorecard already establishes 96.9/99.1/99.94/100% adjacent
+ordering for flattened bands `1-8/9-32/33-128/129-512/513-1024`, despite noisy
+individual coefficients; it also shows no stable native-token energy profile.
+The missing measurements are the complete curve, sample-aggregated channel
+order, sequence modes, and token-channel separability.
+
+Interpret stable modes through the unchanged decoder by shuffling a band
+between held-out examples and measuring the radial FFT, RGB mean, total pixel,
+and Inception-feature change. Separately construct controlled noisy states from
+known held-out real latents at `t=.1,...,.9`, ask the selected prior for its
+clean estimate, and score recovery in all four views and in decoded space. This
+distinguishes magnitude-derived visibility, trained-denoiser recoverability,
+and decoded role without using a generated endpoint.
+
+No training launches in Phase H. If channel/sequence covariance explains most
+of the flattened covariance and sequence-mode roles are stable, prefer a
+factorized whitening/readout. Otherwise use full flattened whitening as the
+scientific control. A later training phase, only if warranted, must use one
+frozen whitened cache and a `common/ordered time x uniform/latent-derived loss`
+factorial. Keep clean magnitudes unit scale; derive both the rational-path odds
+and any tempered weights from pre-whitening latent power rather than copying
+CIFAR radial variances.
+
+[Exact protocol](reports/2026-08-26_autoencoder_program/latent_axis_audit_protocol.json).
+
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 
 The decoder-objective screen is closed before changing shape. Retrain native
