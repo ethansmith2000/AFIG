@@ -1,0 +1,13 @@
+[gpu-claim] job=v27-known-clean-denoising owner=AFIG -> gpu2
+/venv/main/lib/python3.12/site-packages/torch/nn/functional.py:2954: UserWarning: Mismatch dtype between input and weight: input dtype = c10::BFloat16, weight dtype = float, Cannot dispatch to fused implementation. (Triggered internally at /pytorch/aten/src/ATen/native/layer_norm.cpp:344.)
+  return torch.rms_norm(input, normalized_shape, weight, eps)
+{"completed_time": 0.1}
+{"completed_time": 0.2}
+{"completed_time": 0.3}
+{"completed_time": 0.4}
+{"completed_time": 0.5}
+{"completed_time": 0.6}
+{"completed_time": 0.7}
+{"completed_time": 0.8}
+{"completed_time": 0.9}
+{"complete": "/workspace/AFIG/reports/2026-08-26_autoencoder_program/latent_axis_audit/known_clean_denoising.json"}

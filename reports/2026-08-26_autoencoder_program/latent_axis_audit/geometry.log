@@ -1,0 +1,28 @@
+[gpu-claim] job=v27-latent-axis-geometry owner=AFIG -> gpu2
+/venv/main/lib/python3.12/site-packages/torch/nn/functional.py:2954: UserWarning: Mismatch dtype between input and weight: input dtype = c10::BFloat16, weight dtype = float, Cannot dispatch to fused implementation. (Triggered internally at /pytorch/aten/src/ATen/native/layer_norm.cpp:344.)
+  return torch.rms_norm(input, normalized_shape, weight, eps)
+{"decoded_role": "channel", "range": [0, 1]}
+{"decoded_role": "channel", "range": [1, 2]}
+{"decoded_role": "channel", "range": [2, 4]}
+{"decoded_role": "channel", "range": [4, 8]}
+{"decoded_role": "channel", "range": [8, 16]}
+{"decoded_role": "sequence", "range": [0, 2]}
+{"decoded_role": "sequence", "range": [2, 4]}
+{"decoded_role": "sequence", "range": [4, 8]}
+{"decoded_role": "sequence", "range": [8, 16]}
+{"decoded_role": "sequence", "range": [16, 32]}
+{"decoded_role": "sequence", "range": [32, 64]}
+{"decoded_role": "flattened", "range": [0, 8]}
+{"decoded_role": "flattened", "range": [8, 32]}
+{"decoded_role": "flattened", "range": [32, 128]}
+{"decoded_role": "flattened", "range": [128, 512]}
+{"decoded_role": "flattened", "range": [512, 1024]}
+{"decoded_role": "per_token", "range": [0, 8]}
+{"decoded_role": "per_token", "range": [8, 16]}
+{"decoded_role": "per_token", "range": [16, 24]}
+{"decoded_role": "per_token", "range": [24, 32]}
+{"decoded_role": "per_token", "range": [32, 40]}
+{"decoded_role": "per_token", "range": [40, 48]}
+{"decoded_role": "per_token", "range": [48, 56]}
+{"decoded_role": "per_token", "range": [56, 64]}
+{"complete": "/workspace/AFIG/reports/2026-08-26_autoencoder_program/latent_axis_audit/geometry.json"}

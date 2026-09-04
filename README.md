@@ -70,6 +70,12 @@ retaining the hard-VAE path as a conservative stability control.
   tokens settle together. Shuffling already-resolved leading PCs raises error
   on unresolved directions by 9.24% at `t=.35` and 16.80% at `t=.5`, confirming
   that the middle-trajectory global structure is useful context.
+- A held-out latent-axis audit localizes that hierarchy. Native token powers
+  differ by only 1.053x and have chance samplewise ordering, whereas sequence
+  and flattened rank bands are sample-consistent, decode monotonically from
+  global/coarse toward residual/fine structure, and recover from known noise in
+  their magnitude-predicted order. Current token indices should not receive
+  another schedule without an ordered invertible readout.
 - Decoder-only sigma-0.05 latent jitter improves expected matched-prior
   generation across tokenizer and prior seeds, although one tokenizer seed
   regresses; it is the retained expected-value training design.
@@ -82,19 +88,18 @@ retaining the hard-VAE path as a conservative stability control.
 
 ## Current follow-up
 
-The planned representation screen and direct trajectory diagnosis are closed
-with v27 retained. An analysis-only latent-axis audit now precedes any further
-training: measure complete channel, sequence, flattened, and per-token spectra;
-test samplewise ordering, decoded roles, covariance separability, and recovery
-from known noisy real latents. This decides whether a later experiment should
-use factorized or flattened whitening and prevents another arbitrary native-
-index schedule. The repository cleanup boundary remains valid and can follow
-the audit. Details of the final training screen are in
+The planned representation screen, trajectory diagnosis, and latent-axis audit
+are closed with v27 retained. Before further training, the next analysis should
+construct regularized sequence/channel and flattened whitening transforms,
+measure their held-out residual covariance and inverse-gain range, and freeze a
+safe ordered readout. Only then consider the `common/ordered time x
+uniform/latent-derived loss` factorial. The repository cleanup boundary remains
+valid. Details of the final training screen are in
 `reports/2026-08-26_autoencoder_program/input_register_soft_snr_screen.json`;
 the direct emergence analysis is in
 `reports/2026-08-26_autoencoder_program/generation_trajectory/results.md`;
 the frozen audit is in
-`reports/2026-08-26_autoencoder_program/latent_axis_audit_protocol.json`;
+`reports/2026-08-26_autoencoder_program/latent_axis_audit/results.md`;
 the read-only cleanup inventory and proposed retention boundary are in
 `reports/2026-09-04_cleanup_audit.md`.
 

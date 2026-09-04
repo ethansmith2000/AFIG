@@ -22,7 +22,8 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
-- **2026-09-04 — latent-axis geometry audit predeclared:** before any whitening
+- **2026-09-04 — latent-axis geometry audit identifies a distributed, stable
+  hierarchy:** before any whitening
   or new prior training, audit the selected v27 `64x16` code along channel,
   sequence, flattened, and explicit per-token views. Preserve complete spectra;
   measure individual-sample band consistency on held-out data, the residual of
@@ -32,8 +33,18 @@ verdicts live under `reports/` and are linked here.
   are ordered on 96.9/99.1/99.94/100% of samples while native token profiles
   are not stable. No training is authorized by this phase; its result chooses
   whether factorized or flattened whitening and which ordered readout, if any,
-  deserves a later schedule x loss factorial.
-  [Frozen protocol](reports/2026-08-26_autoencoder_program/latent_axis_audit_protocol.json).
+  deserves a later schedule x loss factorial. The queued analysis completed on
+  v27. Native token powers are flat to 1.053x strongest/weakest with chance
+  samplewise order. Sequence and flattened bands are instead strongly ordered,
+  decode monotonically from coarse/global toward residual/fine structure, and
+  recover from known noise in almost exactly their magnitude-predicted order.
+  Channel x sequence marginal covariance captures 64.0% of squared flattened-
+  covariance alignment, leaving a material nonseparable residual. Do not
+  schedule current token indices. Next audit regularized factorized and full-
+  covariance transforms, especially their weak-direction amplification,
+  before authorizing a whitening schedule/loss factorial.
+  [Result and figures](reports/2026-08-26_autoencoder_program/latent_axis_audit/results.md);
+  [exact protocol](reports/2026-08-26_autoencoder_program/latent_axis_audit_protocol.json).
 
 - **2026-09-04 — generation is coarse-to-fine in distributed subspaces, not
   native token order:** compare

@@ -1,6 +1,6 @@
 {
   "date": "2026-09-04",
-  "status": "predeclared_prelaunch",
+  "status": "complete",
   "question": "Which covariance views of the selected v27 latent have a broad, sample-consistent magnitude hierarchy; what decoded image roles do their stable bands control; and does a trained prior recover those bands from known noisy real latents in the magnitude-predicted order?",
   "scope": {
     "representation": "selected v27 tokenizer seed 2, deterministic residual Perceiver, decoder jitter 0.05, slot balance 0.002, native 64x16 latent",
@@ -67,6 +67,47 @@
       1.0
     ],
     "v27_native_token_sample_to_population_profile_correlation_mean": 0.03356273637697018,
-    "caveat": "Existing channel consistency was computed per sample-token row rather than after aggregating channel-mode power within each sample; sequence-axis and decoded-role measurements are missing."
+    "caveat": "Existing channel consistency was computed per sample-token row rather than after aggregating channel-mode power within each sample; sequence-axis and decoded-role measurements were missing before this audit."
+  },
+  "execution": {
+    "code_and_protocol_commit": "f1a44b8",
+    "supervisor_job": "afig_latent_axis_audit",
+    "gpu_queue": "gpu-claim lifetime locks on GPU 2",
+    "completed_utc": "2026-09-04T23:32:31Z",
+    "focused_tests": "29 passed",
+    "result": "latent_axis_audit/results.md"
+  },
+  "results": {
+    "effective_rank": {
+      "channel_of_16": 12.164576199873984,
+      "sequence_of_64": 45.35494014396364,
+      "flattened_of_1024": 376.5548078730774,
+      "native_token_power_of_64": 63.996757321182905
+    },
+    "native_token_power_ratio_strongest_to_weakest": 1.052682320534373,
+    "flattened_adjacent_band_order_probability": [
+      0.9714999794960022,
+      0.988599956035614,
+      0.9991999864578247,
+      1.0
+    ],
+    "sequence_adjacent_band_order_probability": [
+      0.8780999779701233,
+      0.7287999987602234,
+      0.8535999655723572,
+      0.887499988079071,
+      0.9503999948501587
+    ],
+    "factorized_covariance": {
+      "squared_cosine": 0.6401372497447891,
+      "relative_frobenius_residual": 0.5998856143092706
+    },
+    "known_clean_empirical_settling": {
+      "channel": [0.4, 0.4, 0.5, 0.6, 0.7],
+      "sequence": [0.3, 0.4, 0.5, 0.5, 0.6, 0.6],
+      "flattened": [0.3, 0.4, 0.5, 0.6, 0.7],
+      "per_token": "all eight population-power groups settle at 0.5 or 0.6 without magnitude order"
+    },
+    "verdict": "Magnitude provides a sample-consistent and decoded coarse-to-fine order in distributed sequence and flattened subspaces, while selected-v27 native token powers are flat and unordered. Audit regularized sequence/channel and flattened whitening transforms before any schedule/loss training."
   }
 }

@@ -695,6 +695,51 @@ CIFAR radial variances.
 
 [Exact protocol](reports/2026-08-26_autoencoder_program/latent_axis_audit_protocol.json).
 
+Result: native token power is intentionally almost isotropic under v27 slot
+balancing: effective rank is 63.997/64, strongest/weakest power is only 1.053x,
+and held-out band ordering is 49.5-52.5%. Its known-clean recovery curves also
+overlap. Current native indices have no magnitude-derived resolving order.
+
+Distributed axes do. Channel, sequence, and flattened effective ranks are
+12.16/16, 45.35/64, and 376.55/1024. Flattened band order holds on
+97.15/98.86/99.92/100% of individual test images; sequence bands hold on
+87.81/72.88/85.36/88.75/95.04%. When bands are swapped between held-out
+examples and decoded, sequence and flattened bands progress monotonically from
+low-frequency/global color to fine residual structure. Under controlled noising
+of real latents, analytic SNR crossing order predicts empirical recovery with
+Spearman 1.000/.971/.975 for flattened/sequence/channel; native tokens remain
+unordered.
+
+The best channel x sequence Kronecker covariance fit has squared cosine `.640`
+and relative Frobenius residual `.600`, so factorized whitening leaves material
+token-channel interactions. Full covariance is the control but has a 3.48M
+strongest/weakest eigenvalue ratio; naive whitening would amplify the weakest
+direction by about 1,866x. Do not whiten naively and do not launch training yet.
+
+[Full result and figures](reports/2026-08-26_autoencoder_program/latent_axis_audit/results.md).
+
+## Phase I — regularized whitening feasibility (next; analysis only)
+
+Construct two invertible candidate readouts without training: sequence-PCA plus
+channel whitening, retaining sequence rank as the 64-token order; and a
+regularized flattened-PCA control whose nearby original ranks are packed into
+`64x16`. For both, predeclare covariance shrinkage or inverse-gain caps, measure
+held-out residual covariance, report the complete gain distribution, and verify
+that inverse-transform decoding is numerically identical.
+
+Using retained pre-whitening power, tabulate—but do not yet train—softened
+rational-path odds `a_g = power_g^(beta/2)` and mean-one loss profiles for a
+small fixed beta grid. Include both signal-metric weights and the rectified-flow
+`signal+noise` target-energy alternative. Reject configurations whose gain or
+weight range is dominated by the near-null tail. The output of Phase I is one
+frozen transform and one conservative schedule/weight family, or a conclusion
+that whitening is not a healthy route.
+
+Only a healthy Phase-I result can authorize four matched priors on the same
+cache: common/uniform, ordered/uniform, common/weighted, and ordered/weighted.
+That 2x2 structure is required to distinguish the schedule, loss-allocation,
+and interaction effects.
+
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 
 The decoder-objective screen is closed before changing shape. Retrain native
