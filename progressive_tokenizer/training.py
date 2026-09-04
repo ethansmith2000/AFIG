@@ -122,6 +122,49 @@ def lpips_reconstruction_loss(
     return perceptual_model(reconstruction, target, normalize=False).mean()
 
 
+def gaussian_lowpass_pyramid_fft(
+    images: torch.Tensor,
+    sigmas: Iterable[float],
+) -> torch.Tensor:
+    """Return periodic Gaussian low-passes as [B, levels, C, H, W].
+
+    ``sigma`` is measured in pixels. A zero-sigma final level is returned as
+    the input exactly, which makes adjacent differences a telescoping DoG
+    decomposition with no numerical residual at the endpoint.
+    """
+
+    if images.ndim != 4:
+        raise ValueError("images must have shape [batch, channel, H, W]")
+    sigma_values = tuple(float(value) for value in sigmas)
+    if not sigma_values:
+        raise ValueError("at least one Gaussian sigma is required")
+    if any(not math.isfinite(value) or value < 0 for value in sigma_values):
+        raise ValueError("Gaussian sigmas must be finite and non-negative")
+
+    values = images.float()
+    height, width = values.shape[-2:]
+    vertical = torch.fft.fftfreq(height, device=values.device)
+    horizontal = torch.fft.rfftfreq(width, device=values.device)
+    radius_squared = vertical[:, None].square() + horizontal[None, :].square()
+    spectrum = torch.fft.rfft2(values, norm="ortho")
+    levels = []
+    for sigma in sigma_values:
+        if sigma == 0:
+            levels.append(values)
+            continue
+        response = torch.exp(
+            -2.0 * math.pi**2 * sigma**2 * radius_squared
+        )
+        levels.append(
+            torch.fft.irfft2(
+                spectrum * response,
+                s=(height, width),
+                norm="ortho",
+            )
+        )
+    return torch.stack(levels, dim=1)
+
+
 class LatentMomentAccumulator:
     """Streaming global and covariance diagnostics for clean latent tokens."""
 

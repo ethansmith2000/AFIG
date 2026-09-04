@@ -1423,3 +1423,43 @@ movement, and it does not approach the concordant two-FID replication gate.
 Its 60k prior also runs at 10.77 steps/s versus 19.99 for the control. Neither
 candidate earns replication or promotion; native `64x16` remains the selected
 factorization on generation quality and compute.
+
+### Grouped Gaussian/DoG hierarchy (predeclared 2026-09-04)
+
+With `64x16` factorization selected, test explicit scale semantics without an
+architecture confound. V32 adds cumulative low-pass supervision and v33 adds
+an additive innovation constraint; both retain v27 tokenizer seed 2, residual
+`e7+p1`, deterministic sigma-0.05 decoder jitter, slot balance `0.002`, full
+pixel MSE, 15k budget, and the exact prior-seed-1 60k recipe. Do not add a causal
+mask yet: the objective must first show that it can create the intended roles.
+
+Partition the 64 tokens into six groups `11/11/11/11/10/10`. Their prefix ends
+are `11/22/33/44/54/64`, with periodic Fourier Gaussian targets at pixel sigmas
+`8/4/2/1/.5/0`. These correspond to approximate amplitude half-power FFT radii
+`.75/1.5/3/6/12/full`. V32 matches a sampled prefix decode to its cumulative
+target. V33 matches the difference of adjacent prefix decodes to the matching
+DoG residual. The last target is exactly the input, hence the DoG decomposition
+telescopes without discarding phase, orientation, DC, or corner frequencies.
+
+Apply one uniformly sampled group to 128 examples from every shuffled batch of
+512. Full-image reconstruction still uses all 512 examples. The grouped decodes
+share the exact noisy latent realization used by the full decoder, avoiding a
+clean-prefix versus jittered-full mismatch. Frozen-v27 calibration on 128 test
+images targets a 25% output-gradient ratio and gives rounded weights `0.030`
+for cumulative and `0.023` for innovation. The weighted scalar losses on the
+unordered frozen control are 2.20x/1.74x pixel MSE because its prefixes do not
+match the imposed targets; gradient scale, not that deliberately off-objective
+scalar, determined the coefficients.
+
+Audit 512 fixed test examples after training, including a contact sheet of the
+source, six targets, and six prefix reconstructions. Control mean cumulative
+target MSE is 0.0492074. Control mean innovation-target MSE/cosine is
+0.0511465/0.29543. A named mechanism passes at >=25% MSE reduction; innovation
+must also improve cosine. This is diagnostic, not model selection. Both healthy
+arms receive matched priors. Standard 5k continuation applies; only a >=2-FID
+10k gain with lower KID earns seed replication. A block-causal follow-up also
+requires mechanism success and 10k FID within two points of control.
+
+Twenty-three focused tests and both CPU end-to-end smokes pass. Full batch-512
+eager smokes peak at 23.31/26.22 GiB and exact compiled smokes at
+15.98/17.55 GiB for cumulative/innovation, so training keeps the matched batch.

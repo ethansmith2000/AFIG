@@ -1,4 +1,4 @@
-# AFIG roadmap — 2026-09-03
+# AFIG roadmap — 2026-09-04
 
 This is the current decision roadmap. Historical campaigns and corrected
 premises remain in `EXPERIMENT_JOURNAL.md`, `REVIEW_BRIEF.md`, and `reports/`.
@@ -365,6 +365,42 @@ a positive schedule signal. Use 4-8 groups and compare:
 Do not return to 64 individually supervised frequency tokens. Sinusoidal/RoPE
 nearness can encode a scale coordinate but cannot create scale semantics by
 itself.
+
+### D1 grouped Gaussian/DoG hierarchy (predeclared 2026-09-04)
+
+The condition for this phase is now explicit user value for interpretable
+coarse-to-fine partial decoding. Compare two objective-only arms before changing
+attention masks. Both retain the selected native `64x16` residual+jitter+slot
+tokenizer, full-image pixel reconstruction, and matched prior recipe:
+
+- v32 cumulative: one sampled prefix boundary matches its cumulative Gaussian
+  low-pass target, weight `0.030`;
+- v33 innovation: the adjacent decoder-prefix increment matches the telescoping
+  Difference-of-Gaussians residual, weight `0.023`.
+
+Use six groups `11/11/11/11/10/10`, ending at tokens
+`11/22/33/44/54/64`. Periodic Fourier Gaussian sigmas
+`8/4/2/1/.5/0` have amplitude half-power radii approximately
+`.75/1.5/3/6/12/full` on a 32-pixel image, spanning the measured CIFAR radial
+regimes without pretending that overlapping Gaussian bands are hard FFT rings.
+The zero-sigma endpoint is exactly the input, so adjacent targets telescope.
+One group per example is sampled uniformly on 128 of each 512-image training
+batch; every grouped decode uses the same jittered latent realization as the
+full decode.
+
+Frozen-v27 output-gradient calibration targets 25% of the pixel-MSE gradient
+and gives the rounded weights above. The apparently large frozen scalar-loss
+ratios come from applying frequency targets to an unordered tokenizer and do
+not set the gradient scale. Twenty-three tests, two CPU end-to-end smokes, and
+eager and compiled full-architecture batch-512 GPU smokes pass. Peak compiled
+allocations are 15.98/17.55 GiB.
+
+Both healthy arms receive matched 60k priors. Generation uses the standard
+5k-to-10k gate and requires a >=2-FID concordant 10k gain for seed replication.
+Separately, the named mechanism must reduce its control target MSE by >=25%; an
+innovation win must also raise increment cosine. Only an arm passing its
+mechanism gate and staying within two FID at 10k can motivate a block-causal
+formation follow-up. No causal mask or tokenwise noise schedule is included yet.
 
 ## Phase E — representation and decoder objectives
 

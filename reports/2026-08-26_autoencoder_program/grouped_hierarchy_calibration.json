@@ -1,0 +1,71 @@
+{
+  "batch_size": 32,
+  "blur_sigmas_pixels": [
+    8.0,
+    4.0,
+    2.0,
+    1.0,
+    0.5,
+    0.0
+  ],
+  "checkpoint": "/workspace/AFIG/tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/checkpoint_final.pt",
+  "estimated_weighted_loss_ratio": {
+    "cumulative_to_pixel_mse": 2.1941751595833967,
+    "innovation_to_pixel_mse": 1.7350701248793314
+  },
+  "examples": 128,
+  "gradient_gauge": "Euclidean norm across detached decoder outputs; innovation combines current- and previous-prefix gradients",
+  "group_sizes": [
+    11,
+    11,
+    11,
+    11,
+    10,
+    10
+  ],
+  "prefix_ends": [
+    11,
+    22,
+    33,
+    44,
+    54,
+    64
+  ],
+  "raw": {
+    "cumulative_gradient_ratio": {
+      "max": 9.550697326660156,
+      "mean": 8.419974565505981,
+      "median": 8.346295356750488,
+      "min": 7.436610221862793
+    },
+    "cumulative_loss": {
+      "max": 0.05954396724700928,
+      "mean": 0.050418141297996044,
+      "median": 0.05199255608022213,
+      "min": 0.03814348578453064
+    },
+    "innovation_gradient_ratio": {
+      "max": 12.971236228942871,
+      "mean": 11.1420738697052,
+      "median": 10.891957759857178,
+      "min": 9.813143730163574
+    },
+    "innovation_loss": {
+      "max": 0.06522447615861893,
+      "mean": 0.053092410787940025,
+      "median": 0.05365362949669361,
+      "min": 0.03983790799975395
+    },
+    "pixel_mse": {
+      "max": 0.0007600928074680269,
+      "mean": 0.0007081022631609812,
+      "median": 0.0007097675406839699,
+      "min": 0.0006527811638079584
+    }
+  },
+  "recommended_weights": {
+    "cumulative": 0.029953409185046378,
+    "innovation": 0.022952714793054628
+  },
+  "target_weighted_output_gradient_ratio": 0.25
+}

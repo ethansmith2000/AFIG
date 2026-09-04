@@ -30,6 +30,7 @@ from progressive_tokenizer.training import (
     optimizer_parameter_groups,
     pixel_psnr,
     radial_log_power_reconstruction_loss,
+    gaussian_lowpass_pyramid_fft,
     slot_variance_balance_penalty,
 )
 from progressive_tokenizer.tracking import WandbTracker
@@ -104,6 +105,25 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         type=float,
         default=0.0,
         help="Weight on frozen LPIPS-Alex reconstruction in the [-1, 1] image gauge.",
+    )
+    parser.add_argument(
+        "--hierarchy_mode",
+        choices=["none", "cumulative", "innovation"],
+        default="none",
+        help=(
+            "Optional grouped Gaussian-pyramid supervision. cumulative matches "
+            "a prefix decode to its low-pass target; innovation matches the "
+            "difference between adjacent prefix decodes to the corresponding DoG."
+        ),
+    )
+    parser.add_argument("--hierarchy_group_sizes", default=None)
+    parser.add_argument("--hierarchy_blur_sigmas", default=None)
+    parser.add_argument("--hierarchy_loss_weight", type=float, default=0.0)
+    parser.add_argument(
+        "--hierarchy_batch_size",
+        type=int,
+        default=128,
+        help="Number of examples per training batch receiving a sampled group loss.",
     )
     parser.add_argument(
         "--latent_shaping",
@@ -219,6 +239,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         or args.slot_balance_weight < 0
         or args.radial_log_power_weight < 0
         or args.perceptual_loss_weight < 0
+        or args.hierarchy_loss_weight < 0
     ):
         parser.error("loss weights must be non-negative")
     if args.kl_weight > 0 and not args.variational:
@@ -245,6 +266,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         parser.error("--ramp_sigma_max must be >= 0 and --ramp_power > 0")
     if args.resume and args.init_from:
         parser.error("--resume and --init_from are mutually exclusive")
+    if args.hierarchy_batch_size <= 0:
+        parser.error("--hierarchy_batch_size must be positive")
     if args.smoke:
         args.dataset = "synthetic"
         args.image_size = 8
@@ -271,6 +294,59 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         args.compile = False
         args.report_to = "none"
     return args
+
+
+def resolve_hierarchy_spec(args: argparse.Namespace) -> Optional[dict[str, object]]:
+    """Validate the grouped hierarchy after smoke-mode shape overrides."""
+
+    if args.hierarchy_mode == "none":
+        if (
+            args.hierarchy_loss_weight != 0
+            or args.hierarchy_group_sizes is not None
+            or args.hierarchy_blur_sigmas is not None
+        ):
+            raise ValueError("hierarchy settings require --hierarchy_mode")
+        return None
+    if args.objective != "full":
+        raise ValueError("grouped hierarchy currently requires --objective full")
+    if args.hierarchy_loss_weight <= 0:
+        raise ValueError("grouped hierarchy requires a positive loss weight")
+    if args.hierarchy_group_sizes is None or args.hierarchy_blur_sigmas is None:
+        raise ValueError("grouped hierarchy requires group sizes and blur sigmas")
+    try:
+        group_sizes = tuple(
+            int(value.strip()) for value in args.hierarchy_group_sizes.split(",")
+        )
+        blur_sigmas = tuple(
+            float(value.strip()) for value in args.hierarchy_blur_sigmas.split(",")
+        )
+    except ValueError as error:
+        raise ValueError("invalid hierarchy group-size or sigma list") from error
+    if not group_sizes or any(value <= 0 for value in group_sizes):
+        raise ValueError("hierarchy group sizes must be positive")
+    if sum(group_sizes) != args.num_latents:
+        raise ValueError("hierarchy group sizes must sum to num_latents")
+    if len(blur_sigmas) != len(group_sizes):
+        raise ValueError("hierarchy group and sigma counts must match")
+    if any(not math.isfinite(value) or value < 0 for value in blur_sigmas):
+        raise ValueError("hierarchy blur sigmas must be finite and non-negative")
+    if blur_sigmas[-1] != 0:
+        raise ValueError("the final hierarchy blur sigma must be zero")
+    if any(first <= second for first, second in zip(blur_sigmas, blur_sigmas[1:])):
+        raise ValueError("hierarchy blur sigmas must be strictly decreasing")
+    prefix_ends = []
+    running = 0
+    for size in group_sizes:
+        running += size
+        prefix_ends.append(running)
+    return {
+        "mode": args.hierarchy_mode,
+        "group_sizes": group_sizes,
+        "prefix_ends": tuple(prefix_ends),
+        "blur_sigmas": blur_sigmas,
+        "batch_size": min(args.hierarchy_batch_size, args.train_batch_size),
+        "loss_weight": args.hierarchy_loss_weight,
+    }
 
 
 def make_model_config(args: argparse.Namespace) -> TokenizerConfig:
@@ -537,11 +613,16 @@ def _next_batch(iterator, loader):
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
     args = parse_args(argv)
+    hierarchy_spec = resolve_hierarchy_spec(args)
     seed_everything(args.seed)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     model_config = make_model_config(args)
-    config_payload = {"model": model_config.fingerprint(), "training": vars(args)}
+    config_payload = {
+        "model": model_config.fingerprint(),
+        "training": vars(args),
+        "hierarchy": hierarchy_spec,
+    }
     (output_dir / "config.json").write_text(
         json.dumps(config_payload, indent=2, sort_keys=True) + "\n"
     )
@@ -631,6 +712,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     rolling_slot_balance = 0.0
     rolling_radial_log_power = 0.0
     rolling_perceptual = 0.0
+    rolling_hierarchy = 0.0
+    rolling_hierarchy_group = 0.0
     rolling_count = 0
     rolling_start = time.monotonic()
 
@@ -644,6 +727,9 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         prefix_lengths = None
         noise_mode = None
         noise_scales = None
+        hierarchy_group_indices = None
+        hierarchy_prefix_lengths = None
+        hierarchy_previous_prefix_lengths = None
         if args.decoder_jitter_std > 0:
             noise_mode = "add"
             noise_scales = torch.full(
@@ -676,6 +762,21 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 positions / max(1, args.num_latents - 1)
             ) ** args.ramp_power
             noise_scales = sigmas[None, :].expand(images.shape[0], -1)
+        if hierarchy_spec is not None:
+            hierarchy_batch = int(hierarchy_spec["batch_size"])
+            hierarchy_groups = len(hierarchy_spec["group_sizes"])
+            hierarchy_group_indices = torch.randint(
+                hierarchy_groups,
+                (hierarchy_batch,),
+                device=device,
+            )
+            prefix_ends = torch.tensor(
+                hierarchy_spec["prefix_ends"], device=device, dtype=torch.long
+            )
+            hierarchy_prefix_lengths = prefix_ends[hierarchy_group_indices]
+            if hierarchy_spec["mode"] == "innovation":
+                previous_indices = (hierarchy_group_indices - 1).clamp_min(0)
+                hierarchy_previous_prefix_lengths = prefix_ends[previous_indices]
         with autocast_context(args, device):
             output = model(
                 images,
@@ -683,6 +784,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 include_full_reconstruction=args.objective == "progressive",
                 noise_mode=noise_mode,
                 noise_scales=noise_scales,
+                hierarchy_prefix_lengths=hierarchy_prefix_lengths,
+                hierarchy_previous_prefix_lengths=(
+                    hierarchy_previous_prefix_lengths
+                ),
             )
             latents = output["latents"]
             full_reconstruction = output.get(
@@ -701,6 +806,42 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 full_loss
                 + args.prefix_loss_weight * prefix_loss
                 + args.shaping_loss_weight * shaping_loss
+            )
+        hierarchy_loss = loss.new_zeros(())
+        hierarchy_group_mean = 0.0
+        if hierarchy_spec is not None:
+            assert hierarchy_group_indices is not None
+            hierarchy_batch = int(hierarchy_spec["batch_size"])
+            targets = gaussian_lowpass_pyramid_fft(
+                images[:hierarchy_batch], hierarchy_spec["blur_sigmas"]
+            )
+            batch_indices = torch.arange(hierarchy_batch, device=device)
+            target = targets[batch_indices, hierarchy_group_indices]
+            reconstruction = output["hierarchy_reconstruction"].float()
+            if hierarchy_spec["mode"] == "cumulative":
+                hierarchy_loss = F.mse_loss(reconstruction, target)
+            else:
+                previous_indices = (hierarchy_group_indices - 1).clamp_min(0)
+                previous_target = targets[batch_indices, previous_indices]
+                previous_reconstruction = output[
+                    "hierarchy_previous_reconstruction"
+                ].float()
+                has_previous = (hierarchy_group_indices > 0).view(-1, 1, 1, 1)
+                previous_target = torch.where(
+                    has_previous, previous_target, torch.zeros_like(previous_target)
+                )
+                previous_reconstruction = torch.where(
+                    has_previous,
+                    previous_reconstruction,
+                    torch.zeros_like(previous_reconstruction),
+                )
+                hierarchy_loss = F.mse_loss(
+                    reconstruction - previous_reconstruction,
+                    target - previous_target,
+                )
+            loss = loss + args.hierarchy_loss_weight * hierarchy_loss
+            hierarchy_group_mean = float(
+                hierarchy_group_indices.float().mean().detach() + 1.0
             )
         radial_log_power_loss = loss.new_zeros(())
         if args.radial_log_power_weight > 0:
@@ -769,6 +910,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         rolling_slot_balance += float(slot_balance_penalty.detach())
         rolling_radial_log_power += float(radial_log_power_loss.detach())
         rolling_perceptual += float(perceptual_loss.detach())
+        rolling_hierarchy += float(hierarchy_loss.detach())
+        rolling_hierarchy_group += hierarchy_group_mean
         rolling_count += 1
         if completed_step % args.log_every == 0 or completed_step == 1:
             if device.type == "cuda":
@@ -788,6 +931,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                     rolling_radial_log_power / rolling_count
                 ),
                 "perceptual_loss": rolling_perceptual / rolling_count,
+                "hierarchy_loss": rolling_hierarchy / rolling_count,
+                "hierarchy_group_mean": (
+                    rolling_hierarchy_group / rolling_count
+                ),
                 "prefix_mean": prefix_mean,
                 "psnr_db": pixel_psnr(rolling_full / rolling_count),
                 "learning_rate": learning_rate,
@@ -819,11 +966,15 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             rolling_sigma_mean = rolling_floor_fraction = 0.0
             rolling_kurtosis = rolling_energy_cv = rolling_slot_balance = 0.0
             rolling_radial_log_power = rolling_perceptual = 0.0
+            rolling_hierarchy = rolling_hierarchy_group = 0.0
             rolling_count = 0
             rolling_start = time.monotonic()
 
         if args.eval_every > 0 and completed_step % args.eval_every == 0:
             evaluation_prefixes = (
+                tuple(hierarchy_spec["prefix_ends"])
+                if hierarchy_spec is not None
+                else
                 tuple(
                     sorted(
                         set(
@@ -883,11 +1034,15 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                     numbered_checkpoint.unlink()
                 os.link(latest_checkpoint, numbered_checkpoint)
 
-    prefixes = sorted(
-        set(
-            prefix
-            for prefix in (1, 2, 4, 8, 16, 32, args.num_latents)
-            if prefix <= args.num_latents
+    prefixes = (
+        list(hierarchy_spec["prefix_ends"])
+        if hierarchy_spec is not None
+        else sorted(
+            set(
+                prefix
+                for prefix in (1, 2, 4, 8, 16, 32, args.num_latents)
+                if prefix <= args.num_latents
+            )
         )
     )
     final_metrics = evaluate(

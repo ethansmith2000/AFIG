@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from progressive_tokenizer import ProgressiveTokenizer, TokenizerConfig  # noqa: E402
 from progressive_tokenizer.model import Rotary2D  # noqa: E402
 from progressive_tokenizer.training import (  # noqa: E402
+    gaussian_lowpass_pyramid_fft,
     lpips_reconstruction_loss,
     marginal_kurtosis_penalty,
     optimizer_parameter_groups,
@@ -38,6 +39,53 @@ def tiny_config() -> TokenizerConfig:
 
 
 class TestProgressiveTokenizer(unittest.TestCase):
+    def test_gaussian_pyramid_preserves_dc_and_has_exact_endpoint(self):
+        constant = torch.full((2, 3, 8, 8), 0.25)
+        levels = gaussian_lowpass_pyramid_fft(constant, (4.0, 2.0, 0.0))
+        self.assertEqual(levels.shape, (2, 3, 3, 8, 8))
+        torch.testing.assert_close(levels[:, 0], constant)
+        torch.testing.assert_close(levels[:, 1], constant)
+        self.assertTrue(torch.equal(levels[:, -1], constant.float()))
+
+    def test_gaussian_pyramid_dog_residuals_telescope(self):
+        torch.manual_seed(0)
+        images = torch.randn(2, 3, 8, 8)
+        levels = gaussian_lowpass_pyramid_fft(images, (4.0, 2.0, 1.0, 0.0))
+        residuals = torch.cat(
+            (levels[:, :1], levels[:, 1:] - levels[:, :-1]), dim=1
+        )
+        torch.testing.assert_close(residuals.sum(dim=1), images)
+        checkerboard = torch.tensor(
+            [[(-1.0) ** (row + column) for column in range(8)] for row in range(8)]
+        ).view(1, 1, 8, 8)
+        filtered = gaussian_lowpass_pyramid_fft(checkerboard, (2.0, 1.0, 0.0))
+        rms = filtered.square().mean(dim=(0, 2, 3, 4)).sqrt()
+        self.assertLess(float(rms[0]), float(rms[1]))
+        self.assertLess(float(rms[1]), float(rms[2]))
+
+    def test_grouped_hierarchy_decodes_share_noisy_latents_and_train(self):
+        torch.manual_seed(1)
+        model = ProgressiveTokenizer(tiny_config())
+        images = torch.randn(4, 3, 8, 8)
+        output = model(
+            images,
+            noise_mode="add",
+            noise_scales=torch.full((4, 4), 0.05),
+            hierarchy_prefix_lengths=torch.tensor([2, 4]),
+            hierarchy_previous_prefix_lengths=torch.tensor([1, 2]),
+        )
+        self.assertEqual(output["hierarchy_reconstruction"].shape, (2, 3, 8, 8))
+        self.assertEqual(
+            output["hierarchy_previous_reconstruction"].shape, (2, 3, 8, 8)
+        )
+        loss = (
+            F.mse_loss(output["reconstruction"], images)
+            + output["hierarchy_reconstruction"].square().mean()
+            + output["hierarchy_previous_reconstruction"].square().mean()
+        )
+        loss.backward()
+        self.assertGreater(float(model.pool_queries.grad.abs().sum()), 0.0)
+
     def test_radial_log_power_loss_is_distinct_finite_and_differentiable(self):
         torch.manual_seed(1)
         target = torch.randn(2, 3, 8, 8)

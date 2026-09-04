@@ -728,6 +728,8 @@ class ProgressiveTokenizer(nn.Module):
         include_full_reconstruction: bool = False,
         noise_mode: Optional[str] = None,
         noise_scales: Optional[torch.Tensor] = None,
+        hierarchy_prefix_lengths: Optional[torch.Tensor] = None,
+        hierarchy_previous_prefix_lengths: Optional[torch.Tensor] = None,
     ) -> dict[str, torch.Tensor]:
         mean, log_variance = self.encode_distribution(images)
         if self.config.variational and self.training:
@@ -758,6 +760,28 @@ class ProgressiveTokenizer(nn.Module):
                 raise ValueError("noise_mode must be mix or add")
         reconstruction = self.decode(decoded_latents, prefix_lengths)
         output = {"latents": latents, "reconstruction": reconstruction}
+        if hierarchy_prefix_lengths is not None:
+            hierarchy_batch = hierarchy_prefix_lengths.shape[0]
+            if hierarchy_batch > latents.shape[0]:
+                raise ValueError("hierarchy batch cannot exceed image batch")
+            output["hierarchy_reconstruction"] = self.decode(
+                decoded_latents[:hierarchy_batch], hierarchy_prefix_lengths
+            )
+        if hierarchy_previous_prefix_lengths is not None:
+            if hierarchy_prefix_lengths is None:
+                raise ValueError(
+                    "previous hierarchy prefixes require current hierarchy prefixes"
+                )
+            if (
+                hierarchy_previous_prefix_lengths.shape
+                != hierarchy_prefix_lengths.shape
+            ):
+                raise ValueError("current and previous hierarchy prefixes must match")
+            hierarchy_batch = hierarchy_previous_prefix_lengths.shape[0]
+            output["hierarchy_previous_reconstruction"] = self.decode(
+                decoded_latents[:hierarchy_batch],
+                hierarchy_previous_prefix_lengths,
+            )
         if self.config.variational:
             output["mean"] = mean
             output["log_variance"] = log_variance

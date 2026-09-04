@@ -1,0 +1,94 @@
+{
+  "date": "2026-09-04",
+  "status": "predeclared",
+  "hypothesis": "A small number of explicitly supervised coarse-to-fine groups can create genuine scale semantics without the full-generation tax of 64-way random-prefix reconstruction; additive DoG supervision may create stronger innovation semantics than cumulative targets alone.",
+  "control": {
+    "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
+    "prior": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2-prior-s1",
+    "fid_5k": 26.742993129687875,
+    "kid_5k": 0.017538033425807953,
+    "fid_10k": 24.534106902736653,
+    "kid_10k": 0.017646966502070427,
+    "mean_cumulative_target_mse": 0.04920742063970667,
+    "mean_innovation_target_mse": 0.051146514687894114,
+    "mean_innovation_cosine": 0.29542587252627
+  },
+  "pyramid": {
+    "type": "periodic Fourier Gaussian low-pass with telescoping adjacent differences",
+    "group_sizes": [11, 11, 11, 11, 10, 10],
+    "prefix_ends": [11, 22, 33, 44, 54, 64],
+    "blur_sigmas_pixels": [8.0, 4.0, 2.0, 1.0, 0.5, 0.0],
+    "amplitude_half_power_radii": [0.7495625005171103, 1.4991250010342205, 2.998250002068441, 5.996500004136882, 11.993000008273764, null],
+    "endpoint": "the zero-sigma final target is the input exactly, so the DoG residuals telescope losslessly",
+    "sampling": "one group is sampled uniformly per hierarchy example; 128 randomly positioned examples from each shuffled batch of 512 receive hierarchy supervision",
+    "jitter": "full and grouped decodes share the same latent-RMS-scaled sigma-0.05 noise realization"
+  },
+  "arms": {
+    "cumulative": {
+      "version": "v32",
+      "tokenizer": "v32-residual-e7p1-det-jitter05-slotbal2e3-hier-cum3e2-n64d16-s2",
+      "objective": "MSE between the sampled prefix reconstruction and its cumulative Gaussian low-pass target",
+      "weight": 0.03,
+      "calibrated_weighted_output_gradient_ratio": 0.25038886070251465,
+      "frozen_control_estimated_weighted_loss_ratio": 2.1975880735593796
+    },
+    "innovation": {
+      "version": "v33",
+      "tokenizer": "v33-residual-e7p1-det-jitter05-slotbal2e3-hier-innov23e3-n64d16-s2",
+      "objective": "MSE between adjacent prefix-decoder increments and the matching telescoping DoG residual",
+      "weight": 0.023,
+      "calibrated_weighted_output_gradient_ratio": 0.2505150284767151,
+      "frozen_control_estimated_weighted_loss_ratio": 1.7386445669729733
+    }
+  },
+  "common_configuration": {
+    "tokenizer_seed": 2,
+    "prior_seed": 1,
+    "latent_shape": [64, 16],
+    "pool": "residual_e7_p1",
+    "variational": false,
+    "decoder_jitter_std": 0.05,
+    "slot_balance_weight": 0.002,
+    "base_reconstruction": "full-image pixel MSE",
+    "tokenizer_steps": 15000,
+    "prior_steps": 60000,
+    "parameters": 60048576
+  },
+  "calibration": {
+    "checkpoint": "tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/checkpoint_final.pt",
+    "examples": 128,
+    "target_weighted_output_gradient_ratio": 0.25,
+    "artifact": "grouped_hierarchy_calibration.json",
+    "note": "large frozen-control scalar ratios reflect deliberately mismatched unordered prefix outputs; gradient calibration controls intervention strength"
+  },
+  "mechanism_gate": {
+    "role": "diagnostic and block-causal follow-up gate, not full-generation selection",
+    "cumulative": "mean cumulative-target MSE improves by at least 25% from the control",
+    "cumulative_threshold": 0.036905565479780006,
+    "innovation": "mean innovation-target MSE improves by at least 25% and mean innovation cosine exceeds the control",
+    "innovation_mse_threshold": 0.03835988601592059,
+    "innovation_cosine_threshold": 0.29542587252627,
+    "visual": "source, six targets, and six prefix reconstructions on fixed CIFAR test examples"
+  },
+  "selection": {
+    "reconstruction_role": "permissive codec-health veto only",
+    "primary_metrics": ["decoded_fid", "decoded_kid"],
+    "advance_5k_to_10k": "candidate FID improves, is within 2 points of control, or FID/KID disagree",
+    "replication_gate": "10k FID improves by at least 2 points and KID also improves",
+    "replication_tokenizer_seeds": [1, 3],
+    "block_causal_followup": "targeted mechanism gate passes and 10k FID is no worse than 2 points above control",
+    "combination_policy": "do not add a causal mask, tokenwise noise schedule, radial reconstruction term, or LPIPS in this screen"
+  },
+  "verification": {
+    "focused_tests": "23 passed",
+    "cpu_end_to_end_smokes": ["cumulative", "innovation"],
+    "full_architecture_batch_512_eager_peak_gib": {
+      "cumulative": 23.30668592453003,
+      "innovation": 26.224480628967285
+    },
+    "full_architecture_batch_512_compiled_peak_gib": {
+      "cumulative": 15.978221416473389,
+      "innovation": 17.54735040664673
+    }
+  }
+}

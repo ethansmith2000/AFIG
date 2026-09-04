@@ -22,6 +22,26 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-04 — grouped Gaussian/DoG hierarchy predeclared:** on the selected
+  v27 `64x16` residual+jitter+slot tokenizer, compare cumulative Gaussian
+  prefix targets against additive decoder-increment/DoG targets. Six groups end
+  at `11/22/33/44/54/64`, with sigmas `8/4/2/1/.5/0`; the final target is the
+  input exactly. Each step samples one group on 128 of 512 images and shares the
+  full decoder's noisy latents. Frozen-control output-gradient calibration sets
+  weights `0.030/0.023`. Mechanism alignment is audited separately from matched
+  prior FID/KID. No causal mask or per-token schedule is added until an objective
+  proves hierarchy without a decisive generation loss. Twenty-three tests and
+  CPU, eager-GPU, and compiled-GPU smokes pass.
+  [Exact protocol](reports/2026-08-26_autoencoder_program/grouped_hierarchy_screen.json).
+- **2026-09-04 — learned latent-factorization screen complete:** native
+  `32x32` is decisively destructive at 44.324/0.03289 FID/KID-5k. Native
+  `128x8` is healthy and retains the control effective rank, but reaches
+  27.891/0.01742 at 5k and 25.484/0.01741 at 10k versus `64x16` at
+  26.743/0.01754 and 24.534/0.01765. It costs roughly twice the prior compute
+  and misses the concordant replication gate. Retain `64x16`; end-to-end native
+  training does not erase the literal factorization preference.
+  [Exact screen](reports/2026-08-26_autoencoder_program/learned_latent_shape_screen.json).
+
 - **2026-09-03 — decoder-objective screen predeclared:** on the promoted v27
   tokenizer-seed-2 residual+jitter+slot design, isolate weak radial log-power
   matching from frozen LPIPS-Alex feature matching. A signal-relative `1e-3`
