@@ -628,6 +628,36 @@ control. No seed replication is warranted. Retain v27 and common time; preserve
 both v34 mechanisms only as tested controls. Repository and artifact cleanup is
 now unblocked.
 
+## Phase G — direct emergence and conditioning diagnosis (complete 2026-09-04)
+
+Instrument the actual 50-step Heun sampler for v27, v34 common time, and v34
+soft25. At eleven fixed snapshots, decode both the live noisy state and the
+predicted-clean endpoint, then score convergence to each run's own final sample
+in pixels, centered Inception features, seven complex-FFT bands, 64 native
+tokens, and five training-population PCA bands. This is descriptive and cannot
+reopen the completed FID selection. A separate selected-v27 intervention must
+shuffle resolved context between held-out examples and score only unresolved
+velocity targets before any settling order is called useful conditioning.
+
+Result: v27 has a clean distributed hierarchy. FFT radius 0-2 settles at `.1`,
+radii 3-8 at `.3`, 9-12 at `.4`, 13-16 at `.5`, and 17+ at `.6`. PCA ranks
+1-32 settle at `.2`, 33-128 at `.3`, 129-512 at `.4`, and 513-1024 at `.5`.
+All 64 native tokens settle at `.3`, so this order is mixed across tokens rather
+than encoded by their indices. At `.35/.5`, correct leading-PC context reduces
+unresolved-direction MSE versus sample-shuffled context by 9.24%/16.80%.
+Arbitrary native token groups also provide mutual global context, but do not
+define a resolving sequence.
+
+Soft25 mechanically correlates token index with settling time (`.574`) while
+leaving decoded frequency settling essentially unchanged and delaying centered
+Inception settling from `.7` to `.8`. Together with its worse FID, this rejects
+slot clock order as a proxy for useful conditional order. Preserve flat v27 and
+common time. Any future hierarchy should be an auxiliary learned subspace or
+multiscale readout aligned to conditional innovation, and must preserve rank and
+demonstrate context gain before matched-prior training.
+
+[Full result and figures](reports/2026-08-26_autoencoder_program/generation_trajectory/results.md).
+
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 
 The decoder-objective screen is closed before changing shape. Retrain native

@@ -22,7 +22,8 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
-- **2026-09-04 — direct generation-trajectory analysis predeclared:** compare
+- **2026-09-04 — generation is coarse-to-fine in distributed subspaces, not
+  native token order:** compare
   selected v27, v34 common time, and v34 soft25 from identical standardized
   Gaussian seeds through their actual 50-step Heun samplers. At eleven times,
   save the noisy latent state and the velocity field's predicted-clean endpoint;
@@ -31,8 +32,18 @@ verdicts live under `reports/` and are linked here.
   population-PCA bands. Early settling is treated as a conditioning candidate,
   not conditioning proof; a paired selected-v27 intervention separately
   shuffles resolved PCA directions across examples and scores the unresolved
-  velocity target. This analysis cannot reopen the completed v27 selection.
-  [Frozen protocol](reports/2026-08-26_autoencoder_program/generation_trajectory_protocol.json).
+  velocity target. The run completed under queued GPU locks. In v27, FFT bands
+  settle monotonically from radius 0-2 at `t=.1` through radius 17+ at `.6`;
+  PCA bands settle from ranks 1-32 at `.2` through ranks 513-1024 at `.5`, while
+  all 64 native tokens settle together at `.3`. Correct leading-PC context
+  reduces unresolved-direction MSE versus shuffled context by 9.24% at `.35`
+  and 16.80% at `.5`. Soft25 creates token-index timing (correlation `.574`)
+  but leaves frequency timing unchanged, delays Inception settling from `.7`
+  to `.8`, and was already worse in FID. The natural useful hierarchy is thus
+  a distributed leading-mode/coarse-to-residual/detail order, not a token
+  prefix. This analysis does not alter the completed v27 selection.
+  [Result and figures](reports/2026-08-26_autoencoder_program/generation_trajectory/results.md);
+  [exact protocol](reports/2026-08-26_autoencoder_program/generation_trajectory_protocol.json).
 
 - **2026-09-04 — full-depth input registers reach parity; soft SNR is not
   selected:** correct

@@ -1,0 +1,16 @@
+[gpu-claim] job=generation-trajectory-v27-v34 owner=AFIG -> gpu1
+/venv/main/lib/python3.12/site-packages/torch/nn/functional.py:2954: UserWarning: Mismatch dtype between input and weight: input dtype = c10::BFloat16, weight dtype = float, Cannot dispatch to fused implementation. (Triggered internally at /pytorch/aten/src/ATen/native/layer_norm.cpp:344.)
+  return torch.rms_norm(input, normalized_shape, weight, eps)
+{"run": "v27", "generated": 32}
+{"run": "v27", "generated": 64}
+{"run": "v27", "generated": 96}
+{"run": "v27", "generated": 128}
+{"run": "v34-common", "generated": 32}
+{"run": "v34-common", "generated": 64}
+{"run": "v34-common", "generated": 96}
+{"run": "v34-common", "generated": 128}
+{"run": "v34-soft25", "generated": 32}
+{"run": "v34-soft25", "generated": 64}
+{"run": "v34-soft25", "generated": 96}
+{"run": "v34-soft25", "generated": 128}
+{"complete": "/workspace/AFIG/reports/2026-08-26_autoencoder_program/generation_trajectory"}

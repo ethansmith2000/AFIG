@@ -1,6 +1,6 @@
 {
   "date": "2026-09-04",
-  "status": "predeclared_prelaunch",
+  "status": "complete",
   "question": "What image, frequency, token, and population-eigendirection structure stabilizes when during actual generation, and which emergent order is a plausible source of useful conditioning when native token index is unordered?",
   "runs": {
     "v27": "selected residual-Perceiver tokenizer and common-time prior",
@@ -70,5 +70,49 @@
     "If PCA or image-frequency bands order while tokens do not, the natural hierarchy is distributed across tokens and should be exposed with an auxiliary readout or basis-aware mechanism rather than arbitrary token indices.",
     "If soft25 orders its assigned token groups but not image frequencies or semantic features, it demonstrates schedule compliance without useful semantic alignment.",
     "This diagnostic does not alter the completed FID-based selection of v27."
-  ]
+  ],
+  "execution": {
+    "trajectory_code_commit": "e74c61f",
+    "context_intervention_commit": "56bed96",
+    "queue": "gpu-claim lifetime locks on GPU 1",
+    "trajectory_completed_utc": "2026-09-04T22:01:56Z",
+    "context_intervention_completed_utc": "2026-09-04T22:04:13Z",
+    "trajectory_samples": 128,
+    "context_eval_samples": 2048,
+    "result": "generation_trajectory/results.md"
+  },
+  "results": {
+    "v27_frequency_settling": {
+      "r0-2": 0.1,
+      "r3-4": 0.3,
+      "r5-6": 0.3,
+      "r7-8": 0.3,
+      "r9-12": 0.4,
+      "r13-16": 0.5,
+      "r17+": 0.6
+    },
+    "v27_pca_settling": {
+      "pc1-8": 0.2,
+      "pc9-32": 0.2,
+      "pc33-128": 0.3,
+      "pc129-512": 0.4,
+      "pc513-1024": 0.5
+    },
+    "native_token_order": {
+      "v27": "all 64 tokens settle at 0.3",
+      "v34-common": "6 settle at 0.2 and 58 at 0.3; index correlation -0.061",
+      "v34-soft25": "1 settles at 0.2, 48 at 0.3, and 15 at 0.4; index correlation 0.574"
+    },
+    "inception_settling": {
+      "v27": 0.7,
+      "v34-common": 0.7,
+      "v34-soft25": 0.8
+    },
+    "v27_eigen_context_gain_vs_shuffle": {
+      "t=0.35": 0.0923964149305193,
+      "t=0.5": 0.16804225937846748,
+      "late_tail_caveat": "At t=0.65 and 0.8 only 16 near-null late coordinates qualify and shuffling is slightly favorable."
+    },
+    "verdict": "The useful emergence order is distributed across tokens and aligned with leading latent eigendirections and decoded spatial scale. Soft token-index timing imposes a slot order without improving that hierarchy."
+  }
 }

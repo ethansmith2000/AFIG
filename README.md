@@ -64,6 +64,12 @@ retaining the hard-VAE path as a conservative stability control.
   full-depth-register control at both 5k and 10k (`25.60` versus `24.27` FID at
   10k). Keep common time; latent register index did not inherit the useful
   frequency ordering of image space under this construction.
+- Direct sampler trajectories show that v27 nevertheless has an emergent
+  distributed hierarchy: low image frequencies settle before high frequencies,
+  and leading latent PCs settle before the population tail, while all 64 native
+  tokens settle together. Shuffling already-resolved leading PCs raises error
+  on unresolved directions by 9.24% at `t=.35` and 16.80% at `t=.5`, confirming
+  that the middle-trajectory global structure is useful context.
 - Decoder-only sigma-0.05 latent jitter improves expected matched-prior
   generation across tokenizer and prior seeds, although one tokenizer seed
   regresses; it is the retained expected-value training design.
@@ -76,13 +82,17 @@ retaining the hard-VAE path as a conservative stability control.
 
 ## Current follow-up
 
-The planned representation screen is closed with v27 retained. The immediate
-work is repository and generated-artifact cleanup: preserve the selected v27
+The planned representation screen and direct trajectory diagnosis are closed
+with v27 retained. If hierarchy is revisited, the evidence favors an auxiliary
+ordered subspace or multiscale readout over native token scheduling. The
+immediate work is repository and generated-artifact cleanup: preserve the selected v27
 line, v34's final evidence, reusable analysis/evaluation infrastructure, and
 small ablation controls while removing redundant intermediate checkpoints,
 obsolete launch surfaces, and genuinely dead legacy modules/tests. Details of
 the final screen are in
 `reports/2026-08-26_autoencoder_program/input_register_soft_snr_screen.json`;
+the direct emergence analysis is in
+`reports/2026-08-26_autoencoder_program/generation_trajectory/results.md`;
 the read-only cleanup inventory and proposed retention boundary are in
 `reports/2026-09-04_cleanup_audit.md`.
 

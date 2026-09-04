@@ -1542,3 +1542,23 @@ attention cost and effective-rank decrease from `377.43` to `347.84`. Soft25
 produces `28.296/.018725` at 5k and `25.599/.017961` at 10k, worsening its
 exact-cache common control on both metrics and both sample counts. Retain v27
 residual pooling with common time; no replication. Cleanup may now proceed.
+
+### Direct generation emergence and context intervention (complete 2026-09-04)
+
+Instrumented 50-step Heun trajectories on v27, v34 common, and v34 soft25 show
+that useful order exists without a native token prefix. In selected v27,
+predicted-clean low image frequencies settle first (`t=.1` for FFT radius 0-2),
+then progressively higher bands through `.6`. Leading population PCs settle at
+`.2`, followed by the tail through `.5`; all 64 native tokens settle together
+at `.3`. The order therefore lives in distributed latent directions and decoded
+spatial scale rather than token index.
+
+A held-out intervention supplies the causal/model-use check: at `.35` and `.5`,
+preserving correct resolved leading-PC coefficients instead of shuffling them
+between examples reduces MSE on unresolved velocity directions by 9.24% and
+16.80%. Soft25 creates token-index settling correlation `.574`, but does not
+accelerate frequency emergence and delays centered Inception settling from `.7`
+to `.8`. Retain common-time v27. The next hierarchy candidate, if pursued, is an
+auxiliary learned subspace or multiscale readout attached to the flat code, not
+another native-prefix or magnitude hierarchy. Full evidence:
+`generation_trajectory/results.md`.
