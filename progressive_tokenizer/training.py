@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Iterable
+from typing import Iterable, Sequence
 
 import torch
 import torch.nn as nn
@@ -60,6 +60,28 @@ def slot_variance_balance_penalty(latents: torch.Tensor) -> torch.Tensor:
     slot_power = centered.square().mean(dim=(0, 2))
     relative_power = slot_power / slot_power.mean().clamp_min(1e-8)
     return (relative_power - 1.0).square().mean()
+
+
+def soften_snr1_crossings(
+    crossings: Sequence[float], strength: float
+) -> list[float]:
+    """Interpolate SNR=1 crossings toward common time in logit space.
+
+    ``strength=0`` maps every crossing to 0.5, ``strength=1`` preserves the
+    supplied schedule, and intermediate values retain its order with a gentler
+    log-SNR spread. Clean latent magnitudes and both diffusion endpoints are
+    unaffected.
+    """
+
+    if not math.isfinite(strength) or not 0.0 <= strength <= 1.0:
+        raise ValueError("SNR crossing strength must lie in [0,1]")
+    softened = []
+    for crossing in crossings:
+        if not math.isfinite(crossing) or not 0.0 < crossing < 1.0:
+            raise ValueError("SNR=1 crossings must lie strictly inside (0,1)")
+        logit = math.log(crossing / (1.0 - crossing))
+        softened.append(1.0 / (1.0 + math.exp(-strength * logit)))
+    return softened
 
 
 def radial_log_power_reconstruction_loss(

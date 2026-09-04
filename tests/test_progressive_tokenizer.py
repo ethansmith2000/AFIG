@@ -19,6 +19,7 @@ from progressive_tokenizer.training import (  # noqa: E402
     marginal_kurtosis_penalty,
     optimizer_parameter_groups,
     radial_log_power_reconstruction_loss,
+    soften_snr1_crossings,
     slot_variance_balance_penalty,
 )
 
@@ -39,6 +40,27 @@ def tiny_config() -> TokenizerConfig:
 
 
 class TestProgressiveTokenizer(unittest.TestCase):
+    def test_snr_crossing_softening_interpolates_in_logit_space(self):
+        crossings = [0.17456502825094655, 0.5, 0.8473513676508831]
+        self.assertEqual(soften_snr1_crossings(crossings, 0.0), [0.5] * 3)
+        preserved = soften_snr1_crossings(crossings, 1.0)
+        for actual, expected in zip(preserved, crossings):
+            self.assertAlmostEqual(actual, expected)
+        softened = soften_snr1_crossings(crossings, 0.25)
+        self.assertAlmostEqual(softened[0], 0.40410173521418785)
+        self.assertEqual(softened[1], 0.5)
+        self.assertAlmostEqual(softened[2], 0.6055140332654796)
+        self.assertEqual(softened, sorted(softened))
+        with self.assertRaises(ValueError):
+            soften_snr1_crossings(crossings, 1.1)
+
+    def test_rotary_2d_can_leave_input_register_tail_unrotated(self):
+        rope = Rotary2D(grid_size=2, head_dim=8, identity_tokens=3)
+        values = torch.randn(2, 4, 7, 8)
+        rotated = rope.rotate(values)
+        torch.testing.assert_close(rotated[..., 4:, :], values[..., 4:, :])
+        self.assertFalse(torch.equal(rotated[..., :4, :], values[..., :4, :]))
+
     def test_gaussian_pyramid_preserves_dc_and_has_exact_endpoint(self):
         constant = torch.full((2, 3, 8, 8), 0.25)
         levels = gaussian_lowpass_pyramid_fft(constant, (4.0, 2.0, 0.0))
@@ -249,6 +271,34 @@ class TestProgressiveTokenizer(unittest.TestCase):
         self.assertGreater(float(model.register_adapter.input.weight.grad.abs().sum()), 0)
         self.assertGreater(float(model.pool_queries.grad.abs().sum()), 0)
 
+    def test_input_register_tokens_participate_in_every_encoder_block(self):
+        config = TokenizerConfig(
+            **{
+                **tiny_config().fingerprint(),
+                "encoder_depth": 2,
+                "pool_type": "input_register_tokens",
+                "pool_depth": 1,
+            }
+        )
+        model = ProgressiveTokenizer(config)
+        observed_lengths = []
+        handle = model.encoder_blocks[0].register_forward_pre_hook(
+            lambda _module, inputs: observed_lengths.append(inputs[0].shape[1])
+        )
+        images = torch.randn(2, 3, 8, 8)
+        output = model(images, prefix_lengths=torch.tensor([2, 3]))
+        handle.remove()
+        self.assertEqual(observed_lengths, [8])
+        self.assertEqual(output["latents"].shape, (2, 4, 8))
+        F.mse_loss(output["reconstruction"], images).backward()
+        self.assertIsNone(model.register_joint_block)
+        self.assertIsNotNone(model.input_register_rope)
+        self.assertIsNotNone(model.register_adapter)
+        for block in model.encoder_blocks:
+            self.assertGreater(float(block.attention.qkv.weight.grad.abs().sum()), 0)
+        self.assertGreater(float(model.register_adapter.input.weight.grad.abs().sum()), 0)
+        self.assertGreater(float(model.pool_queries.grad.abs().sum()), 0)
+
     def test_stage_a_pooling_arms_are_parameter_exact(self):
         base = tiny_config().fingerprint()
         cross = ProgressiveTokenizer(
@@ -281,9 +331,19 @@ class TestProgressiveTokenizer(unittest.TestCase):
                 }
             )
         )
+        input_registers = ProgressiveTokenizer(
+            TokenizerConfig(
+                **{
+                    **base,
+                    "encoder_depth": 2,
+                    "pool_type": "input_register_tokens",
+                    "pool_depth": 1,
+                }
+            )
+        )
         counts = {
             sum(parameter.numel() for parameter in model.parameters())
-            for model in (cross, residual, registers)
+            for model in (cross, residual, registers, input_registers)
         }
         self.assertEqual(len(counts), 1)
 

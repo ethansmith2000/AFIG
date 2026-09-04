@@ -28,7 +28,11 @@ from progressive_tokenizer.representations import (
     latent_transform_fingerprint,
     representation_type,
 )
-from progressive_tokenizer.training import count_parameters, optimizer_parameter_groups
+from progressive_tokenizer.training import (
+    count_parameters,
+    optimizer_parameter_groups,
+    soften_snr1_crossings,
+)
 from progressive_tokenizer.tracking import WandbTracker
 
 
@@ -100,6 +104,16 @@ def parse_args() -> argparse.Namespace:
         "--token_snr1_crossings",
         default=None,
         help="Comma-separated target base times where each token group reaches SNR=1.",
+    )
+    parser.add_argument(
+        "--token_snr_logit_strength",
+        type=float,
+        default=1.0,
+        help=(
+            "Interpolate declared SNR=1 crossings toward common t=0.5 in "
+            "logit space. Zero is common time and one preserves the supplied "
+            "crossings; clean latent magnitudes and endpoints are unchanged."
+        ),
     )
     parser.add_argument(
         "--token_loss_group_weights",
@@ -476,9 +490,10 @@ def main() -> None:
     if not bool(torch.isfinite(global_scale)) or float(global_scale) <= 0:
         raise ValueError("invalid global latent scale")
     group_sizes = parse_csv_values(args.token_group_sizes, int, "token_group_sizes")
-    crossings = parse_csv_values(
+    crossing_anchors = parse_csv_values(
         args.token_snr1_crossings, float, "token_snr1_crossings"
     )
+    crossings = crossing_anchors
     group_loss_weights = parse_csv_values(
         args.token_loss_group_weights, float, "token_loss_group_weights"
     )
@@ -486,13 +501,16 @@ def main() -> None:
     if args.time_parameterization == "global":
         if crossings is not None:
             raise ValueError("global time cannot use token_snr1_crossings")
+        if args.token_snr_logit_strength != 1.0:
+            raise ValueError("global time cannot use token_snr_logit_strength")
     else:
         if group_sizes is None or crossings is None:
             raise ValueError(
                 "rational_per_token requires token_group_sizes and token_snr1_crossings"
             )
-        if any(not math.isfinite(value) or not 0 < value < 1 for value in crossings):
-            raise ValueError("token SNR=1 crossings must lie strictly inside (0,1)")
+        crossings = soften_snr1_crossings(
+            crossings, args.token_snr_logit_strength
+        )
         expanded_crossings = expand_group_values(
             group_sizes, crossings, sequence_length
         )
@@ -592,6 +610,8 @@ def main() -> None:
     time_parameterization_payload = {
         "type": args.time_parameterization,
         "group_sizes": group_sizes,
+        "snr1_crossing_anchors": crossing_anchors,
+        "snr1_logit_strength": args.token_snr_logit_strength,
         "snr1_crossings": crossings,
         "token_time_scales": list(token_time_scales) if token_time_scales else None,
     }

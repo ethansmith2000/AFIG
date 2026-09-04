@@ -28,11 +28,12 @@ assumed to improve full-length generation.
 - Raw PCA concentration and static token-magnitude schedules are rejected in
   their tested gauges. The loss-compensated alpha-0.50 scale still reached FID
   39.89 versus the flat progressive control's 35.85.
-- No latent-formation arm wins every tokenizer seed. Across three matched 10k
+- No completed latent-formation arm wins every tokenizer seed. Across three matched 10k
   evaluations, residual pooling has the best mean FID/KID and beats cross-only
-  in two seeds; register tokens have the lowest variance and best worst-case
-  FID but the worst mean. Carry residual as the primary baseline and registers
-  as the stability control.
+  in two seeds; late one-block register formation has the lowest variance and
+  best worst-case FID but the worst mean. Carry residual as the primary baseline
+  and late registers as the stability control while the full-depth correction
+  below is measured.
 - The historical hard-clamped "VAE" is effectively deterministic plus tiny
   fixed jitter and a mean penalty. The completed posterior/noise study promotes
   deterministic sigma-0.05 decoder jitter for expected value while retaining
@@ -57,7 +58,7 @@ Train three full-only `64x16` tokenizers with seed 3, 15k steps, and exactly
 |---|---:|---|---|
 | v8 | 8 blocks | one terminal cross read | reproducible control |
 | v12 | 7 blocks | cross read + register self-attention + FFN | final residual-pool replication |
-| v13 | 7 blocks | patches and registers share one bidirectional block, then a matched register adapter | true register-token alternative |
+| v13 | 7 blocks | patches and registers share one terminal bidirectional block, then a matched register adapter | late-register alternative |
 
 The v13 mixed block uses learned patch positions and learned register identities
 without a shared RoPE: patch position is 2-D, while register position is a
@@ -578,6 +579,42 @@ capacity/locality remains conditional on such a representation-side gain.
 Deprioritize marginal kurtosis, static token-magnitude schedules, the tested
 tokenwise time warps, direct `2x2` patching, and register+jitter without a new
 mechanistic hypothesis; each has already missed a declared gate.
+
+## Phase F — full-depth input registers with soft SNR (predeclared 2026-09-04)
+
+Correct the scope of the earlier v13/v25 result: those arms inserted registers
+only for one terminal joint block. V34 concatenates 64 learned registers with
+the 64 `4x4` patch embeddings before block 1 and carries the 128-token sequence
+through all eight bidirectional encoder blocks. Patch tokens keep learned 2-D
+positions and 2-D RoPE; register identities are learned and receive identity
+rotations. The register adapter preserves the exact 60,048,576 parameters of
+the deterministic v27 control. Retain full reconstruction, sigma-0.05 decoder
+jitter, slot balance `0.002`, tokenizer seed 2, and the native `64x16` code.
+
+One frozen v34 cache receives two prior-seed-1 60k joint flows. The first uses
+the standard common time. The second keeps clean magnitudes and tensor-wide
+normalization unchanged but softens the six CIFAR radial SNR=1 anchors toward
+`t=.5` in logit space with strength `lambda=.25`:
+
+`soft_i = sigmoid(.25 * logit(anchor_i))`.
+
+For anchors `.1746/.3830/.5262/.6275/.7425/.8474`, the effective crossings are
+`.4041/.4702/.5066/.5325/.5658/.6055`. Groups remain
+`11/11/11/11/10/10` in native register-index order. Both priors predict the
+same base displacement with uniform loss. Do not add magnitude rescaling,
+radial-variance weighting, causality, or a prefix/hierarchy objective. A
+unit-scale rational path is bitwise identical to the global model path under
+matched initialization, so the soft comparison isolates the trajectory.
+
+Both 5k priors run after codec health regardless of the architecture result.
+Compare common-time v34 to v27 for formation and soft v34 to common v34 for the
+schedule. Advance a relevant comparison to 10k if FID improves, is within two,
+or FID/KID disagree. A >=2-FID 10k gain with lower KID against both its exact
+control and v27 is required before seed replication of the combined design.
+Thirty-six directly affected tests and 53 active progressive-path tests pass,
+along with CPU/tokenwise-time end-to-end smokes. Exact
+batch-512 eager/compiled peaks are 27.71/19.17 GiB under `gpu-claim`.
+Repository tagging and artifact cleanup wait until this screen closes.
 
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 

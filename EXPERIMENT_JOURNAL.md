@@ -22,6 +22,23 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-04 — full-depth input registers plus soft SNR predeclared:** correct
+  the earlier late-register scope by placing 64 learned registers beside the
+  patch embeddings before encoder block 1 and carrying them through all eight
+  bidirectional blocks. V34 remains parameter-exact with v27 and retains
+  deterministic `64x16`, decoder jitter `.05`, slot balance `.002`, and full
+  reconstruction. Its single frozen cache receives common-time and softened
+  tokenwise-time priors. The soft schedule keeps clean magnitudes and uniform
+  loss unchanged and maps the CIFAR crossing anchors toward `.5` with
+  `sigmoid(.25*logit(anchor))`, giving `.404/.470/.507/.533/.566/.606`.
+  Architecture and schedule effects have separate exact controls and frozen
+  5k-to-10k gates. Thirty-six directly affected and 53 active-path tests, CPU
+  and queued prior smokes, and queued batch-512 eager/compiled checks pass at
+  27.71/19.17 GiB. One initial tiny
+  smoke accidentally inherited CUDA outside the queue for roughly seven
+  seconds; it caused no observed failure, was rerun CPU-only, and all subsequent
+  GPU work used `gpu-claim`.
+  [Exact protocol](reports/2026-08-26_autoencoder_program/input_register_soft_snr_screen.json).
 - **2026-09-04 — grouped Gaussian/DoG hierarchy succeeds mechanically but is
   rejected for generation:** both six-group objectives produce a clear
   coarse-to-fine decoder. Cumulative target MSE falls 94.6% to `0.0026397`;

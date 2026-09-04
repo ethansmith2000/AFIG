@@ -69,11 +69,24 @@ class TokenizerConfig:
             raise ValueError("all model depths must be positive")
         if self.mlp_ratio <= 0:
             raise ValueError("mlp_ratio must be positive")
-        if self.pool_type not in {"residual", "cross_only", "register_tokens"}:
+        if self.pool_type not in {
+            "residual",
+            "cross_only",
+            "register_tokens",
+            "input_register_tokens",
+        }:
             raise ValueError(
-                "pool_type must be residual, cross_only, or register_tokens"
+                "pool_type must be residual, cross_only, register_tokens, "
+                "or input_register_tokens"
             )
-        if self.pool_type in {"cross_only", "register_tokens"} and self.pool_depth != 1:
+        if (
+            self.pool_type in {
+                "cross_only",
+                "register_tokens",
+                "input_register_tokens",
+            }
+            and self.pool_depth != 1
+        ):
             raise ValueError(
                 f"{self.pool_type} pooling requires pool_depth=1"
             )
@@ -122,10 +135,18 @@ class TokenizerConfig:
 class Rotary2D(nn.Module):
     """Fixed-grid 2-D rotary tables built and cached in float32."""
 
-    def __init__(self, grid_size: int, head_dim: int, theta: float = 10_000.0):
+    def __init__(
+        self,
+        grid_size: int,
+        head_dim: int,
+        theta: float = 10_000.0,
+        identity_tokens: int = 0,
+    ):
         super().__init__()
         if head_dim % 4:
             raise ValueError("2-D RoPE requires head_dim divisible by four")
+        if identity_tokens < 0:
+            raise ValueError("identity_tokens must be non-negative")
         axis_dim = head_dim // 2
         inv_freq = theta ** (
             -torch.arange(0, axis_dim, 2, dtype=torch.float32) / axis_dim
@@ -140,8 +161,13 @@ class Rotary2D(nn.Module):
 
         cos_y, sin_y = axis_tables(yy)
         cos_x, sin_x = axis_tables(xx)
-        cos = torch.cat((cos_y, cos_x), dim=-1)[None, None]
-        sin = torch.cat((sin_y, sin_x), dim=-1)[None, None]
+        cos = torch.cat((cos_y, cos_x), dim=-1)
+        sin = torch.cat((sin_y, sin_x), dim=-1)
+        if identity_tokens:
+            cos = torch.cat((cos, torch.ones(identity_tokens, head_dim)), dim=0)
+            sin = torch.cat((sin, torch.zeros(identity_tokens, head_dim)), dim=0)
+        cos = cos[None, None]
+        sin = sin[None, None]
         self.register_buffer("cos", cos, persistent=False)
         self.register_buffer("sin", sin, persistent=False)
 
@@ -491,6 +517,17 @@ class ProgressiveTokenizer(nn.Module):
         self.encoder_rope = Rotary2D(
             config.encoder_grid_size, config.head_dim, config.rope_theta
         )
+        self.input_register_rope: Optional[Rotary2D] = None
+        if config.pool_type == "input_register_tokens":
+            # Preserve the patch trunk's 2-D rotary geometry while leaving the
+            # learned register identities unrotated. All tokens still share the
+            # same bidirectional self-attention operation.
+            self.input_register_rope = Rotary2D(
+                config.encoder_grid_size,
+                config.head_dim,
+                config.rope_theta,
+                identity_tokens=config.num_latents,
+            )
         self.encoder_blocks = nn.ModuleList(
             EncoderBlock(config) for _ in range(config.encoder_depth)
         )
@@ -522,16 +559,19 @@ class ProgressiveTokenizer(nn.Module):
                 config.cross_attention_bias,
             )
         else:
-            # A true register-token alternative to Perceiver pooling. Patches
-            # and learned registers share a bidirectional block, after which a
-            # register-only adapter replaces the baseline terminal cross read.
-            # The launcher reallocates one patch-only encoder block here
-            # (e7+j1), keeping the v8/v12 parameter count exact.
+            # Register-token alternatives to Perceiver pooling. The historical
+            # register_tokens path inserts registers for one terminal joint
+            # block; input_register_tokens places them before the whole trunk.
+            # A register-only adapter replaces the baseline terminal cross read.
+            # The late path reallocates one patch-only block (e7+j1); the input
+            # path uses all eight encoder blocks jointly. Both remain parameter
+            # exact with the v8/v12 formation controls.
             self.pool_blocks = nn.ModuleList()
             self.pool_query_norm = None
             self.pool_memory_norm = None
             self.pool_attention = None
-            self.register_joint_block = EncoderBlock(config)
+            if config.pool_type == "register_tokens":
+                self.register_joint_block = EncoderBlock(config)
             self.register_adapter_norm = _norm(config.width)
             self.register_adapter = RegisterAdapter(config.width, config.head_dim)
         self.latent_norm = _norm(config.width)
@@ -592,11 +632,27 @@ class ProgressiveTokenizer(nn.Module):
             )
         patches = self.patch_embed(images).flatten(2).transpose(1, 2)
         patches = patches + self.encoder_position
-        for block in self.encoder_blocks:
-            patches = block(patches, self.encoder_rope)
-        patches = self.encoder_norm(patches)
-
         queries = self.pool_queries.expand(images.shape[0], -1, -1)
+        if self.config.pool_type == "input_register_tokens":
+            if (
+                self.input_register_rope is None
+                or self.register_adapter_norm is None
+                or self.register_adapter is None
+            ):
+                raise RuntimeError("input register-token modules were not constructed")
+            joint = torch.cat((patches, queries), dim=1)
+            for block in self.encoder_blocks:
+                joint = block(joint, self.input_register_rope)
+            joint = self.encoder_norm(joint)
+            queries = joint[:, self.config.encoder_num_patches :]
+            queries = queries + self.register_adapter(
+                self.register_adapter_norm(queries)
+            )
+        else:
+            for block in self.encoder_blocks:
+                patches = block(patches, self.encoder_rope)
+            patches = self.encoder_norm(patches)
+
         if self.config.pool_type == "residual":
             for block in self.pool_blocks:
                 queries = block(queries, patches)
@@ -610,7 +666,7 @@ class ProgressiveTokenizer(nn.Module):
             queries = self.pool_attention(
                 self.pool_query_norm(queries), self.pool_memory_norm(patches)
             )
-        else:
+        elif self.config.pool_type == "register_tokens":
             if (
                 self.register_joint_block is None
                 or self.register_adapter_norm is None

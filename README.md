@@ -53,6 +53,9 @@ retaining the hard-VAE path as a conservative stability control.
 - Residual register refinement produced the best seed-1 checkpoint and repeated
   across two prior seeds, but did not repeat at tokenizer seed 2. It remains a
   checkpoint-level result, not a confirmed architecture effect.
+- The prior "register-token" controls introduced learned registers only for the
+  final shared encoder block. They are late-register controls, not tests of
+  registers participating from encoder input through the complete trunk.
 - Decoder-only sigma-0.05 latent jitter improves expected matched-prior
   generation across tokenizer and prior seeds, although one tokenizer seed
   regresses; it is the retained expected-value training design.
@@ -65,14 +68,14 @@ retaining the hard-VAE path as a conservative stability control.
 
 ## Current follow-up
 
-The slot-balance campaign is complete. It passes its predeclared multi-tokenizer
-seed promotion gate but shows prior-seed sensitivity on its weakest tokenizer
-seed. The next screen isolates restrained frequency-aware and perceptual
-decoder objectives on this leading expected-value design, with the
-unregularized residual+jitter checkpoint retained as a control. Reconstruction
-remains only a permissive codec-health veto; decoded FID/KID selects
-representation quality. Details and exact stop rules are in
-`reports/2026-08-26_autoencoder_program/plan.md`.
+One final architecture correction is active before repository cleanup. V34
+places 64 learned registers beside the patch embeddings before encoder block 1,
+so they participate in all eight bidirectional blocks. Its frozen cache receives
+matched common-time and one-quarter-strength image-spectral log-SNR priors. The
+soft arm changes only tokenwise noise/time trajectories; clean magnitudes and
+uniform loss remain unchanged. Reconstruction is a permissive health veto and
+decoded FID/KID selects. Details and exact stop rules are in
+`reports/2026-08-26_autoencoder_program/input_register_soft_snr_screen.json`.
 
 ## Running safely
 
@@ -104,7 +107,7 @@ lifetime GPU claims.
 ```bash
 /venv/main/bin/python -m pytest -q tests/test_progressive_tokenizer.py
 CUDA_VISIBLE_DEVICES='' /venv/main/bin/python train_progressive_tokenizer.py \
-  --smoke --pool_type register_tokens --pool_depth 1 \
+  --smoke --pool_type input_register_tokens --pool_depth 1 \
   --output_dir /tmp/afig-register-smoke
 ```
 

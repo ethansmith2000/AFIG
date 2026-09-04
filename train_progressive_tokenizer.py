@@ -166,7 +166,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--pool_depth", type=int, default=2)
     parser.add_argument(
         "--pool_type",
-        choices=["residual", "cross_only", "register_tokens"],
+        choices=[
+            "residual",
+            "cross_only",
+            "register_tokens",
+            "input_register_tokens",
+        ],
         default="residual",
     )
     parser.add_argument("--decoder_depth", type=int, default=8)

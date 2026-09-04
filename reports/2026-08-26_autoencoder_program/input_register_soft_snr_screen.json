@@ -1,0 +1,126 @@
+{
+  "date": "2026-09-04",
+  "status": "predeclared_prelaunch",
+  "hypothesis": "Learned registers that participate from the first encoder block can form a better distributed whole-image representation than a terminal read, and a one-quarter-strength image-spectral log-SNR ordering can let early register groups become soft conditioning context without the exposure and optimization costs of the previously tested full-strength schedule.",
+  "tokenizer": {
+    "version": "v34",
+    "name": "v34-inputreg-e8-det-jitter05-slotbal2e3-n64d16-s2",
+    "seed": 2,
+    "latent_shape": [
+      64,
+      16
+    ],
+    "formation": "64 learned registers are concatenated with 64 non-overlapping 4x4 patch embeddings before encoder block 1 and participate in all eight bidirectional blocks",
+    "positions": "patch tokens retain learned 2D positions and 2D RoPE; register identities are learned truncated-normal vectors and receive identity rotary transforms",
+    "output": "retain the register slice, apply the parameter-matching register adapter, normalize, and project each register from width 512 to 16 channels",
+    "parameters": 60048576,
+    "parameter_control": "exactly equal to v27 residual pooling and the earlier deterministic formation arms",
+    "objective": "full-image pixel MSE plus scale-invariant sample-varying slot-power balance at weight 0.002",
+    "decoder_jitter_std": 0.05,
+    "variational": false,
+    "training_steps": 15000,
+    "batch_size": 512
+  },
+  "controls": {
+    "selected_tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
+    "selected_prior": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2-prior-s1",
+    "selected_fid_5k": 26.742993129687875,
+    "selected_kid_5k": 0.017538033425807953,
+    "selected_fid_10k": 24.534106902736653,
+    "selected_kid_10k": 0.017646966502070427,
+    "late_register_note": "v13/v25 inserted learned registers only for one terminal joint block; they are historical late-register controls, not tests of the present full-depth input-register design"
+  },
+  "priors": {
+    "common": {
+      "name": "v34-inputreg-e8-det-jitter05-slotbal2e3-n64d16-s2-prior-common-s1",
+      "time": "global linear rectified-flow path",
+      "loss": "uniform base-displacement MSE"
+    },
+    "soft25": {
+      "name": "v34-inputreg-e8-det-jitter05-slotbal2e3-n64d16-s2-prior-softsnr25-s1",
+      "time": "endpoint-preserving rational path with tokenwise time conditioning",
+      "loss": "uniform base-displacement MSE",
+      "token_group_sizes": [
+        11,
+        11,
+        11,
+        11,
+        10,
+        10
+      ],
+      "cifar_crossing_anchors": [
+        0.17456502825094655,
+        0.38296835060017503,
+        0.5262492263492242,
+        0.627482253623356,
+        0.742521533181472,
+        0.8473513676508831
+      ],
+      "logit_interpolation_strength": 0.25,
+      "effective_crossings": [
+        0.40410173521418785,
+        0.4702247739446839,
+        0.5065679675274289,
+        0.5325433480897788,
+        0.5658106972478606,
+        0.6055140332654796
+      ],
+      "token_time_scales": [
+        1.4746243652479383,
+        1.1266425237680853,
+        0.9740687609621771,
+        0.8777814117610856,
+        0.7673755637071974,
+        0.6514893876316873
+      ],
+      "formula": "effective crossing = sigmoid(0.25 * logit(CIFAR anchor)); rational scale = (1-crossing)/crossing",
+      "ordering": "native learned register index with no post-hoc permutation",
+      "clean_magnitude": "unchanged; both arms use the same tensor-wide population mean and standard deviation",
+      "excluded": [
+        "static token-magnitude rescaling",
+        "frequency-variance loss weighting",
+        "causal attention",
+        "prefix or Gaussian hierarchy loss"
+      ]
+    }
+  },
+  "common_prior_recipe": {
+    "seed": 1,
+    "width": 512,
+    "depth": 12,
+    "heads": 8,
+    "qk_norm": "rms",
+    "batch_size": 256,
+    "steps": 60000,
+    "learning_rate": 0.0001,
+    "sample_steps": 50,
+    "solver": "heun",
+    "evaluation_seed": 54321
+  },
+  "selection": {
+    "reconstruction_role": "permissive codec-health veto only: manually review only if PSNR is below 28 dB together with clean reconstruction FID above 25, or if outputs/statistics are non-finite or visibly corrupted",
+    "primary_metrics": [
+      "decoded_fid",
+      "decoded_kid"
+    ],
+    "architecture_comparison": "common-time v34 versus selected v27 at the same tokenizer/prior seeds",
+    "schedule_comparison": "soft25 versus common time on the exact same v34 cache",
+    "advance_5k_to_10k": "advance an arm when its relevant FID improves, lies within 2 points, or FID/KID disagree; run both 5k priors regardless of the common arm's architecture result so the exact-cache schedule effect remains identifiable",
+    "architecture_replication": "full-depth common time must improve v27 by at least 2 FID at 10k with lower KID before tokenizer seeds 1 and 3",
+    "combined_replication": "soft25 must improve its v34 common control and v27 by at least 2 FID at 10k with lower KID before tokenizer seeds 1 and 3",
+    "negative_result": "a concordant FID loss greater than 2 at 5k stops that comparison"
+  },
+  "verification": {
+    "focused_tests": "36 directly affected tests passed; 53 active progressive-path tests passed",
+    "legacy_suite_status": "six unrelated legacy test modules fail collection because already-removed frequency.py and diffusion_decoder.py modules remain referenced; this predates the v34 changes and is scheduled for repository cleanup",
+    "cpu_end_to_end_smoke": "passed",
+    "soft25_prior_end_to_end_smoke": "passed through gpu-claim",
+    "parameter_exact": true,
+    "unit_rational_time_equals_global_path": "identical state initialization and bitwise-identical forward output when all token scales are one",
+    "batch_512_eager_peak_gib": 27.707858562469482,
+    "batch_512_compiled_peak_gib": 19.166841506958008,
+    "gpu_preflight": "full-size eager and compiled checks passed through gpu-claim",
+    "incident": "the first two-step tiny smoke inherited visible CUDA and ran for about seven seconds without gpu-claim; it completed without observed contention, was immediately rerun with CUDA hidden, and no subsequent GPU action bypasses the queue"
+  },
+  "cleanup_policy": "tag and debloat only after this final screen so its required code and checkpoints are not removed mid-campaign"
+}

@@ -129,6 +129,36 @@ def test_rational_time_warp_has_common_endpoints_and_declared_crossings() -> Non
     torch.testing.assert_close(crossing.diagonal(), torch.full((4,), 0.5))
 
 
+def test_unit_rational_time_is_exactly_the_global_model_path() -> None:
+    common = dict(
+        sequence_length=4,
+        token_dim=8,
+        width=32,
+        depth=2,
+        num_heads=4,
+        mlp_ratio=2.0,
+    )
+    torch.manual_seed(17)
+    global_model = JointRectifiedFlow(JointFlowConfig(**common))
+    torch.manual_seed(17)
+    token_model = JointRectifiedFlow(
+        JointFlowConfig(
+            **common,
+            time_parameterization="rational_per_token",
+            token_time_scales=(1.0, 1.0, 1.0, 1.0),
+        )
+    )
+    for name, value in global_model.state_dict().items():
+        torch.testing.assert_close(value, token_model.state_dict()[name])
+    values = torch.randn(3, 4, 8)
+    time = torch.rand(3)
+    global_prediction = global_model.predict_velocity(values, time)
+    token_prediction = token_model.predict_velocity(
+        values, token_model.path_time(time)
+    )
+    torch.testing.assert_close(global_prediction, token_prediction, rtol=0, atol=0)
+
+
 def test_rational_time_warp_conditions_each_token_and_preserves_base_target() -> None:
     model = tiny_warped_model()
     clean = torch.randn(2, 4, 8)

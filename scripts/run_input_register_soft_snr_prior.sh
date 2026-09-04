@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Exact-cache common-time versus softened CIFAR-like SNR prior comparison.
+set -euo pipefail
+
+if [[ $# -ne 1 || ( "$1" != "control" && "$1" != "soft25" ) ]]; then
+  echo "usage: $0 {control|soft25}" >&2
+  exit 2
+fi
+
+cd /workspace/AFIG
+export PATH="$PATH:/workspace/bin"
+source /venv/main/bin/activate
+
+arm="$1"
+tokenizer_name="v34-inputreg-e8-det-jitter05-slotbal2e3-n64d16-s2"
+tokenizer="tokenizer_runs/${tokenizer_name}"
+cache="${tokenizer}/latents_final_original_flip.pt"
+ready="${tokenizer}/campaign_tokenizer_ready"
+failed="${tokenizer}/codec_health_gate_failed"
+
+while [[ ! -f "$ready" ]]; do
+  if [[ -f "$failed" ]]; then
+    echo "${arm} PRIOR CANCELLED BY TOKENIZER HEALTH GATE $(date -u +%FT%TZ)"
+    exit 0
+  fi
+  sleep 30
+done
+
+groups="11,11,11,11,10,10"
+anchors="0.17456502825094655,0.38296835060017503,0.5262492263492242,0.627482253623356,0.742521533181472,0.8473513676508831"
+case "$arm" in
+  control)
+    prior_name="${tokenizer_name}-prior-common-s1"
+    objective_args=(--time_parameterization global --token_loss_weighting uniform)
+    ;;
+  soft25)
+    prior_name="${tokenizer_name}-prior-softsnr25-s1"
+    objective_args=(
+      --time_parameterization rational_per_token
+      --token_group_sizes "$groups"
+      --token_snr1_crossings "$anchors"
+      --token_snr_logit_strength 0.25
+      --token_loss_weighting uniform
+    )
+    ;;
+esac
+
+prior="prior_runs/${prior_name}"
+evaluation="prior_evals/${prior_name}-060000"
+mkdir -p "$prior" "$evaluation"
+
+if [[ ! -f "${prior}/checkpoint_final.pt" ]]; then
+  resume_args=()
+  if [[ -f "${prior}/checkpoint_latest.pt" ]]; then
+    resume_args=(--resume "${prior}/checkpoint_latest.pt")
+  fi
+  gpu-claim run --owner AFIG --job "${prior_name}-train" --wait -- \
+    python -u train_progressive_joint_flow.py \
+      --latent_cache "$cache" --output_dir "$prior" --seed 1 \
+      --width 512 --depth 12 --num_heads 8 --qk_norm rms \
+      --batch_size 256 --num_workers 4 --learning_rate 1e-4 \
+      --warmup_steps 1000 --max_train_steps 60000 \
+      --checkpoint_every 2500 --keep_numbered_checkpoints 0 \
+      --report_to wandb --tracker_project_name afig-progressive-tokenizer \
+      --run_group autoencoder-input-register-soft-snr \
+      --run_name "$prior_name" "${objective_args[@]}" \
+      --compile "${resume_args[@]}" >> "${prior}.launch.log" 2>&1
+fi
+
+if [[ ! -f "${prior}/wandb_backup_attempted" ]]; then
+  timeout --signal=TERM 600s python -u scripts/backup_wandb_file.py \
+    "${prior}/checkpoint_final.pt" "${prior_name}-checkpoint" \
+    >> "${prior}.launch.log" 2>&1 || true
+  touch "${prior}/wandb_backup_attempted"
+fi
+
+if [[ ! -f "${evaluation}/metrics.json" ]]; then
+  gpu-claim run --owner AFIG --job "${prior_name}-eval5k" --wait -- \
+    python -u evaluate_progressive_joint_flow.py \
+      --checkpoint "${prior}/checkpoint_final.pt" --output_dir "$evaluation" \
+      --num_samples 5000 --batch_size 256 --sample_steps 50 --seed 54321 \
+      > "${evaluation}.log" 2>&1
+fi
+
+echo "INPUT REGISTER SNR ${arm} COMPLETE $(date -u +%FT%TZ)"

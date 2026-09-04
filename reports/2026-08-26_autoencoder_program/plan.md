@@ -1490,3 +1490,45 @@ explicit ordering, although it is not by itself proof of the FID cause. The
 block-causal follow-up is also disallowed because neither arm can satisfy its
 10k-within-two prerequisite. Preserve the objective and analysis code for
 variable-rate work, but retain flat v27 as the generation baseline.
+
+### Full-depth input-register plus softened-SNR correction (predeclared 2026-09-04)
+
+The prior v13/v25 label "true register tokens" was too broad. Those arms ran
+seven patch-only blocks and inserted learned registers only for one terminal
+joint block. They answer whether a late mixed read is preferable to Perceiver
+pooling, not whether registers benefit from repeated image interaction through
+the complete encoder. V34 supplies the intended missing cell.
+
+Concatenate 64 learned registers with 64 `4x4` patch embeddings before encoder
+block 1. Run all eight blocks bidirectionally over the 128-token sequence,
+retain the register slice, and apply the existing matched register adapter.
+Patch queries and keys retain 2-D RoPE while register queries and keys use the
+identity rotation; learned register vectors provide slot identity. This has
+exactly 60,048,576 parameters, matching deterministic v27. Hold tokenizer seed
+2, `64x16`, full pixel MSE, sigma-0.05 decoder-input jitter, slot balance
+`0.002`, optimizer, batch 512, and 15k steps fixed.
+
+After the permissive codec-health check, build one frozen cache and train two
+prior-seed-1 60k flows. Common time is both the architecture read against v27
+and the exact-cache schedule control. Soft time uses the existing rational
+per-token path, uniform base-displacement loss, and the six native-index groups
+`11/11/11/11/10/10`. Starting from the measured CIFAR radial crossings
+`.174565/.382968/.526249/.627482/.742522/.847351`, interpolate toward common
+time in logit space with fixed strength `.25`. The resulting crossings are
+`.404102/.470225/.506568/.532543/.565811/.605514`, with rational scales
+`1.47462/1.12664/.97407/.87778/.76738/.65149`. No token permutation, clean
+magnitude change, extra loss weighting, causal mask, or hierarchical tokenizer
+objective is allowed.
+
+Both priors receive 5k evaluation even if common-time formation loses, because
+the schedule effect is paired on the exact cache. Common v34 versus v27 tests
+formation; soft versus common v34 tests schedule. Continue a relevant comparison
+to 10k on an improvement, a gap within two FID, or metric disagreement. Only a
+concordant >=2-FID 10k improvement over both common v34 and v27 earns tokenizer
+seed 1/3 replication of the combined design. Thirty-six directly affected and
+53 active progressive-path tests pass, together with CPU end-to-end,
+softened-prior end-to-end, and full batch-512 eager/compiled smokes; GPU peaks
+are 27.71/19.17 GiB. Six unrelated legacy test files still reference the
+already-removed `frequency.py`/`diffusion_decoder.py` modules and fail collection;
+that pre-existing stale surface is explicitly deferred to repository cleanup.
+The exact machine-readable protocol is `input_register_soft_snr_screen.json`.
