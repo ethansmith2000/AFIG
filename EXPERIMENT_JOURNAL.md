@@ -22,21 +22,19 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
-- **2026-09-04 — grouped Gaussian/DoG hierarchy predeclared:** on the selected
-  v27 `64x16` residual+jitter+slot tokenizer, compare cumulative Gaussian
-  prefix targets against additive decoder-increment/DoG targets. Six groups end
-  at `11/22/33/44/54/64`, with sigmas `8/4/2/1/.5/0`; the final target is the
-  input exactly. Each step samples one group on 128 of 512 images and shares the
-  full decoder's noisy latents. Frozen-control output-gradient calibration sets
-  weights `0.030/0.023`. Mechanism alignment is audited separately from matched
-  prior FID/KID. No causal mask or per-token schedule is added until an objective
-  proves hierarchy without a decisive generation loss. Twenty-three tests and
-  CPU, eager-GPU, and compiled-GPU smokes pass.
-  An initial supervisor start failed before Python/GPU acquisition because the
-  launchers lacked executable bits; commit `0c45336` fixed the modes. Both
-  unchanged chains acquired lifetime locks at 03:11 UTC and entered finite
-  training near 3.51k/3.15k images/s. Tokenizer W&B: cumulative `kc8ug18o`,
-  innovation `obu5zpi3`.
+- **2026-09-04 — grouped Gaussian/DoG hierarchy succeeds mechanically but is
+  rejected for generation:** both six-group objectives produce a clear
+  coarse-to-fine decoder. Cumulative target MSE falls 94.6% to `0.0026397`;
+  innovation MSE falls 97.2% to `0.00142382` while increment cosine rises from
+  `0.29543` to `0.91528`. Both remain usable codecs (PSNR `34.44/35.04`, clean
+  rFID `6.76/6.65`), but matched 5k generation is decisively worse:
+  cumulative **33.820/0.02227** and innovation **31.391/0.02299** FID/KID versus
+  v27 **26.743/0.01754**. Both exceed the frozen two-FID stop boundary with
+  worse KID, so no 10k or block-causal follow-up runs. Effective rank contracts
+  from `377.43` to `238.14/227.90`, consistent with an ordering/modelability
+  tradeoff. Retain flat v27 for generation; treat explicit hierarchy as a
+  variable-rate branch or seek a separate hierarchical readout. W&B tokenizer/
+  prior runs: `kc8ug18o`/`cp50vzal` and `obu5zpi3`/`ovht4gi9`.
   [Exact protocol](reports/2026-08-26_autoencoder_program/grouped_hierarchy_screen.json).
 - **2026-09-04 — learned latent-factorization screen complete:** native
   `32x32` is decisively destructive at 44.324/0.03289 FID/KID-5k. Native

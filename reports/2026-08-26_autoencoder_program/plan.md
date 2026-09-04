@@ -1470,3 +1470,23 @@ packaging error. At 2026-09-04 03:11 UTC both unchanged, predeclared chains
 acquired shared lifetime locks and entered finite training near 3.51k images/s
 for cumulative and 3.15k for innovation. Tokenizer W&B runs are `kc8ug18o` and
 `obu5zpi3`.
+
+Both chains completed at 04:47/04:53 UTC. The named mechanism gates pass by a
+wide margin. V32's mean cumulative-target MSE is `0.00263971`, a 94.6%
+reduction from control. V33's mean innovation-target MSE is `0.00142382`, a
+97.2% reduction, and its increment cosine rises from `0.29543` to `0.91528`.
+The saved contact sheets confirm an orderly coarse-to-fine decode rather than
+merely a favorable aggregate. Full-prefix PSNR is `34.44/35.04` dB and clean
+reconstruction FID is `6.76/6.65`; these are healthy enough to evaluate and are
+not used to rank the arms.
+
+The 5k generation gate decisively rejects both. V32 reaches FID/KID
+**33.81996/0.0222653**, deltas `+7.07697/+0.00472725` from v27. V33 reaches
+**31.39127/0.0229891**, deltas `+4.64827/+0.00545107`. Because both FID losses
+exceed two points and both KIDs worsen, no 10k evaluation is allowed. The
+flattened latent effective rank contracts from the control's `377.43` to
+`238.14/227.90`; this is consistent with the representation paying for its
+explicit ordering, although it is not by itself proof of the FID cause. The
+block-causal follow-up is also disallowed because neither arm can satisfy its
+10k-within-two prerequisite. Preserve the objective and analysis code for
+variable-rate work, but retain flat v27 as the generation baseline.

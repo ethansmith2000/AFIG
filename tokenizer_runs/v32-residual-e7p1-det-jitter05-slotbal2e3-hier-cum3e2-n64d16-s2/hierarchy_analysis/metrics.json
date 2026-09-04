@@ -1,0 +1,118 @@
+{
+  "blur_sigmas_pixels": [
+    8.0,
+    4.0,
+    2.0,
+    1.0,
+    0.5,
+    0.0
+  ],
+  "checkpoint": "/workspace/AFIG/tokenizer_runs/v32-residual-e7p1-det-jitter05-slotbal2e3-hier-cum3e2-n64d16-s2/checkpoint_final.pt",
+  "examples": 512,
+  "group_sizes": [
+    11,
+    11,
+    11,
+    11,
+    10,
+    10
+  ],
+  "groups": [
+    {
+      "blur_sigma_pixels": 8.0,
+      "cumulative_target_mse": 0.0020364188821986318,
+      "cumulative_target_psnr_db": 32.931928760540714,
+      "full_image_mse": 0.1478866164882978,
+      "full_image_psnr_db": 14.32131118536471,
+      "group": 1,
+      "innovation_cosine": 0.9879798562427003,
+      "innovation_target_mse": 0.0020364188821986318,
+      "prediction_increment_rms": 0.288324904604027,
+      "prefix": 11,
+      "size": 11,
+      "target_increment_rms": 0.2919254971046241
+    },
+    {
+      "blur_sigma_pixels": 4.0,
+      "cumulative_target_mse": 0.002699319312038521,
+      "cumulative_target_psnr_db": 31.708057295006764,
+      "full_image_mse": 0.09111824569602807,
+      "full_image_psnr_db": 16.424546416689996,
+      "group": 2,
+      "innovation_cosine": 0.9373660181031377,
+      "innovation_target_mse": 0.0027448778855614364,
+      "prediction_increment_rms": 0.15019249456645098,
+      "prefix": 22,
+      "size": 11,
+      "target_increment_rms": 0.1380276749522675
+    },
+    {
+      "blur_sigma_pixels": 2.0,
+      "cumulative_target_mse": 0.003090199587556223,
+      "cumulative_target_psnr_db": 31.12073461102138,
+      "full_image_mse": 0.04823832275966803,
+      "full_image_psnr_db": 19.18667792297118,
+      "group": 3,
+      "innovation_cosine": 0.9091564545975064,
+      "innovation_target_mse": 0.0029572927160188556,
+      "prediction_increment_rms": 0.1299413845341856,
+      "prefix": 33,
+      "size": 11,
+      "target_increment_rms": 0.12351211388238405
+    },
+    {
+      "blur_sigma_pixels": 1.0,
+      "cumulative_target_mse": 0.003403371743236979,
+      "cumulative_target_psnr_db": 30.70150602555698,
+      "full_image_mse": 0.021155785769224167,
+      "full_image_psnr_db": 22.766308307743067,
+      "group": 4,
+      "innovation_cosine": 0.8659633093138461,
+      "innovation_target_mse": 0.0029238562177245817,
+      "prediction_increment_rms": 0.10651676633459876,
+      "prefix": 44,
+      "size": 11,
+      "target_increment_rms": 0.10152295761122185
+    },
+    {
+      "blur_sigma_pixels": 0.5,
+      "cumulative_target_mse": 0.003130891088706752,
+      "cumulative_target_psnr_db": 31.063920308322057,
+      "full_image_mse": 0.007289554613331954,
+      "full_image_psnr_db": 27.393589972872597,
+      "group": 5,
+      "innovation_cosine": 0.8216323789615823,
+      "innovation_target_mse": 0.0025051835109479725,
+      "prediction_increment_rms": 0.08766874855852311,
+      "prefix": 54,
+      "size": 10,
+      "target_increment_rms": 0.0748436430346807
+    },
+    {
+      "blur_sigma_pixels": 0.0,
+      "cumulative_target_mse": 0.001478087583867212,
+      "cumulative_target_psnr_db": 34.32359822449624,
+      "full_image_mse": 0.001478087583867212,
+      "full_image_psnr_db": 34.32359822449624,
+      "group": 6,
+      "innovation_cosine": 0.7180697905852398,
+      "innovation_target_mse": 0.0027789532905444503,
+      "prediction_increment_rms": 0.07563561077232674,
+      "prefix": 64,
+      "size": 10,
+      "target_increment_rms": 0.05713343738182187
+    }
+  ],
+  "mean_cumulative_target_mse": 0.0026397146996007194,
+  "mean_innovation_cosine": 0.8733613013006688,
+  "mean_innovation_target_mse": 0.002657763750499321,
+  "prefix_ends": [
+    11,
+    22,
+    33,
+    44,
+    54,
+    64
+  ],
+  "visual_layout": "rows are source, six Gaussian targets coarse-to-full, and six prefix reconstructions; columns are fixed CIFAR test examples"
+}

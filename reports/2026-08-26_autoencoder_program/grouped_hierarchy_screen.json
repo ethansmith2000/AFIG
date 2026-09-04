@@ -1,7 +1,8 @@
 {
   "date": "2026-09-04",
-  "status": "running",
+  "status": "complete_stopped_at_5k",
   "launched_utc": "2026-09-04T03:11:13Z",
+  "completed_utc": "2026-09-04T04:53:01Z",
   "hypothesis": "A small number of explicitly supervised coarse-to-fine groups can create genuine scale semantics without the full-generation tax of 64-way random-prefix reconstruction; additive DoG supervision may create stronger innovation semantics than cumulative targets alone.",
   "control": {
     "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
@@ -33,7 +34,21 @@
       "calibrated_weighted_output_gradient_ratio": 0.25038886070251465,
       "frozen_control_estimated_weighted_loss_ratio": 2.1975880735593796,
       "wandb_tokenizer_run": "kc8ug18o",
-      "observed_tokenizer_images_per_second": 3510
+      "observed_tokenizer_images_per_second": 3510,
+      "wandb_prior_run": "cp50vzal",
+      "result": {
+        "full_prefix_psnr_db": 34.436781290507824,
+        "clean_reconstruction_fid": 6.762428707297374,
+        "flattened_effective_rank": 238.14206393444454,
+        "mean_cumulative_target_mse": 0.0026397146996007194,
+        "mechanism_mse_reduction_fraction": 0.9463553532112864,
+        "mechanism_gate_pass": true,
+        "fid_5k": 33.819961414594616,
+        "kid_5k": 0.022265281528234482,
+        "fid_delta_vs_control_5k": 7.076968284906741,
+        "kid_delta_vs_control_5k": 0.004727248102426529,
+        "decision": "stop_at_5k"
+      }
     },
     "innovation": {
       "version": "v33",
@@ -43,7 +58,23 @@
       "calibrated_weighted_output_gradient_ratio": 0.2505150284767151,
       "frozen_control_estimated_weighted_loss_ratio": 1.7386445669729733,
       "wandb_tokenizer_run": "obu5zpi3",
-      "observed_tokenizer_images_per_second": 3150
+      "observed_tokenizer_images_per_second": 3150,
+      "wandb_prior_run": "ovht4gi9",
+      "result": {
+        "full_prefix_psnr_db": 35.03533960100492,
+        "clean_reconstruction_fid": 6.647564276537878,
+        "flattened_effective_rank": 227.89514416160137,
+        "mean_innovation_target_mse": 0.0014238191377242198,
+        "mean_innovation_cosine": 0.9152787498244793,
+        "mechanism_mse_reduction_fraction": 0.9721619518668547,
+        "mechanism_cosine_delta": 0.6198528772982093,
+        "mechanism_gate_pass": true,
+        "fid_5k": 31.39126783804454,
+        "kid_5k": 0.02298910543322563,
+        "fid_delta_vs_control_5k": 4.6482747083566665,
+        "kid_delta_vs_control_5k": 0.005451072007417679,
+        "decision": "stop_at_5k"
+      }
     }
   },
   "common_configuration": {
@@ -96,5 +127,13 @@
       "innovation": 17.54735040664673
     },
     "launch_retry": "initial supervisor start failed before process creation because launcher executable bits were absent; fixed in commit 0c45336 and no GPU or experiment state was consumed"
+  },
+  "outcome": {
+    "mechanism": "both objectives create the intended grouped coarse-to-fine decoder semantics by very large margins",
+    "generation": "both objectives are concordantly worse than control by more than two FID at 5k, so neither qualifies for a 10k evaluation",
+    "latent_geometry": "flattened effective rank falls from the control's 377.42679253589165 to 238.14206393444454 and 227.89514416160137, consistent with the explicit hierarchy concentrating the representation",
+    "block_causal_followup": false,
+    "promotion": false,
+    "decision": "retain v27 as the generative baseline; keep grouped hierarchy only as a variable-rate/interpretable branch unless a future design separates hierarchical readout from prior-facing latent formation"
   }
 }

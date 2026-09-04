@@ -366,7 +366,7 @@ Do not return to 64 individually supervised frequency tokens. Sinusoidal/RoPE
 nearness can encode a scale coordinate but cannot create scale semantics by
 itself.
 
-### D1 grouped Gaussian/DoG hierarchy (predeclared 2026-09-04)
+### D1 grouped Gaussian/DoG hierarchy (complete 2026-09-04)
 
 The condition for this phase is now explicit user value for interpretable
 coarse-to-fine partial decoding. Compare two objective-only arms before changing
@@ -407,6 +407,25 @@ start failed before process or GPU creation; commit `0c45336` corrected the
 launcher modes. Both restarted chains then acquired shared lifetime locks and
 entered finite training near 3.51k/3.15k images/s. Tokenizer W&B runs are
 `kc8ug18o` (cumulative) and `obu5zpi3` (innovation).
+
+**Outcome:** both objectives create the requested hierarchy, but both fail the
+generative gate. Cumulative target MSE falls from `0.0492074` to `0.0026397`
+(94.6%), while the innovation arm lowers innovation MSE from `0.0511465` to
+`0.00142382` (97.2%) and raises mean increment cosine from `0.29543` to
+`0.91528`. The fixed-example contact sheets visibly progress from heavy blur to
+the full image. Both codecs remain usable at full-prefix PSNR `34.44/35.04` and
+clean rFID `6.76/6.65`, so reconstruction does not veto either arm.
+
+Matched generation nevertheless worsens concordantly at 5k: cumulative reaches
+**33.820/0.02227** FID/KID and innovation **31.391/0.02299**, versus v27 at
+**26.743/0.01754**. Their FID losses are `+7.077` and `+4.648`, both outside the
+two-point continuation window with worse KID, so neither receives a 10k run.
+Flattened effective rank also contracts from `377.43` to `238.14/227.90`,
+consistent with explicit group roles concentrating the representation. Do not
+add a block-causal mask: the prerequisite 10k-within-two condition fails. Retain
+v27 for generation and preserve these arms only as evidence that variable-rate,
+interpretable decoding is feasible when that property is worth the modelability
+cost.
 
 ## Phase E — representation and decoder objectives
 
@@ -545,6 +564,16 @@ seed-interactive.
 4. **Decoder capacity/locality:** test only after an objective or hierarchy arm
    gives a representation-side gain, so encoder and decoder effects remain
    attributable.
+
+The first three items above are now closed: restrained radial/LPIPS objectives,
+native `32x32/128x8` factorization, and grouped Gaussian/DoG allocation have all
+completed. Radial log-power remains the only favorable direction (+0.85 FID at
+10k), but missed replication. For any future hierarchy work, prefer a separate
+hierarchical readout or auxiliary decoder attached to the selected flat v27
+latents over further strengthening prefix constraints on the prior-facing
+representation. This directly tests whether interpretability can be obtained
+without collapsing effective rank or taxing the matched prior. Decoder
+capacity/locality remains conditional on such a representation-side gain.
 
 Deprioritize marginal kurtosis, static token-magnitude schedules, the tested
 tokenwise time warps, direct `2x2` patching, and register+jitter without a new
