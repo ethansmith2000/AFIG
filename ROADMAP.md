@@ -550,6 +550,13 @@ worse but 0.00012 KID better than control. It advances to 10k under both the
 frozen within-two and metric-disagreement clauses. Reconstruction did not make
 either decision.
 
+**10k outcome:** `128x8` reaches **25.484/0.01741** versus
+**24.534/0.01765** for `64x16`, repeating the 5k pattern with +0.950 FID and
+-0.00024 KID. It misses the concordant two-FID replication gate and its prior
+trains at only 10.77 steps/s versus 19.99 for the control. No arm is replicated
+or promoted. Retain native `64x16`: `32x32` is decisively destructive, while
+`128x8` costs roughly twice as much in prior training for slightly worse FID.
+
 ### Decoder-objective screen (predeclared)
 
 Use tokenizer seed 2 and the promoted residual+jitter+slot configuration. Hold

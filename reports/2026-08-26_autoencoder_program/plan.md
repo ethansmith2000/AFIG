@@ -1414,3 +1414,12 @@ training did not rescue the destructive layout seen in the historical forced
 reshape. `128x8` obtains **27.89136/0.0174227**, deltas of +1.14836 FID and
 -0.0001153 KID. It advances to 10k under the predeclared within-two and
 metric-disagreement clauses. Do not infer a win from the slightly lower KID.
+
+The 10k read closes the screen. `128x8` obtains
+**25.48386/0.0174111** against **24.53411/0.0176470** for `64x16`, deltas of
++0.94976 FID and -0.0002359 KID. The stable approximately one-FID disadvantage
+across both sample counts is more informative than the tiny favorable KID
+movement, and it does not approach the concordant two-FID replication gate.
+Its 60k prior also runs at 10.77 steps/s versus 19.99 for the control. Neither
+candidate earns replication or promotion; native `64x16` remains the selected
+factorization on generation quality and compute.
