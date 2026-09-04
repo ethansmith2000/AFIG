@@ -22,6 +22,18 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-04 — direct generation-trajectory analysis predeclared:** compare
+  selected v27, v34 common time, and v34 soft25 from identical standardized
+  Gaussian seeds through their actual 50-step Heun samplers. At eleven times,
+  save the noisy latent state and the velocity field's predicted-clean endpoint;
+  decode fixed examples and measure stabilization in image pixels, RGB means,
+  Inception features, seven complex-FFT radial bands, 64 native tokens, and five
+  population-PCA bands. Early settling is treated as a conditioning candidate,
+  not conditioning proof; the direct context intervention remains a separate
+  requirement. This is descriptive and cannot reopen the completed v27
+  selection.
+  [Frozen protocol](reports/2026-08-26_autoencoder_program/generation_trajectory_protocol.json).
+
 - **2026-09-04 — full-depth input registers reach parity; soft SNR is not
   selected:** correct
   the earlier late-register scope by placing 64 learned registers beside the

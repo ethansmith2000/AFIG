@@ -1,0 +1,58 @@
+{
+  "date": "2026-09-04",
+  "status": "predeclared_prelaunch",
+  "question": "What image, frequency, token, and population-eigendirection structure stabilizes when during actual generation, and which emergent order is a plausible source of useful conditioning when native token index is unordered?",
+  "runs": {
+    "v27": "selected residual-Perceiver tokenizer and common-time prior",
+    "v34-common": "full-depth input-register tokenizer and common-time prior",
+    "v34-soft25": "same v34 tokenizer with one-quarter-strength tokenwise rational time"
+  },
+  "sampling": {
+    "solver": "50-step Heun",
+    "seed": 54321,
+    "examples": 128,
+    "batch_size": 32,
+    "snapshots": [
+      0.0,
+      0.1,
+      0.2,
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9,
+      1.0
+    ],
+    "paired_noise": "reset the same standardized Gaussian RNG stream for every run; comparisons are aggregate because separate learned latent coordinate systems do not guarantee paired semantics"
+  },
+  "decoded_views": {
+    "noisy_state": "decode the live ODE state as an explicit off-manifold diagnostic",
+    "predicted_clean": "decode z_state + (1-path_time) * velocity, using each token's path coordinate for rational time",
+    "visual": "four fixed seed indices for every run and snapshot, with no outcome-based selection"
+  },
+  "measurements": {
+    "image": [
+      "pixel PSNR to the run's own final endpoint",
+      "per-image RGB-mean RMSE to final",
+      "CIFAR-population-centered Inception-feature correlation and relative error to final"
+    ],
+    "frequency": "complex FFT correlation, relative error, and power ratio in seven radial bands from DC/coarse through corner frequencies",
+    "latent": "overall and each-token endpoint-relative MSE using population-centered final signal as denominator",
+    "pca": "endpoint-relative MSE, correlation, and power by training-population PCA rank bands 1-8, 9-32, 33-128, 129-512, and 513-1024"
+  },
+  "operational_readout": {
+    "frequency_order": "first snapshot from which complex correlation to final remains at least 0.90",
+    "pca_order": "first snapshot from which relative endpoint MSE remains at most 0.25",
+    "token_order": "same 0.25 threshold per token, plus correlation between native token index and settling time",
+    "semantic_stability": "first snapshot from which population-centered Inception-feature correlation to final remains at least 0.90"
+  },
+  "interpretation_rules": [
+    "A useful conditioning candidate must stabilize before the components it could condition; magnitude or early emergence alone is insufficient.",
+    "Trajectory settling is descriptive, not causal. Context shuffling or ablation is required before claiming that early structure helps predict later structure.",
+    "If PCA or image-frequency bands order while tokens do not, the natural hierarchy is distributed across tokens and should be exposed with an auxiliary readout or basis-aware mechanism rather than arbitrary token indices.",
+    "If soft25 orders its assigned token groups but not image frequencies or semantic features, it demonstrates schedule compliance without useful semantic alignment.",
+    "This diagnostic does not alter the completed FID-based selection of v27."
+  ]
+}

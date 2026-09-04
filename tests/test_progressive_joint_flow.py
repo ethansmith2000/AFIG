@@ -84,6 +84,42 @@ def test_sampling_is_seed_deterministic() -> None:
     torch.testing.assert_close(first, second)
 
 
+def test_sample_trajectory_preserves_sampler_and_endpoint_estimate() -> None:
+    model = tiny_warped_model().eval()
+
+    def unit_velocity(values, time):
+        return torch.ones_like(values)
+
+    model.predict_velocity = unit_velocity  # type: ignore[method-assign]
+    generator = torch.Generator().manual_seed(123)
+    sampled = model.sample(2, steps=4, solver="euler", generator=generator)
+    generator = torch.Generator().manual_seed(123)
+    final, trajectory = model.sample_trajectory(
+        2,
+        steps=4,
+        solver="euler",
+        generator=generator,
+        snapshot_steps=(0, 2, 4),
+    )
+    torch.testing.assert_close(final, sampled)
+    assert [snapshot["step"] for snapshot in trajectory] == [0, 2, 4]
+    initial = trajectory[0]["state"]
+    torch.testing.assert_close(trajectory[0]["predicted_clean"], initial + 1.0)
+    torch.testing.assert_close(trajectory[-1]["predicted_clean"], final)
+    assert tuple(trajectory[2]["path_time"].shape) == (1, 4)
+
+
+def test_sample_trajectory_validates_snapshot_indices() -> None:
+    model = tiny_model().eval()
+    for invalid in ((-1,), (4,), (1, 1), (True,)):
+        try:
+            model.sample_trajectory(1, steps=3, snapshot_steps=invalid)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"accepted invalid snapshots: {invalid}")
+
+
 def test_gradient_checkpointing_path() -> None:
     model = tiny_model(checkpointing=True).train()
     loss = model(torch.randn(2, 4, 8))["loss"]

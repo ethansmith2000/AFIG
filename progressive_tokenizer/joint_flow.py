@@ -359,10 +359,46 @@ class JointRectifiedFlow(nn.Module):
         solver: str = "heun",
         generator: Optional[torch.Generator] = None,
     ) -> torch.Tensor:
+        values, _ = self.sample_trajectory(
+            batch_size,
+            steps=steps,
+            solver=solver,
+            generator=generator,
+            snapshot_steps=(),
+        )
+        return values
+
+    @torch.no_grad()
+    def sample_trajectory(
+        self,
+        batch_size: int,
+        *,
+        steps: int = 50,
+        solver: str = "heun",
+        generator: Optional[torch.Generator] = None,
+        snapshot_steps: tuple[int, ...],
+    ) -> tuple[torch.Tensor, list[dict[str, object]]]:
+        """Sample while retaining selected ODE states and endpoint estimates.
+
+        ``predicted_clean`` is the velocity field's local extrapolation to the
+        clean endpoint. For the global linear path it is
+        ``z_t + (1-t) v_theta``. For tokenwise rational paths, ``t`` is
+        replaced by each token's path coordinate. This is more interpretable
+        than decoding the noisy ODE state as though it were a clean latent.
+        """
+
         if steps <= 0:
             raise ValueError("steps must be positive")
         if solver not in {"euler", "heun"}:
             raise ValueError("solver must be euler or heun")
+        if len(set(snapshot_steps)) != len(snapshot_steps):
+            raise ValueError("snapshot_steps must not contain duplicates")
+        if any(
+            not isinstance(step, int) or isinstance(step, bool) or step < 0 or step > steps
+            for step in snapshot_steps
+        ):
+            raise ValueError("snapshot_steps must be integer indices in [0, steps]")
+        requested = set(snapshot_steps)
         parameter = self.input.weight
         values = torch.randn(
             batch_size,
@@ -372,12 +408,26 @@ class JointRectifiedFlow(nn.Module):
             dtype=parameter.dtype,
             generator=generator,
         )
-        for index in range(steps):
+        trajectory: list[dict[str, object]] = []
+        for index in range(steps + 1):
             time = torch.full(
                 (batch_size,), index / steps, device=values.device, dtype=torch.float32
             )
-            next_time = torch.full_like(time, (index + 1) / steps)
             path_time = self.path_time(time)
+            if index == steps:
+                if index in requested:
+                    trajectory.append(
+                        {
+                            "step": index,
+                            "base_time": index / steps,
+                            "path_time": path_time[:1].detach().clone(),
+                            "state": values.detach().clone(),
+                            "predicted_clean": values.detach().clone(),
+                        }
+                    )
+                break
+
+            next_time = torch.full_like(time, (index + 1) / steps)
             next_path_time = self.path_time(next_time)
             path_delta = next_path_time - path_time
             if path_delta.ndim == 1:
@@ -386,13 +436,29 @@ class JointRectifiedFlow(nn.Module):
                 path_delta = path_delta[:, :, None]
             path_delta = path_delta.to(values.dtype)
             velocity = self.predict_velocity(values, path_time)
+            if index in requested:
+                remaining = 1.0 - path_time
+                if remaining.ndim == 1:
+                    remaining = remaining[:, None, None]
+                else:
+                    remaining = remaining[:, :, None]
+                predicted_clean = values + remaining.to(values.dtype) * velocity
+                trajectory.append(
+                    {
+                        "step": index,
+                        "base_time": index / steps,
+                        "path_time": path_time[:1].detach().clone(),
+                        "state": values.detach().clone(),
+                        "predicted_clean": predicted_clean.detach().clone(),
+                    }
+                )
             if solver == "heun" and index + 1 < steps:
                 proposal = values + path_delta * velocity
                 next_velocity = self.predict_velocity(proposal, next_path_time)
                 values = values + 0.5 * path_delta * (velocity + next_velocity)
             else:
                 values = values + path_delta * velocity
-        return values
+        return values, trajectory
 
 
 # --- per-register conditioning -------------------------------------------
