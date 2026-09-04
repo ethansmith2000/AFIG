@@ -29,9 +29,9 @@ verdicts live under `reports/` and are linked here.
   decode fixed examples and measure stabilization in image pixels, RGB means,
   Inception features, seven complex-FFT radial bands, 64 native tokens, and five
   population-PCA bands. Early settling is treated as a conditioning candidate,
-  not conditioning proof; the direct context intervention remains a separate
-  requirement. This is descriptive and cannot reopen the completed v27
-  selection.
+  not conditioning proof; a paired selected-v27 intervention separately
+  shuffles resolved PCA directions across examples and scores the unresolved
+  velocity target. This analysis cannot reopen the completed v27 selection.
   [Frozen protocol](reports/2026-08-26_autoencoder_program/generation_trajectory_protocol.json).
 
 - **2026-09-04 — full-depth input registers reach parity; soft SNR is not

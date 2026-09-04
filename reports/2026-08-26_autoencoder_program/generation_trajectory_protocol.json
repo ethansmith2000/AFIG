@@ -48,9 +48,25 @@
     "token_order": "same 0.25 threshold per token, plus correlation between native token index and settling time",
     "semantic_stability": "first snapshot from which population-centered Inception-feature correlation to final remains at least 0.90"
   },
+  "conditioning_intervention": {
+    "run": "selected v27 common-time prior",
+    "data": "2048 held-out real latents noised under the trained rectified-flow path; PCA fitted on 20000 disjoint training latents",
+    "times": [
+      0.2,
+      0.35,
+      0.5,
+      0.65,
+      0.8
+    ],
+    "early_context": "population PCA directions with power SNR at least 4, capped at 256",
+    "late_targets": "the unresolved PCA directions nearest their crossing with power SNR at most 0.25, capped at 256",
+    "test": "shuffle early coefficients between examples while preserving their marginal distribution, then measure the increase in held-out late-direction velocity MSE",
+    "token_control": "repeat by shuffling native prefixes of 8, 16, and 32 tokens while scoring the remaining tokens",
+    "interpretation": "positive paired MSE reduction shows context used by this trained denoiser; it remains model-specific rather than an intrinsic representation statistic"
+  },
   "interpretation_rules": [
     "A useful conditioning candidate must stabilize before the components it could condition; magnitude or early emergence alone is insufficient.",
-    "Trajectory settling is descriptive, not causal. Context shuffling or ablation is required before claiming that early structure helps predict later structure.",
+    "Trajectory settling is descriptive, not causal. The selected-v27 context-shuffling intervention supplies the separate test of whether early structure helps predict later structure.",
     "If PCA or image-frequency bands order while tokens do not, the natural hierarchy is distributed across tokens and should be exposed with an auxiliary readout or basis-aware mechanism rather than arbitrary token indices.",
     "If soft25 orders its assigned token groups but not image frequencies or semantic features, it demonstrates schedule compliance without useful semantic alignment.",
     "This diagnostic does not alter the completed FID-based selection of v27."
