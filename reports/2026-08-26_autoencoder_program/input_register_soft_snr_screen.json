@@ -1,6 +1,17 @@
 {
   "date": "2026-09-04",
-  "status": "predeclared_prelaunch",
+  "status": "running_tokenizer",
+  "launch": {
+    "launched_utc": "2026-09-04T17:26:12Z",
+    "code_commit": "4eeef6c",
+    "tokenizer_supervisor": "afig_input_register_tokenizer",
+    "common_prior_supervisor": "afig_input_register_common",
+    "soft25_prior_supervisor": "afig_input_register_soft25",
+    "tokenizer_wandb_run_id": "rheoy5s1",
+    "tokenizer_wandb_url": "https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/rheoy5s1",
+    "startup_check": "healthy through step 325: all reported losses and gradients finite, full-image MSE fell from 0.46670 at step 1 to 0.11495, and post-compile throughput was about 3,200 images/s",
+    "orchestration": "the tokenizer holds one lifetime gpu-claim; both prior services wait without a GPU claim for the tokenizer cache and codec-health marker, then independently enter the shared queue"
+  },
   "hypothesis": "Learned registers that participate from the first encoder block can form a better distributed whole-image representation than a terminal read, and a one-quarter-strength image-spectral log-SNR ordering can let early register groups become soft conditioning context without the exposure and optimization costs of the previously tested full-strength schedule.",
   "tokenizer": {
     "version": "v34",

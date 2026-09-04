@@ -38,6 +38,10 @@ verdicts live under `reports/` and are linked here.
   smoke accidentally inherited CUDA outside the queue for roughly seven
   seconds; it caused no observed failure, was rerun CPU-only, and all subsequent
   GPU work used `gpu-claim`.
+  Launched from commit `4eeef6c` at `2026-09-04T17:26:12Z` under supervisor;
+  tokenizer W&B run [`rheoy5s1`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/rheoy5s1)
+  is live, while both matched prior services wait on the shared cache/health
+  marker before entering the GPU queue.
   [Exact protocol](reports/2026-08-26_autoencoder_program/input_register_soft_snr_screen.json).
 - **2026-09-04 — grouped Gaussian/DoG hierarchy succeeds mechanically but is
   rejected for generation:** both six-group objectives produce a clear
