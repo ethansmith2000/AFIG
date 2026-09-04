@@ -40,8 +40,13 @@ verdicts live under `reports/` and are linked here.
   GPU work used `gpu-claim`.
   Launched from commit `4eeef6c` at `2026-09-04T17:26:12Z` under supervisor;
   tokenizer W&B run [`rheoy5s1`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/rheoy5s1)
-  is live, while both matched prior services wait on the shared cache/health
-  marker before entering the GPU queue.
+  and both matched priors completed successfully. The tokenizer reached `36.37`
+  dB PSNR, `5.77` clean rFID, and effective
+  rank `347.84`. At 5k, common time is effectively tied with v27 at
+  `26.884/.01777` versus `26.743/.01754` FID/KID; soft25 is weaker at
+  `28.296/.01873`, a `+1.412` FID and `+.000958` KID delta from its exact-cache
+  control. Both remain inside the frozen two-FID band, so their 10k evaluations
+  launched through `gpu-claim` at `2026-09-04T21:00:00Z`.
   [Exact protocol](reports/2026-08-26_autoencoder_program/input_register_soft_snr_screen.json).
 - **2026-09-04 — grouped Gaussian/DoG hierarchy succeeds mechanically but is
   rejected for generation:** both six-group objectives produce a clear

@@ -1,6 +1,6 @@
 {
   "date": "2026-09-04",
-  "status": "running_tokenizer",
+  "status": "running_10k_evaluation",
   "launch": {
     "launched_utc": "2026-09-04T17:26:12Z",
     "code_commit": "4eeef6c",
@@ -107,6 +107,30 @@
     "sample_steps": 50,
     "solver": "heun",
     "evaluation_seed": 54321
+  },
+  "results_5k": {
+    "tokenizer_health": {
+      "psnr_db": 36.36920954047951,
+      "clean_reconstruction_fid": 5.767146785998705,
+      "effective_rank": 347.84438522032684,
+      "verdict": "comfortably passes the permissive codec-health gate"
+    },
+    "common": {
+      "fid": 26.88414789495812,
+      "kid": 0.017767328768968582,
+      "fid_delta_vs_v27": 0.14115476527024384,
+      "kid_delta_vs_v27": 0.00022929534316062927
+    },
+    "soft25": {
+      "fid": 28.296318366059154,
+      "kid": 0.01872517168521881,
+      "fid_delta_vs_common": 1.4121704711010352,
+      "kid_delta_vs_common": 0.0009578429162502289,
+      "fid_delta_vs_v27": 1.553325236371279,
+      "kid_delta_vs_v27": 0.0011871382594108582
+    },
+    "gate": "both arms are within two FID of their relevant control and therefore advance to the frozen 10k evaluation",
+    "eval_10k_launched_utc": "2026-09-04T21:00:00Z"
   },
   "selection": {
     "reconstruction_role": "permissive codec-health veto only: manually review only if PSNR is below 28 dB together with clean reconstruction FID above 25, or if outputs/statistics are non-finite or visibly corrupted",
