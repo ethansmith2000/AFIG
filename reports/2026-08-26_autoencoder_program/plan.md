@@ -1401,3 +1401,16 @@ Both supervisor-owned chains acquired shared lifetime GPU locks at 2026-09-03
 22:55 UTC and entered tokenizer startup while respecting four foreign claims.
 Tokenizer W&B runs are `bm5ih5cx` for `32x32` and `y67pbcqn` for `128x8`.
 Both entered finite training after compilation, near 4.64k and 3.87k images/s.
+
+Both tokenizer/prior chains completed without failure. `32x32` and `128x8`
+pass the permissive codec-health veto at PSNR 34.75/37.38 dB and clean rFID
+6.60/5.19. Their flat effective ranks are 266.62 and 374.75, respectively,
+versus 377.43 for v27. These diagnostics describe the learned geometry but do
+not select the arm.
+
+At 5k, `32x32` obtains **44.32381/0.0328947**, losing 17.58082 FID and
+0.0153567 KID against v27. The large concordant loss stops it; notably, native
+training did not rescue the destructive layout seen in the historical forced
+reshape. `128x8` obtains **27.89136/0.0174227**, deltas of +1.14836 FID and
+-0.0001153 KID. It advances to 10k under the predeclared within-two and
+metric-disagreement clauses. Do not infer a win from the slightly lower KID.

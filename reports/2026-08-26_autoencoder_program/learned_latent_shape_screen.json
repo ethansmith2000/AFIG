@@ -1,6 +1,6 @@
 {
   "date": "2026-09-03",
-  "status": "running",
+  "status": "evaluating_n128d8_10k",
   "launched_utc": "2026-09-03T22:55:18Z",
   "hypothesis": "At fixed 1,024-coordinate capacity, a tokenizer trained natively for a different token/feature factorization may learn geometry that compensates for the prior penalty seen under forced cache reshaping.",
   "control": {
@@ -21,7 +21,21 @@
       "tokenizer_parameters": 60032208,
       "prior_parameters": 70293536,
       "wandb_tokenizer_run": "bm5ih5cx",
-      "observed_tokenizer_images_per_second": 4640
+      "wandb_prior_run": "xeeqe7hl",
+      "observed_tokenizer_images_per_second": 4571,
+      "tokenizer_health": {
+        "test_psnr": 34.754995006231226,
+        "clean_reconstruction_fid": 6.596325979451706,
+        "global_latent_std": 0.6752968343598134,
+        "flat_effective_rank": 266.6170103118572
+      },
+      "generation_5k": {
+        "fid": 44.323813721831186,
+        "kid": 0.032894715666770935,
+        "fid_delta_vs_control": 17.58082059214331,
+        "kid_delta_vs_control": 0.015356682240962982,
+        "decision": "stop_concordant_loss"
+      }
     },
     "n128d8": {
       "version": "v31",
@@ -31,7 +45,21 @@
       "tokenizer_parameters": 60105912,
       "prior_parameters": 70318088,
       "wandb_tokenizer_run": "y67pbcqn",
-      "observed_tokenizer_images_per_second": 3870
+      "wandb_prior_run": "3pkptz79",
+      "observed_tokenizer_images_per_second": 3827,
+      "tokenizer_health": {
+        "test_psnr": 37.38024660819702,
+        "clean_reconstruction_fid": 5.193608315068957,
+        "global_latent_std": 0.7804480775912213,
+        "flat_effective_rank": 374.750000806507
+      },
+      "generation_5k": {
+        "fid": 27.891357726292142,
+        "kid": 0.017422694712877274,
+        "fid_delta_vs_control": 1.148364596604267,
+        "kid_delta_vs_control": -0.000115338712930679,
+        "decision": "advance_to_10k_within_margin_and_metric_disagreement"
+      }
     }
   },
   "common_configuration": {

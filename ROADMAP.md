@@ -540,6 +540,16 @@ Tokenizer W&B runs are `bm5ih5cx` (`32x32`) and `y67pbcqn` (`128x8`).
 After compilation they entered finite training near 4.64k and 3.87k images/s,
 respectively.
 
+5k gate (2026-09-04): both tokenizers pass the codec-health veto. `32x32`
+has PSNR 34.75 dB, clean rFID 6.60, and flat effective rank 266.62; `128x8`
+has 37.38 dB, 5.19, and 374.75, versus control rank 377.43. Generation sharply
+rejects `32x32`: **44.324/0.03289**, worse than control by 17.581 FID and
+0.01536 KID. Native end-to-end training therefore does not compensate for its
+literal prior layout penalty. `128x8` reaches **27.891/0.01742**, 1.148 FID
+worse but 0.00012 KID better than control. It advances to 10k under both the
+frozen within-two and metric-disagreement clauses. Reconstruction did not make
+either decision.
+
 ### Decoder-objective screen (predeclared)
 
 Use tokenizer seed 2 and the promoted residual+jitter+slot configuration. Hold
