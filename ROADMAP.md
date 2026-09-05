@@ -892,6 +892,19 @@ metrics, not the favorable geometry, will determine whether it works.
 
 [Phase-L analysis](reports/2026-08-26_autoencoder_program/zca_whitening/results.md).
 
+Execution: cache/launcher commit `87bf9ed` was pushed before launch. The cache
+completed and validated at `2.27e-4` inverse relative RMS. At
+`2026-09-05T21:53:05Z`, all four supervisor-owned arms acquired distinct shared
+`gpu-claim` locks and entered finite training. W&B runs are
+[`sya16sx4`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/sya16sx4)
+(common/uniform),
+[`c87jzy5h`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/c87jzy5h)
+(ordered/uniform),
+[`otpkkbos`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/otpkkbos)
+(common/weighted), and
+[`79sbr5wr`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/79sbr5wr)
+(ordered/weighted).
+
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 
 The decoder-objective screen is closed before changing shape. Retrain native

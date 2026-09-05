@@ -32,6 +32,11 @@ verdicts live under `reports/` and are linked here.
   frozen scientific-intent rule, one axial gamma-1 cache advances to the full
   common/ordered-time by uniform/tempered-loss factorial. These geometry
   results authorize but do not predict the decoded FID/KID outcome.
+  The validated gamma-1 cache and all four 60k factorial arms launched under
+  supervisor at 21:53 UTC after commit `87bf9ed`; each acquired a distinct
+  shared lifetime GPU lock and entered finite training. W&B runs are
+  `sya16sx4/c87jzy5h/otpkkbos/79sbr5wr` in
+  common-uniform/ordered-uniform/common-weighted/ordered-weighted order.
   [Full analysis](reports/2026-08-26_autoencoder_program/zca_whitening/results.md).
 - **2026-09-05 — rotate-back/ZCA correction predeclared:** the previous smooth
   whitening screen exposed sequence/channel eigenmodes as the literal `64x16`

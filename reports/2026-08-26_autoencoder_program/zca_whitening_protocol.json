@@ -1,6 +1,6 @@
 {
   "date": "2026-09-05",
-  "status": "analysis_complete_training_authorized",
+  "status": "factorial_training_active",
   "question": "After whitening covariance in eigenspace and rotating back into the native token/feature basis, can an explicit per-token SNR schedule and matched loss allocation restore a useful image-like resolving hierarchy?",
   "correction": {
     "previous_transform": "PCA coordinates: (x - mean) @ U @ diag(gain); gamma zero remained a sequence/channel rotation",
@@ -102,6 +102,25 @@
     "recipe": "prior seed 1, width 512, depth 12, eight heads, QK RMS normalization, batch 256, 60000 optimizer steps, learning rate 1e-4, 1000 warmup, 50-step Heun evaluation seed 54321",
     "selection": "decoded FID/KID at 5000 samples; advance improvements, arms within two FID, and FID/KID disagreements to 10000; flow loss and whitening diagnostics do not select",
     "interaction_goal": "distinguish the cost of ZCA, the value of token timing after ZCA, the value of restored implicit loss allocation, and whether timing plus weighting is complementary or double-counted"
+  },
+  "execution": {
+    "analysis_commit": "c966553",
+    "geometry_asset_commit": "6734c76",
+    "launcher_commit": "87bf9ed",
+    "launched_at": "2026-09-05T21:53:05Z",
+    "cache": {
+      "path": "tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/latents_axial_zca_g1_original_flip.pt",
+      "global_mean": 0.004315920639783144,
+      "global_std": 0.9799965023994446,
+      "roundtrip_relative_rms": 0.0002267109962005915
+    },
+    "wandb": {
+      "common_uniform": "sya16sx4",
+      "ordered_uniform": "c87jzy5h",
+      "common_weighted": "otpkkbos",
+      "ordered_weighted": "79sbr5wr"
+    },
+    "startup": "all four arms acquired distinct lifetime gpu-claim locks, compiled, and entered finite training"
   },
   "gpu_protocol": "/workspace/GPU_QUEUEING.md; analysis, cache construction, training, and evaluation use lifetime gpu-claim locks under supervisor"
 }
