@@ -107,21 +107,21 @@ def invert_latent_transform(
         indices = torch.tensor(permutation, device=tokens.device, dtype=torch.long)
         physical[:, indices] = tokens
         return physical
-    if kind != "pca_inverse":
+    if kind not in {"pca_inverse", "linear_inverse"}:
         raise ValueError(f"unsupported latent transform: {kind}")
     if tokens.ndim != 3:
-        raise ValueError("PCA coefficients must have shape [B,L,D]")
+        raise ValueError("linear coefficients must have shape [B,L,D]")
     mean = transform.get("mean")
     basis = transform.get("basis")
     physical_shape = transform.get("physical_shape")
     if not torch.is_tensor(mean) or not torch.is_tensor(basis):
-        raise ValueError("PCA transform requires tensor mean and basis")
+        raise ValueError("linear transform requires tensor mean and basis")
     if not isinstance(physical_shape, (list, tuple)) or len(physical_shape) != 2:
-        raise ValueError("PCA transform requires a two-dimensional physical_shape")
+        raise ValueError("linear transform requires a two-dimensional physical_shape")
     rank = tokens.shape[1] * tokens.shape[2]
     physical_count = int(physical_shape[0]) * int(physical_shape[1])
     if tuple(basis.shape) != (physical_count, rank) or mean.numel() != physical_count:
-        raise ValueError("PCA transform tensors do not match prior/physical shapes")
+        raise ValueError("linear transform tensors do not match prior/physical shapes")
     coefficients = tokens.float().flatten(1)
     physical = coefficients @ basis.to(tokens.device, dtype=torch.float32).T
     physical = physical + mean.to(tokens.device, dtype=torch.float32)
@@ -150,13 +150,13 @@ def latent_transform_fingerprint(payload: Mapping[str, Any]) -> Optional[dict]:
             "source": transform.get("source"),
             "ordering": transform.get("ordering"),
         }
-    if transform.get("type") != "pca_inverse":
+    if transform.get("type") not in {"pca_inverse", "linear_inverse"}:
         raise ValueError("unsupported latent transform")
     basis = transform.get("basis")
     if not torch.is_tensor(basis):
-        raise ValueError("PCA transform is missing its basis")
+        raise ValueError("linear transform is missing its basis")
     return {
-        "type": "pca_inverse",
+        "type": str(transform["type"]),
         "physical_shape": [int(value) for value in transform["physical_shape"]],
         "rank": int(basis.shape[1]),
         "source": transform.get("source"),

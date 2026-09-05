@@ -71,6 +71,30 @@ def test_invert_pca_latent_transform() -> None:
     }
 
 
+def test_invert_general_linear_latent_transform() -> None:
+    coefficients = torch.tensor([[[2.0, -1.0]]])
+    payload = {
+        "latent_transform": {
+            "type": "linear_inverse",
+            "physical_shape": [2, 2],
+            "mean": torch.tensor([1.0, 2.0, 3.0, 4.0]),
+            "basis": torch.tensor(
+                [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.5, -0.5]]
+            ),
+            "source": "whitening.pt",
+        }
+    }
+    reconstructed = invert_latent_transform(coefficients, payload)
+    expected = torch.tensor([[[3.0, 1.0], [4.0, 5.5]]])
+    torch.testing.assert_close(reconstructed, expected)
+    assert latent_transform_fingerprint(payload) == {
+        "type": "linear_inverse",
+        "physical_shape": [2, 2],
+        "rank": 2,
+        "source": "whitening.pt",
+    }
+
+
 def test_token_permutation_transform_roundtrip() -> None:
     physical = torch.arange(2 * 4 * 3).reshape(2, 4, 3)
     permutation = [2, 0, 3, 1]

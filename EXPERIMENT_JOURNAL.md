@@ -22,6 +22,17 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-05 — whitened schedule x loss factorial predeclared:** project the
+  selected v27 cache through the frozen factorized cap-16 transform, serialize
+  the exact inverse to the unchanged decoder, and train four seed-1 priors on
+  that one float16 cache: common/uniform, ordered/uniform, common/flow-target-
+  weighted, and ordered/weighted. The ordered arms use the exact beta-.25
+  crossings `.433-.605`; weighted arms use the exact mean-one `.733-1.391`
+  profile. All architecture, optimization, sampling, and evaluation settings
+  match v27. FID/KID-5k gates 10k follow-up; flow loss and whitening statistics
+  do not select.
+  [Exact protocol](reports/2026-08-26_autoencoder_program/whitened_factorial_protocol.json).
+
 - **2026-09-05 — regularized factorized whitening passes and freezes an ordered
   readout:** before another
   prior is trained, compare two invertible readouts of the selected v27 cache:

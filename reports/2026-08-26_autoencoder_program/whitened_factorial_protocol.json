@@ -1,0 +1,78 @@
+{
+  "date": "2026-09-05",
+  "status": "predeclared_prelaunch",
+  "question": "After safely whitening the ordered sequence/channel readout, do an explicit coarse-to-fine SNR clock, a matched flow-target loss allocation, or their interaction improve generative modeling?",
+  "source": {
+    "physical_cache": "tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/latents_final_original_flip.pt",
+    "transform": "reports/2026-08-26_autoencoder_program/regularized_whitening/selected_transform.pt",
+    "transform_sha256": "b3ee61e8835f92e6db229df9106bed5f00ce255e42d19677ce380c5e920f312a",
+    "audit_metrics_sha256": "e910824b01b916f8f46e45286dc78ff5500c2ace1a084a5f716721ff6308a48f",
+    "derived_cache": "tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/latents_factorized_whiten16_original_flip.pt",
+    "layout": [64, 16],
+    "storage": "float16 transformed coordinates with a serialized exact linear inverse to the unchanged physical v27 decoder"
+  },
+  "frozen_transform": {
+    "basis": "factorized sequence/channel eigenspaces",
+    "relative_gain_cap": 16,
+    "clean_coordinate_policy": "mean-unit-power whitened cache; no per-token magnitude rescaling after cache construction",
+    "ordered_beta": 0.25,
+    "ordered_snr1_crossing_range": [0.4332219152622271, 0.6045426889568087],
+    "ordered_rational_odds_range": 2.0,
+    "weighted_loss": "mean-one flow-target-energy weights",
+    "weighted_loss_range": [0.7326425462243702, 1.3913005497710667],
+    "exact_values": "regularized_whitening/metrics.json selection object"
+  },
+  "arms": {
+    "common_uniform": {
+      "name": "v35-v27-factorized-whiten16-common-uniform-prior-s1",
+      "time": "global linear path",
+      "loss": "uniform"
+    },
+    "ordered_uniform": {
+      "name": "v35-v27-factorized-whiten16-ordered-uniform-prior-s1",
+      "time": "64 exact beta-.25 rational paths",
+      "loss": "uniform"
+    },
+    "common_weighted": {
+      "name": "v35-v27-factorized-whiten16-common-flowweight-prior-s1",
+      "time": "global linear path",
+      "loss": "64 exact flow-target-energy weights"
+    },
+    "ordered_weighted": {
+      "name": "v35-v27-factorized-whiten16-ordered-flowweight-prior-s1",
+      "time": "64 exact beta-.25 rational paths",
+      "loss": "64 exact flow-target-energy weights"
+    }
+  },
+  "common_prior_recipe": {
+    "seed": 1,
+    "width": 512,
+    "depth": 12,
+    "heads": 8,
+    "qk_norm": "rms",
+    "batch_size": 256,
+    "steps": 60000,
+    "learning_rate": 0.0001,
+    "warmup_steps": 1000,
+    "sample_steps": 50,
+    "solver": "heun",
+    "evaluation_seed": 54321
+  },
+  "identification": {
+    "unwhitened_external_baseline": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2-prior-s1 at FID/KID-5k 26.7430/0.017538 and 10k 24.5341/0.017647",
+    "whitening_effect": "common_uniform versus unwhitened external baseline; checkpoint-level rather than perfect cache-internal causality because the representation changes",
+    "schedule_effect": "ordered_uniform versus common_uniform",
+    "loss_effect": "common_weighted versus common_uniform",
+    "interaction": "ordered_weighted relative to the three other whitened arms"
+  },
+  "evaluation": {
+    "primary": ["decoded_fid", "decoded_kid"],
+    "initial_samples": 5000,
+    "advance_to_10000": "advance an arm if it improves its relevant factorial control, lies within two FID, or FID/KID disagree",
+    "early_reject": "a concordant FID loss greater than two against the relevant exact-cache control can stop at 5k",
+    "replication": "a concordant 10k improvement of at least two FID with lower KID is required before another prior or tokenizer seed",
+    "nonselectors": ["training flow loss", "whitening effective rank", "reconstruction quality within the already-passed health envelope"]
+  },
+  "orchestration": "Build the one cache under supervisor and gpu-claim, validate its inverse, then start four independent supervisor-owned train-plus-5k-evaluation chains through gpu-claim. No raw CUDA launch is permitted.",
+  "gpu_protocol": "/workspace/GPU_QUEUEING.md"
+}
