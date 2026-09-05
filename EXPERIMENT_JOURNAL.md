@@ -36,6 +36,11 @@ verdicts live under `reports/` and are linked here.
   at `2.07e-4` relative latent RMS and `.00121` decoded pixel RMS. Effective
   rank changes smoothly from 369.88 at gamma 0 to 565.94/700.63/795.95 at
   `.25/.5/1`. All predeclared training arms are authorized.
+  Cache construction and all four train-plus-FID5k supervisors were queued at
+  `2026-09-05T04:18:16Z` from launcher commit `1b3af53`. All GPUs were occupied
+  at submission, so the cache suite is cooperatively waiting for one lifetime
+  claim; arms remain CPU-only until their exact cache is validated, then enter
+  the same shared queue independently.
   [Frozen protocol](reports/2026-08-26_autoencoder_program/power_whitening_protocol.json).
   [Analysis result](reports/2026-08-26_autoencoder_program/power_whitening/results.md).
 

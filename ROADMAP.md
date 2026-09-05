@@ -833,6 +833,12 @@ intentional `892.6x` gain round-trips at `2.07e-4` relative latent RMS and
 `.00121` decoded pixel RMS. Proceed with gamma `0/.25/.5/1` common/uniform
 training; numerical gain is no longer a rejection criterion.
 
+Execution: launcher commit `1b3af53` queued the four-cache suite and all four
+train-plus-FID5k supervisors at `2026-09-05T04:18:16Z`. With all eight GPUs
+already claimed by other projects, cache construction is waiting through
+`gpu-claim`; the training arms do not request GPUs until their cache-ready
+markers appear.
+
 [Phase-K analysis](reports/2026-08-26_autoencoder_program/power_whitening/results.md).
 
 ### Learned latent-factorization screen (predeclared 2026-09-03)

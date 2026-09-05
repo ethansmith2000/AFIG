@@ -1,6 +1,6 @@
 {
   "date": "2026-09-05",
-  "status": "analysis_complete_training_authorized",
+  "status": "training_queued",
   "question": "Does smooth log-spectrum compression find a better representation-conditioning point than cap-16 whitening, and is complete whitening useful when its weak-direction amplification is treated as intentional?",
   "source": {
     "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
@@ -74,6 +74,19 @@
     "full_whitening_float16_relative_roundtrip_rms": 0.00020749824219199904,
     "full_whitening_decoded_pixel_delta_rms": 0.0012098416754836546,
     "verdict": "All four training gammas are numerically healthy. The weak spectrum is exceptionally stable across data halves and remains far above the source-float16 quantization proxy. Proceed with the common-time/uniform-loss gamma screen, including intentional full whitening."
+  },
+  "training_execution": {
+    "launcher_commit": "1b3af53",
+    "queued_utc": "2026-09-05T04:18:16Z",
+    "cache_supervisor": "afig_power_whitening_caches",
+    "arm_supervisors": [
+      "afig_power_whitening_g0",
+      "afig_power_whitening_g025",
+      "afig_power_whitening_g05",
+      "afig_power_whitening_g1"
+    ],
+    "queue_state_at_launch": "all eight GPUs were held by cooperative lifetime claims; cache construction and all four arms are waiting without occupying an unclaimed GPU",
+    "cache_policy": "one lifetime gpu-claim builds and validates all four exact caches; each training-plus-evaluation chain obtains its own lifetime claims"
   },
   "result_document": "power_whitening/results.md"
 }
