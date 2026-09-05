@@ -1,6 +1,6 @@
 {
   "date": "2026-09-05",
-  "status": "predeclared_prelaunch",
+  "status": "analysis_complete_training_authorized",
   "question": "After whitening covariance in eigenspace and rotating back into the native token/feature basis, can an explicit per-token SNR schedule and matched loss allocation restore a useful image-like resolving hierarchy?",
   "correction": {
     "previous_transform": "PCA coordinates: (x - mean) @ U @ diag(gain); gamma zero remained a sequence/channel rotation",
@@ -39,6 +39,23 @@
       "decoded_pixel_delta_rms": 0.002,
       "finite": true
     }
+  },
+  "analysis_result": {
+    "completed_at": "2026-09-05T21:44:53Z",
+    "gamma_zero_identity_max_abs": 0.0,
+    "maximum_float32_relative_roundtrip_rms": 9.662780936759847e-06,
+    "maximum_float16_cache_relative_roundtrip_rms": 0.00022467999651687358,
+    "maximum_decoded_pixel_delta_rms": 0.001207746377778504,
+    "all_variants_healthy": true,
+    "selected_variant": "axial",
+    "selected_gamma": 1.0,
+    "selected_effective_rank": 725.3426513671875,
+    "selected_off_diagonal_fraction": 0.6646371483802795,
+    "selected_relative_gain_range": 693.5794677734375,
+    "selected_native_centered_correlation": 0.8427603840827942,
+    "selected_relative_displacement_rms": 0.5879213222157964,
+    "selected_mean_matching_native_token_energy_fraction": 0.9441186189651489,
+    "result": "reports/2026-08-26_autoencoder_program/zca_whitening/results.md"
   },
   "training_authorization": {
     "primary_transform": "axial ZCA at gamma 1 if every numeric gate passes; this is the direct test of removing the channel and sequence magnitude spectra before restoring a token hierarchy",

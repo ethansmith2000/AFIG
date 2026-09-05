@@ -22,6 +22,17 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-05 — rotate-back/ZCA analysis passes and authorizes training:**
+  gamma zero is exactly the native representation, confirming that this is the
+  intended correction rather than another PCA-coordinate rotation. Axial
+  gamma 1 raises held-out flattened effective rank from 369.88 to 725.34 while
+  retaining 94.41% mean matching-native-token map energy. Its `693.58x`
+  eigengain range remains numerically sound through float16 cache storage
+  (`2.25e-4` relative latent RMS; `.001206` decoded pixel RMS). Following the
+  frozen scientific-intent rule, one axial gamma-1 cache advances to the full
+  common/ordered-time by uniform/tempered-loss factorial. These geometry
+  results authorize but do not predict the decoded FID/KID outcome.
+  [Full analysis](reports/2026-08-26_autoencoder_program/zca_whitening/results.md).
 - **2026-09-05 — rotate-back/ZCA correction predeclared:** the previous smooth
   whitening screen exposed sequence/channel eigenmodes as the literal `64x16`
   prior tensor; gamma 0 was therefore a rotation rather than an identity. The

@@ -1,4 +1,4 @@
-# AFIG roadmap — 2026-09-04
+# AFIG roadmap — 2026-09-05
 
 This is the current decision roadmap. Historical campaigns and corrected
 premises remain in `EXPERIMENT_JOURNAL.md`, `REVIEW_BRIEF.md`, and `reports/`.
@@ -879,6 +879,18 @@ loss allocation specifically at the token level without explicit magnitude
 rescaling.
 
 [Frozen Phase-L protocol](reports/2026-08-26_autoencoder_program/zca_whitening_protocol.json).
+
+Analysis outcome: all transforms pass the frozen numerical gates and gamma zero
+is exactly the native latent. At gamma 1, axial ZCA raises flattened held-out
+effective rank from `369.88` to `725.34`, retains `94.41%` mean matching-native-
+token map energy, and has a `693.58x` relative eigengain range. Its float16-cache
+inverse error is only `2.25e-4` relative latent RMS and decoded pixel delta is
+`.001206`. Flattened ZCA reaches rank `943.63` but mixes token-feature structure
+more strongly, so it remains analysis-only. Per the frozen scientific-intent
+rule, axial gamma 1 advances to the complete four-arm factorial; generative
+metrics, not the favorable geometry, will determine whether it works.
+
+[Phase-L analysis](reports/2026-08-26_autoencoder_program/zca_whitening/results.md).
 
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 
