@@ -13,11 +13,17 @@ source /venv/main/bin/activate
 
 arm="$1"
 cache="tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/latents_factorized_whiten16_original_flip.pt"
+cache_ready="tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/whitened_cache_ready"
+cache_failed="tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/whitened_cache_failed"
 metrics="reports/2026-08-26_autoencoder_program/regularized_whitening/metrics.json"
-if [[ ! -f "$cache" ]]; then
-  echo "missing frozen whitened cache: $cache" >&2
-  exit 1
-fi
+while [[ ! -f "$cache_ready" ]]; do
+  if [[ -f "$cache_failed" ]]; then
+    echo "${arm} cancelled because whitened cache construction failed" >&2
+    exit 1
+  fi
+  sleep 30
+done
+[[ -f "$cache" ]] || { echo "ready marker exists but cache is missing" >&2; exit 1; }
 
 mapfile -t objective_values < <(
   /venv/main/bin/python - "$metrics" <<'PY'
