@@ -787,6 +787,13 @@ common/uniform isolates whitening; ordered/uniform isolates scheduling after
 whitening; common/weighted isolates loss allocation; ordered/weighted measures
 the interaction. Flow loss and reconstruction do not select.
 
+Launch record: code/protocol commit `3535a17` and dependency-queue commit
+`3c2fce6` were pushed before the 2026-09-05 02:31 UTC supervisor launch. The
+single cache builder waits inside the shared lifetime-lock queue. All four arm
+services wait without a GPU claim for the cache's atomic validation marker,
+then enter `gpu-claim` independently. At launch, every GPU was occupied by
+other queue-compliant work; no AFIG process oversubscribed them.
+
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 
 The decoder-objective screen is closed before changing shape. Retrain native

@@ -1,6 +1,6 @@
 {
   "date": "2026-09-05",
-  "status": "predeclared_prelaunch",
+  "status": "queued",
   "question": "After safely whitening the ordered sequence/channel readout, do an explicit coarse-to-fine SNR clock, a matched flow-target loss allocation, or their interaction improve generative modeling?",
   "source": {
     "physical_cache": "tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/latents_final_original_flip.pt",
@@ -74,5 +74,18 @@
     "nonselectors": ["training flow loss", "whitening effective rank", "reconstruction quality within the already-passed health envelope"]
   },
   "orchestration": "Build the one cache under supervisor and gpu-claim, validate its inverse, then start four independent supervisor-owned train-plus-5k-evaluation chains through gpu-claim. No raw CUDA launch is permitted.",
-  "gpu_protocol": "/workspace/GPU_QUEUEING.md"
+  "gpu_protocol": "/workspace/GPU_QUEUEING.md",
+  "launch": {
+    "code_and_protocol_commit": "3535a17",
+    "dependency_queue_commit": "3c2fce6",
+    "queued_utc": "2026-09-05T02:31:00Z",
+    "cache_supervisor": "afig_whitened_cache",
+    "arm_supervisors": [
+      "afig_whiten_common_uniform",
+      "afig_whiten_ordered_uniform",
+      "afig_whiten_common_weighted",
+      "afig_whiten_ordered_weighted"
+    ],
+    "state": "All GPUs became occupied by other queue-compliant projects before cache construction. The cache builder is waiting inside gpu-claim; arm services wait without GPU claims for its atomic validation marker and then enter gpu-claim independently."
+  }
 }

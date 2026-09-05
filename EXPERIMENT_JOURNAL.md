@@ -30,7 +30,11 @@ verdicts live under `reports/` and are linked here.
   crossings `.433-.605`; weighted arms use the exact mean-one `.733-1.391`
   profile. All architecture, optimization, sampling, and evaluation settings
   match v27. FID/KID-5k gates 10k follow-up; flow loss and whitening statistics
-  do not select.
+  do not select. Code and protocol were frozen before launch. At 02:31 UTC the
+  cache builder and all four dependency-aware arm services entered supervisor;
+  all GPUs had meanwhile been claimed by other projects, so the cache is
+  waiting inside `gpu-claim` and the arms are waiting without claims for its
+  atomic validation marker.
   [Exact protocol](reports/2026-08-26_autoencoder_program/whitened_factorial_protocol.json).
 
 - **2026-09-05 — regularized factorized whitening passes and freezes an ordered
