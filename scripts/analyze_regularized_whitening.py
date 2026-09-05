@@ -76,6 +76,15 @@ def _relative_rms(changed: torch.Tensor, reference: torch.Tensor) -> float:
     return float(numerator / denominator)
 
 
+def _reorthogonalize(basis: torch.Tensor) -> torch.Tensor:
+    """Repair finite-precision eigenvector drift without changing rank order."""
+
+    orthogonal, _ = torch.linalg.qr(basis)
+    overlap = (orthogonal * basis).sum(dim=0)
+    signs = torch.where(overlap < 0, -torch.ones_like(overlap), torch.ones_like(overlap))
+    return orthogonal * signs
+
+
 @torch.no_grad()
 def _decode(
     values: torch.Tensor,
@@ -179,7 +188,7 @@ def _plots(result: dict[str, object], output: Path) -> None:
     selected = result["selection"]
     assert isinstance(selected, dict)
     selected_candidate = str(selected["candidate"])
-    selected_cap = str(selected["gain_cap"])
+    selected_cap = f"{float(selected['gain_cap']):g}"
     profiles = candidates[selected_candidate]["caps"][selected_cap]["schedule_profiles"]
     schedule_series = []
     for index, (beta, profile) in enumerate(profiles.items()):
@@ -209,6 +218,8 @@ def _plots(result: dict[str, object], output: Path) -> None:
     )
     for index, name in enumerate(candidates):
         candidate = candidates[name]
+        if candidate["selected_cap"] is None:
+            continue
         key = str(candidate["selected_cap"])
         values = candidate["caps"][key]["heldout_covariance"]["eigenvalues"]
         spectrum_series.append(
@@ -295,6 +306,11 @@ def main() -> None:
             flattened_power,
         )
     )
+    # torch.linalg.eigh's float32 sequence eigenvectors can drift from
+    # orthogonality by slightly more than the frozen 1e-5 inverse tolerance.
+    # QR repairs the numerical representation of the same ordered eigenspaces.
+    sequence_basis = _reorthogonalize(sequence_basis)
+    channel_basis = _reorthogonalize(channel_basis)
     factorized_basis = torch.kron(sequence_basis, channel_basis)
     factorized_power = (
         factorized_basis * (full_covariance @ factorized_basis)
