@@ -1,6 +1,6 @@
 {
   "date": "2026-09-05",
-  "status": "training_queued",
+  "status": "five_thousand_complete_ten_thousand_authorized",
   "question": "Does smooth log-spectrum compression find a better representation-conditioning point than cap-16 whitening, and is complete whitening useful when its weak-direction amplification is treated as intentional?",
   "source": {
     "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
@@ -87,6 +87,14 @@
     ],
     "queue_state_at_launch": "all eight GPUs were held by cooperative lifetime claims; cache construction and all four arms are waiting without occupying an unclaimed GPU",
     "cache_policy": "one lifetime gpu-claim builds and validates all four exact caches; each training-plus-evaluation chain obtains its own lifetime claims"
+  },
+  "training_result": {
+    "completed_utc": "2026-09-05T06:32:26Z",
+    "five_thousand_metrics": "power_whitening_screen_results.json",
+    "result_document": "power_whitening/screen_results.md",
+    "best_arm": "gamma_0.25",
+    "ten_thousand_qualifiers": ["gamma_0.25"],
+    "verdict": "The sole qualifier is gamma 0.25, but every factorized coordinate arm is decisively worse than native v27. The rotation-only gamma-0 control isolates a large representation-alignment penalty."
   },
   "result_document": "power_whitening/results.md"
 }

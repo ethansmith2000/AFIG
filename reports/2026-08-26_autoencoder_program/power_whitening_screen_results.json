@@ -1,0 +1,45 @@
+{
+  "date": "2026-09-05",
+  "status": "five_thousand_complete",
+  "recipe": "seed-1 60000-step common-time uniform-loss priors; 5000 decoded samples; 50-step Heun; evaluation seed 54321",
+  "controls": {
+    "native_v27": {"fid": 26.742993, "kid": 0.017538},
+    "cap16_common_uniform": {"fid": 88.537439, "kid": 0.07337496}
+  },
+  "arms": {
+    "gamma_0": {
+      "wandb_id": "l82lj6w6",
+      "fid": 94.69140859323034,
+      "kid": 0.07557132095098495,
+      "decoded_clipping_fraction": 0.0156517578125,
+      "final_eval_flow_mse": 1.1199640184640884
+    },
+    "gamma_0.25": {
+      "wandb_id": "5o0pw124",
+      "fid": 72.99347973057002,
+      "kid": 0.05852331966161728,
+      "decoded_clipping_fraction": 0.011887565104166666,
+      "final_eval_flow_mse": 1.1881416290998459
+    },
+    "gamma_0.5": {
+      "wandb_id": "hl8tagkj",
+      "fid": 94.31882735930884,
+      "kid": 0.07505843788385391,
+      "decoded_clipping_fraction": 0.013883984375,
+      "final_eval_flow_mse": 1.2734356671571732
+    },
+    "gamma_1": {
+      "wandb_id": "j48ux9lq",
+      "fid": 77.70409883374032,
+      "kid": 0.06457297503948212,
+      "decoded_clipping_fraction": 0.008766536458333333,
+      "final_eval_flow_mse": 1.2944649904966354
+    }
+  },
+  "selection": {
+    "best": "gamma_0.25",
+    "advanced_to_10000": ["gamma_0.25"],
+    "reason": "gamma 0.25 is best on both FID and KID; no other arm is within two FID and there is no FID/KID disagreement",
+    "screen_verdict": "Smooth whitening does not rescue the factorized eigencoordinate representation. Gamma 0.25 improves FID by 21.70 over the rotation-only control, but remains 46.25 worse than native v27. The 67.95-FID rotation-only penalty shows that coordinate alignment and token semantics dominate the covariance-conditioning benefit."
+  }
+}

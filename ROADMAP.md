@@ -839,7 +839,16 @@ already claimed by other projects, cache construction is waiting through
 `gpu-claim`; the training arms do not request GPUs until their cache-ready
 markers appear.
 
+Generative outcome: gamma `0/.25/.5/1` achieve FID-5k
+`94.69/72.99/94.32/77.70` and KID-5k
+`.07557/.05852/.07506/.06457`. Gamma `.25` alone qualifies for 10k, but remains
+`46.25` FID behind native v27. Because gamma 0 preserves the covariance
+eigenvalue spectrum while degrading FID by `67.95`, reject factorized post-hoc
+rotation/whitening as a main design. Treat native token/feature alignment as a
+first-class property in subsequent scheduling work.
+
 [Phase-K analysis](reports/2026-08-26_autoencoder_program/power_whitening/results.md).
+[Phase-K generative result](reports/2026-08-26_autoencoder_program/power_whitening/screen_results.md).
 
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 

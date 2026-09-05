@@ -41,8 +41,16 @@ verdicts live under `reports/` and are linked here.
   at submission, so the cache suite is cooperatively waiting for one lifetime
   claim; arms remain CPU-only until their exact cache is validated, then enter
   the same shared queue independently.
+  All arms subsequently completed. FID/KID-5k are gamma 0
+  `94.69/.07557`, gamma .25 `72.99/.05852`, gamma .5 `94.32/.07506`,
+  and gamma 1 `77.70/.06457`, versus native v27 `26.74/.01754`.
+  Gamma .25 is the sole 10k qualifier. The rotation-only gamma-0 failure is the
+  central result: representation alignment with the prior matters far more
+  than post-hoc covariance rank, although mild compression partially recovers
+  performance inside the rotated coordinate system.
   [Frozen protocol](reports/2026-08-26_autoencoder_program/power_whitening_protocol.json).
   [Analysis result](reports/2026-08-26_autoencoder_program/power_whitening/results.md).
+  [Generative result](reports/2026-08-26_autoencoder_program/power_whitening/screen_results.md).
 
 - **2026-09-05 — whitened schedule x loss factorial predeclared:** project the
   selected v27 cache through the frozen factorized cap-16 transform, serialize
