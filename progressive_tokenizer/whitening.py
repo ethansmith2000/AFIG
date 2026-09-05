@@ -44,6 +44,38 @@ def regularized_whitening_gains(
     }
 
 
+def power_whitening_gains(
+    power: torch.Tensor, exponent: float
+) -> dict[str, torch.Tensor | float]:
+    """Smoothly interpolate from rotation-only to complete whitening.
+
+    ``exponent=0`` applies only one global scale, while ``exponent=1`` uses
+    ordinary inverse-standard-deviation whitening. Intermediate values linearly
+    compress the covariance spectrum in log space. The final scalar makes mean
+    transformed training power one.
+    """
+
+    if power.ndim != 1 or power.numel() == 0:
+        raise ValueError("power must be a nonempty vector")
+    if not math.isfinite(exponent) or not 0.0 <= exponent <= 1.0:
+        raise ValueError("exponent must lie in [0,1]")
+    values = power.double()
+    if not bool(torch.isfinite(values).all()) or bool((values <= 0).any()):
+        raise ValueError("power must be finite and strictly positive")
+    gains = values.pow(-exponent / 2.0)
+    transformed_power = values * gains.square()
+    global_scale = transformed_power.mean().clamp_min(1e-30).rsqrt()
+    gains = gains * global_scale
+    transformed_power = values * gains.square()
+    return {
+        "gains": gains.to(dtype=power.dtype),
+        "transformed_power": transformed_power.to(dtype=power.dtype),
+        "global_scale": float(global_scale),
+        "relative_gain_range": float(gains.max() / gains.min()),
+        "exponent": float(exponent),
+    }
+
+
 def project_linear(
     values: torch.Tensor,
     mean: torch.Tensor,

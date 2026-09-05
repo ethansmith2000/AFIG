@@ -1,0 +1,50 @@
+{
+  "date": "2026-09-05",
+  "status": "predeclared_prelaunch",
+  "question": "Does smooth log-spectrum compression find a better representation-conditioning point than cap-16 whitening, and is complete whitening useful when its weak-direction amplification is treated as intentional?",
+  "source": {
+    "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
+    "basis": "the frozen factorized sequence/channel basis from regularized_whitening/selected_transform.pt",
+    "physical_shape": [64, 16],
+    "comparison": "cap-16 common/uniform FID/KID-5k 88.5374/0.073375; unwhitened native v27 26.7430/0.017538"
+  },
+  "transform": {
+    "formula": "gain_j proportional to power_j^(-gamma/2), with one global scalar making mean transformed training power one",
+    "resulting_spectrum": "transformed power proportional to original power^(1-gamma)",
+    "analysis_gamma_grid": [0.0, 0.125, 0.25, 0.5, 0.75, 1.0],
+    "interpretation": "gamma=0 is the rotation-only control; gamma=1 is complete whitening; intermediate gamma linearly compresses log eigenvalues without a hard threshold",
+    "null_policy": "Do not cap the full-whitening stress test. Report split stability and a float16 quantization-noise proxy for the weak tail. Stop an arm only for non-finite values or failure of the existing float32/float16/decode inversion gates."
+  },
+  "analysis": {
+    "fit_split": "same first 25000 training examples as the frozen basis",
+    "heldout_split": "all 10000 test examples",
+    "measurements": [
+      "complete transformed held-out covariance spectra and effective ranks",
+      "gain and output-power distributions",
+      "float32 and simulated-float16 inversion and decoded errors",
+      "fixed-basis power agreement between disjoint training halves",
+      "sequence-eigenspace principal overlap between disjoint training halves",
+      "per-coordinate source-float16 quantization-SNR proxy"
+    ]
+  },
+  "training_screen": {
+    "gamma_values": [0.0, 0.25, 0.5, 1.0],
+    "objective": "common global time and uniform flow loss only",
+    "reason": "isolate basis rotation and smooth whitening strength before reintroducing beta timing or loss weights",
+    "common_recipe": "prior seed 1, width 512, depth 12, eight heads, QK RMS normalization, batch 256, 60000 steps, learning rate 1e-4, 1000 warmup, 50-step Heun evaluation seed 54321",
+    "names": {
+      "gamma_0": "v36-v27-factorized-powerg0-common-uniform-prior-s1",
+      "gamma_025": "v36-v27-factorized-powerg025-common-uniform-prior-s1",
+      "gamma_05": "v36-v27-factorized-powerg05-common-uniform-prior-s1",
+      "gamma_1": "v36-v27-factorized-powerg1-common-uniform-prior-s1"
+    }
+  },
+  "selection": {
+    "primary": ["decoded_fid", "decoded_kid"],
+    "initial_samples": 5000,
+    "advance_to_10000": "advance the best arm and any arm within two FID of it or with FID/KID disagreement",
+    "schedule_followup": "only the best healthy gamma may receive a later common-versus-beta timing comparison",
+    "nonselectors": ["training flow loss", "covariance effective rank", "reconstruction within its health envelope"]
+  },
+  "gpu_protocol": "/workspace/GPU_QUEUEING.md; every analysis, cache build, training run, and evaluation uses a lifetime gpu-claim and supervisor"
+}

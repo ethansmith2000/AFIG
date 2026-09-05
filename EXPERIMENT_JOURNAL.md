@@ -22,6 +22,16 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-05 — smooth power-whitening screen predeclared:** retain the frozen
+  factorized sequence/channel basis but replace the hard gain cap with
+  `gain_j proportional to power_j^(-gamma/2)`. Analyze gamma
+  `0/.125/.25/.5/.75/1`, including split stability and a source-float16
+  quantization-noise proxy. Then train common-time/uniform-loss controls only
+  for gamma `0/.25/.5/1`; gamma 0 isolates the ordered basis rotation and gamma
+  1 intentionally performs unrestricted full whitening. FID/KID select before
+  any beta schedule or loss weighting is reintroduced.
+  [Frozen protocol](reports/2026-08-26_autoencoder_program/power_whitening_protocol.json).
+
 - **2026-09-05 — whitened schedule x loss factorial predeclared:** project the
   selected v27 cache through the frozen factorized cap-16 transform, serialize
   the exact inverse to the unchanged decoder, and train four seed-1 priors on

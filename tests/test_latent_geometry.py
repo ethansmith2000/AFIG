@@ -16,6 +16,7 @@ from progressive_tokenizer.latent_geometry import (
 from progressive_tokenizer.whitening import (
     covariance_diagnostics,
     invert_linear,
+    power_whitening_gains,
     project_linear,
     regularized_whitening_gains,
     tempered_token_profile,
@@ -128,6 +129,26 @@ def test_regularized_whitening_caps_gain_and_preserves_mean_power() -> None:
     assert fitted["relative_gain_range"] == pytest.approx(4.0)
     assert float(transformed.mean()) == pytest.approx(1.0)
     assert float(transformed[-1]) < 1.0
+
+
+def test_power_whitening_interpolates_log_spectrum() -> None:
+    power = torch.tensor([16.0, 4.0, 1.0])
+    identity = power_whitening_gains(power, 0.0)
+    full = power_whitening_gains(power, 1.0)
+    half = power_whitening_gains(power, 0.5)
+    torch.testing.assert_close(
+        full["transformed_power"], torch.ones(3), atol=1e-6, rtol=1e-6
+    )
+    assert identity["relative_gain_range"] == pytest.approx(1.0)
+    assert full["relative_gain_range"] == pytest.approx(4.0)
+    assert half["relative_gain_range"] == pytest.approx(2.0)
+    expected = power.sqrt() / power.sqrt().mean()
+    torch.testing.assert_close(half["transformed_power"], expected)
+
+
+def test_power_whitening_rejects_zero_power_for_full_rank_transform() -> None:
+    with pytest.raises(ValueError, match="strictly positive"):
+        power_whitening_gains(torch.tensor([1.0, 0.0]), 1.0)
 
 
 def test_linear_whitening_round_trip_is_exact() -> None:

@@ -805,6 +805,25 @@ ordered time by 3.67 FID; do not combine them in the next screen.
 
 [Exact 5k result](reports/2026-08-26_autoencoder_program/whitened_factorial_results.json).
 
+## Phase K — smooth power whitening (predeclared)
+
+The cap was a conservative safety mechanism, not the definition of whitening.
+Test the scale-equivariant family `gain_j proportional to
+power_j^(-gamma/2)`, for which the output spectrum is proportional to
+`power^(1-gamma)`. Gamma 0 rotates into the factorized ordered basis without
+flattening; gamma 1 is intentional complete whitening; intermediate values
+compress the log spectrum smoothly.
+
+Before training, measure gamma `0/.125/.25/.5/.75/1`, disjoint-half power and
+subspace stability, source-float16 quantization SNR, held-out covariance, and
+inverse/decode error. Do not cap gamma 1 merely because its gain is large; that
+amplification is the intervention. Then train only common-time/uniform-loss
+priors for gamma `0/.25/.5/1` at the v27 recipe. This first isolates rotation
+and whitening strength. Only the best FID/KID gamma can receive a later beta
+schedule comparison.
+
+[Frozen Phase-K protocol](reports/2026-08-26_autoencoder_program/power_whitening_protocol.json).
+
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 
 The decoder-objective screen is closed before changing shape. Retrain native
