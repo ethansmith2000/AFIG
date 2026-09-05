@@ -31,11 +31,16 @@ verdicts live under `reports/` and are linked here.
   profile. All architecture, optimization, sampling, and evaluation settings
   match v27. FID/KID-5k gates 10k follow-up; flow loss and whitening statistics
   do not select. Code and protocol were frozen before launch. At 02:31 UTC the
-  cache builder and all four dependency-aware arm services entered supervisor;
-  all GPUs had meanwhile been claimed by other projects, so the cache is
-  waiting inside `gpu-claim` and the arms are waiting without claims for its
-  atomic validation marker.
+  cache builder and all four dependency-aware arm services entered supervisor.
+  All completed at 60k plus FID/KID-5k. Common/uniform collapses to
+  `88.54/.07337`; ordered/uniform recovers an enormous 38.21 FID but remains at
+  `50.33/.04074`, far behind unwhitened v27. Common weighting reaches
+  `83.64/.06954`; combining weights with ordering worsens the ordered arm to
+  `53.99/.04418`. Reject cap-16 whitening, but retain the strong within-cache
+  schedule effect as evidence that explicit ordering helps once magnitude has
+  been flattened.
   [Exact protocol](reports/2026-08-26_autoencoder_program/whitened_factorial_protocol.json).
+  [Durable result](reports/2026-08-26_autoencoder_program/whitened_factorial_results.json).
 
 - **2026-09-05 — regularized factorized whitening passes and freezes an ordered
   readout:** before another

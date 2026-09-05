@@ -81,6 +81,11 @@ retaining the hard-VAE path as a conservative stability control.
   retaining sequence-mode token order; simulated float16 inversion changes
   decoded pixels by only `.00121` RMS. The frozen beta-.25 schedule spans
   SNR=1 times `.433-.605` without changing clean token magnitude.
+- Generatively, that cap-16 transform is not viable: common-time FID rises to
+  `88.54`. Explicit beta-.25 ordering recovers 38.21 FID inside the whitened
+  cache, reaching `50.33`, but remains far behind unwhitened v27 at `26.74`.
+  This rejects aggressive capped whitening while supporting a milder smooth
+  power-whitening screen and the usefulness of ordering after flattening.
 - Decoder-only sigma-0.05 latent jitter improves expected matched-prior
   generation across tokenizer and prior seeds, although one tokenizer seed
   regresses; it is the retained expected-value training design.

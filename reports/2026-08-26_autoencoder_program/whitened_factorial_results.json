@@ -1,0 +1,43 @@
+{
+  "date": "2026-09-05",
+  "status": "fid5k_complete",
+  "external_unwhitened_v27": {
+    "fid": 26.742993129687875,
+    "kid": 0.017538033425807953
+  },
+  "arms": {
+    "common_uniform": {
+      "wandb_run_id": "vntrwm1g",
+      "fid": 88.53743884065176,
+      "kid": 0.07337495684623718,
+      "decoded_clipping_fraction": 0.010151236979166667
+    },
+    "ordered_uniform": {
+      "wandb_run_id": "tz9df3vq",
+      "fid": 50.325803488098074,
+      "kid": 0.04073901101946831,
+      "decoded_clipping_fraction": 0.006547395833333333
+    },
+    "common_weighted": {
+      "wandb_run_id": "x06z1g0s",
+      "fid": 83.64266297564347,
+      "kid": 0.06953693181276321,
+      "decoded_clipping_fraction": 0.0091685546875
+    },
+    "ordered_weighted": {
+      "wandb_run_id": "hjmar7jc",
+      "fid": 53.9915898156537,
+      "kid": 0.04418284446001053,
+      "decoded_clipping_fraction": 0.0062482421875
+    }
+  },
+  "effects": {
+    "whitening_common_uniform_fid_delta_vs_unwhitened": 61.79444571096388,
+    "ordered_time_fid_delta_vs_common_uniform": -38.211635352553685,
+    "common_weighting_fid_delta_vs_common_uniform": -4.894775865008284,
+    "weighting_fid_delta_with_ordered_time": 3.665786327555624,
+    "fid_interaction": 8.560562192563908
+  },
+  "gate": "All arms remain more than 23 FID behind unwhitened v27. Do not promote or replicate. Ordered/uniform and common/weighted improve their relevant exact-cache control and may receive the protocol-required 10k measurement for effect precision, but this cannot rescue the representation selection.",
+  "verdict": "Cap-16 whitening makes the latent dramatically harder to model. The beta-.25 ordered clock is strongly useful inside that damaged representation, recovering 38.21 FID, but does not approach the unwhitened control. Flow-target weighting helps common time modestly and harms the ordered arm. Preserve this as evidence for useful ordering under over-flattening; do not select the transform."
+}

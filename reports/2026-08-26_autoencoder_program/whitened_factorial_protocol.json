@@ -1,6 +1,6 @@
 {
   "date": "2026-09-05",
-  "status": "queued",
+  "status": "fid5k_complete",
   "question": "After safely whitening the ordered sequence/channel readout, do an explicit coarse-to-fine SNR clock, a matched flow-target loss allocation, or their interaction improve generative modeling?",
   "source": {
     "physical_cache": "tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/latents_final_original_flip.pt",
@@ -86,6 +86,14 @@
       "afig_whiten_common_weighted",
       "afig_whiten_ordered_weighted"
     ],
-    "state": "All GPUs became occupied by other queue-compliant projects before cache construction. The cache builder is waiting inside gpu-claim; arm services wait without GPU claims for its atomic validation marker and then enter gpu-claim independently."
+    "state": "The cache and all four train-plus-FID5k chains completed under gpu-claim."
+  },
+  "result": {
+    "common_uniform_fid_kid": [88.53743884065176, 0.07337495684623718],
+    "ordered_uniform_fid_kid": [50.325803488098074, 0.04073901101946831],
+    "common_weighted_fid_kid": [83.64266297564347, 0.06953693181276321],
+    "ordered_weighted_fid_kid": [53.9915898156537, 0.04418284446001053],
+    "verdict": "Reject cap-16 whitening for selection. Ordered timing recovers 38.21 FID relative to whitened common/uniform but remains 23.58 FID behind unwhitened v27. Weighting helps common time by 4.89 FID and hurts ordered time by 3.67 FID.",
+    "durable_metrics": "whitened_factorial_results.json"
   }
 }

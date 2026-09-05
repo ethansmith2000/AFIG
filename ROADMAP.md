@@ -794,6 +794,17 @@ services wait without a GPU claim for the cache's atomic validation marker,
 then enter `gpu-claim` independently. At launch, every GPU was occupied by
 other queue-compliant work; no AFIG process oversubscribed them.
 
+**FID/KID-5k outcome:** common/uniform `88.54/.07337`, ordered/uniform
+`50.33/.04074`, common/weighted `83.64/.06954`, and ordered/weighted
+`53.99/.04418`, versus unwhitened v27 `26.74/.01754`. Cap-16 whitening is
+decisively rejected. Yet beta-.25 timing improves its exact common/uniform
+control by 38.21 FID, unusually strong evidence that the ordered sequence
+subspaces provide useful conditioning when their natural magnitude hierarchy
+is suppressed. Flow-target weights improve common time by 4.89 FID but worsen
+ordered time by 3.67 FID; do not combine them in the next screen.
+
+[Exact 5k result](reports/2026-08-26_autoencoder_program/whitened_factorial_results.json).
+
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 
 The decoder-objective screen is closed before changing shape. Retrain native
