@@ -2,8 +2,8 @@
 
 Date: 2026-09-05
 
-Status: all four 60k-step priors and their FID/KID-5k evaluations completed.
-Gamma `.25` is the sole arm admitted to the predeclared 10k confirmation.
+Status: complete. All four 60k-step priors and their FID/KID-5k evaluations
+completed; gamma `.25` also completed the predeclared 10k confirmation.
 
 ## Result
 
@@ -49,6 +49,13 @@ Only gamma `.25` advances to 10k: it is best on both FID and KID, no other arm
 is within two FID, and the two metrics do not disagree. The 10k result estimates
 the size of the failure more precisely; it cannot overturn the screen-level
 rejection relative to native v27.
+
+The confirmation returns FID/KID-10k `70.30/.05824`, with decoded clipping
+fraction `.0118`. It confirms a real partial rescue over the rotated control,
+but remains noncompetitive. Close the factorized post-hoc rotation/whitening
+branch without spending a run on beta timing: that would optimize an already
+rejected coordinate system and would not identify whether token scheduling is
+useful in the native representation.
 
 Exact machine-readable values are in
 [power_whitening_screen_results.json](../power_whitening_screen_results.json).

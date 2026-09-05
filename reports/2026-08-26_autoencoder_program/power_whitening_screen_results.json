@@ -1,6 +1,6 @@
 {
   "date": "2026-09-05",
-  "status": "five_thousand_complete",
+  "status": "complete",
   "recipe": "seed-1 60000-step common-time uniform-loss priors; 5000 decoded samples; 50-step Heun; evaluation seed 54321",
   "controls": {
     "native_v27": {"fid": 26.742993, "kid": 0.017538},
@@ -41,5 +41,14 @@
     "advanced_to_10000": ["gamma_0.25"],
     "reason": "gamma 0.25 is best on both FID and KID; no other arm is within two FID and there is no FID/KID disagreement",
     "screen_verdict": "Smooth whitening does not rescue the factorized eigencoordinate representation. Gamma 0.25 improves FID by 21.70 over the rotation-only control, but remains 46.25 worse than native v27. The 67.95-FID rotation-only penalty shows that coordinate alignment and token semantics dominate the covariance-conditioning benefit."
+  },
+  "confirmation_10000": {
+    "arm": "gamma_0.25",
+    "launcher_commit": "11d59c4",
+    "completed_utc": "2026-09-05T17:24:12Z",
+    "fid": 70.30215814827102,
+    "kid": 0.05824045091867447,
+    "decoded_clipping_fraction": 0.011759244791666667,
+    "verdict": "The larger evaluation confirms gamma 0.25 as a real but noncompetitive partial rescue. Close the post-hoc factorized rotation/whitening branch without a beta-schedule follow-up."
   }
 }

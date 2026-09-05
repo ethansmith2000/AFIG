@@ -47,7 +47,9 @@ verdicts live under `reports/` and are linked here.
   Gamma .25 is the sole 10k qualifier. The rotation-only gamma-0 failure is the
   central result: representation alignment with the prior matters far more
   than post-hoc covariance rank, although mild compression partially recovers
-  performance inside the rotated coordinate system.
+  performance inside the rotated coordinate system. Gamma .25 confirms at
+  FID/KID-10k `70.30/.05824`; close this branch without a beta-schedule
+  follow-up.
   [Frozen protocol](reports/2026-08-26_autoencoder_program/power_whitening_protocol.json).
   [Analysis result](reports/2026-08-26_autoencoder_program/power_whitening/results.md).
   [Generative result](reports/2026-08-26_autoencoder_program/power_whitening/screen_results.md).

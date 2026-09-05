@@ -847,6 +847,12 @@ eigenvalue spectrum while degrading FID by `67.95`, reject factorized post-hoc
 rotation/whitening as a main design. Treat native token/feature alignment as a
 first-class property in subsequent scheduling work.
 
+Gamma `.25` confirms at FID/KID-10k `70.30/.05824`. Phase K is closed: do not
+add beta timing to this rejected post-hoc coordinate system. If token-dependent
+SNR/loss is revisited, apply it to native tokens or co-train an explicitly
+structured representation so the encoder, decoder, and prior agree on the
+token semantics.
+
 [Phase-K analysis](reports/2026-08-26_autoencoder_program/power_whitening/results.md).
 [Phase-K generative result](reports/2026-08-26_autoencoder_program/power_whitening/screen_results.md).
 
