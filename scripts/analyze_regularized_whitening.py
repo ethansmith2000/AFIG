@@ -98,7 +98,16 @@ def _decode(
 def _health(
     metrics: dict[str, object], baseline: dict[str, object], cap: float
 ) -> dict[str, object]:
+    scalar_metrics = (
+        float(metrics["relative_gain_range"]),
+        float(metrics["float32_relative_roundtrip_rms"]),
+        float(metrics["float16_relative_roundtrip_rms"]),
+        float(metrics["decoded_float16_pixel_delta_rms"]),
+        float(metrics["heldout_covariance"]["effective_rank"]),  # type: ignore[index]
+        float(metrics["heldout_covariance"]["off_diagonal_frobenius_fraction"]),  # type: ignore[index]
+    )
     checks = {
+        "finite": all(math.isfinite(value) for value in scalar_metrics),
         "cap_at_most_16": cap <= 16.0,
         "relative_gain_at_most_16": float(metrics["relative_gain_range"]) <= 16.0001,
         "float32_roundtrip": float(metrics["float32_relative_roundtrip_rms"]) <= 1e-5,
@@ -241,7 +250,10 @@ def main() -> None:
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA requested but unavailable")
     if device.type == "cuda":
-        torch.backends.cuda.matmul.allow_tf32 = True
+        # The audit has an explicit 1e-5 inverse gate. TF32 is appropriate for
+        # model training but not for testing a nominally exact linear inverse.
+        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.set_float32_matmul_precision("highest")
 
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -379,7 +391,7 @@ def main() -> None:
                         "off_diagonal": diagnostics[
                             "off_diagonal_frobenius_fraction"
                         ],
-                        "health": metrics["health"]["pass"],  # type: ignore[index]
+                        "health": metrics["health"],
                     }
                 ),
                 flush=True,
@@ -394,7 +406,25 @@ def main() -> None:
     elif candidates["flattened"]["selected_cap"] is not None:
         selected_candidate = "flattened"
     if selected_candidate is None:
-        raise RuntimeError("no whitening candidate passed the frozen health gates")
+        failed_result = {
+            "status": "complete_no_healthy_candidate",
+            "source_cache": str(cache_path.resolve()),
+            "prior_checkpoint": str(checkpoint_path.resolve()),
+            "fit_samples": fit_count,
+            "eval_samples": eval_count,
+            "gain_caps": gain_caps,
+            "betas": betas,
+            "baseline": baseline,
+            "candidates": candidates,
+            "selection": None,
+        }
+        failed_path = output / "metrics.json"
+        failed_path.write_text(
+            json.dumps(failed_result, indent=2, sort_keys=True) + "\n"
+        )
+        raise RuntimeError(
+            f"no whitening candidate passed the frozen health gates; diagnostics at {failed_path}"
+        )
     selected_cap = str(candidates[selected_candidate]["selected_cap"])
     selected_metrics = candidates[selected_candidate]["caps"][selected_cap]  # type: ignore[index]
     schedule_profiles = selected_metrics["schedule_profiles"]
