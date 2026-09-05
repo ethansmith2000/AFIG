@@ -856,6 +856,30 @@ token semantics.
 [Phase-K analysis](reports/2026-08-26_autoencoder_program/power_whitening/results.md).
 [Phase-K generative result](reports/2026-08-26_autoencoder_program/power_whitening/screen_results.md).
 
+## Phase L — rotate-back/ZCA whitening and restored token hierarchy (predeclared)
+
+Phase K used PCA coordinates, not the intended rotate-back whitening: gamma 0
+still replaced native tokens with global sequence-mode coefficients. Correct
+this with symmetric ZCA transforms `U diag(gain) U.T`, for which gamma 0 is the
+exact native identity. Analyze channel-only, sequence-only, combined axial, and
+flattened transforms for gamma `0/.25/.5/.75/1`. In addition to covariance and
+round-trip diagnostics, measure how much of each transformed output token comes
+from the matching native input token.
+
+If all numerical gates pass, select axial gamma 1 by scientific intent rather
+than covariance rank: it removes the channel and sequence magnitude spectra
+without leaving the representation in either eigenbasis. Then test the full
+`common/ordered time x uniform/tempered loss` factorial on that one cache.
+Ordered time uses the already tested beta-.25 softened CIFAR crossings
+`.4041/.4702/.5066/.5325/.5658/.6055` across native token-index groups
+`11/11/11/11/10/10`. Tempered loss uses the matched flow-target-energy profile
+with only `2.229x` range. This tests the user's actual construction: whiten
+uncontrolled axial resolving orders, then restore both SNR timing and implicit
+loss allocation specifically at the token level without explicit magnitude
+rescaling.
+
+[Frozen Phase-L protocol](reports/2026-08-26_autoencoder_program/zca_whitening_protocol.json).
+
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 
 The decoder-objective screen is closed before changing shape. Retrain native

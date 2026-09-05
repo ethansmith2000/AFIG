@@ -1,0 +1,84 @@
+{
+  "date": "2026-09-05",
+  "status": "predeclared_prelaunch",
+  "question": "After whitening covariance in eigenspace and rotating back into the native token/feature basis, can an explicit per-token SNR schedule and matched loss allocation restore a useful image-like resolving hierarchy?",
+  "correction": {
+    "previous_transform": "PCA coordinates: (x - mean) @ U @ diag(gain); gamma zero remained a sequence/channel rotation",
+    "intended_transform": "symmetric/ZCA coordinates: mean + (x - mean) @ U @ diag(gain) @ U.T; gamma zero is the exact native identity",
+    "interpretation": "The completed power-whitening screen diagnoses the cost of exposing global sequence modes as literal tokens. It does not test rotate-back whitening."
+  },
+  "source": {
+    "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
+    "cache": "tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/latents_final_original_flip.pt",
+    "normalization_checkpoint": "prior_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2-prior-s1/checkpoint_final.pt",
+    "shape": [64, 16],
+    "external_control": "native v27 common/uniform prior seed 1 at FID/KID 26.7430/0.017538 (5k) and 24.5341/0.017647 (10k)"
+  },
+  "analysis": {
+    "fit_samples": 25000,
+    "heldout_samples": 10000,
+    "gamma_grid": [0.0, 0.25, 0.5, 0.75, 1.0],
+    "gain_formula": "(eigenvalue / mean_eigenvalue)^(-gamma/2), without an extra common scale; later tensor-wide cache normalization removes common scale and gamma zero stays exactly identity",
+    "variants": {
+      "channel": "apply channel ZCA identically within every native token; never mix tokens",
+      "sequence": "apply sequence ZCA and rotate back; output slots retain native labels but contain symmetric cross-token mixing",
+      "axial": "apply sequence and channel ZCA together using the Kronecker eigenbasis",
+      "flattened": "complete 1024-dimensional ZCA control"
+    },
+    "measurements": [
+      "complete heldout covariance rank and residual off-diagonal fraction",
+      "sequence, channel, and literal-token effective ranks",
+      "native-centered correlation and relative displacement",
+      "fraction of each output token's linear-map energy drawn from its matching native input token",
+      "float32, simulated float16-cache, and decoded round-trip error"
+    ],
+    "numeric_gates": {
+      "gamma_zero_identity_max_abs": 1e-6,
+      "float32_relative_roundtrip_rms": 1e-5,
+      "float16_cache_relative_roundtrip_rms": 0.002,
+      "decoded_pixel_delta_rms": 0.002,
+      "finite": true
+    }
+  },
+  "training_authorization": {
+    "primary_transform": "axial ZCA at gamma 1 if every numeric gate passes; this is the direct test of removing the channel and sequence magnitude spectra before restoring a token hierarchy",
+    "fallback": "channel-only ZCA at gamma 1 only if axial ZCA fails a numerical gate; flattened ZCA is analysis-only because it maximally mixes token-feature coordinates",
+    "reason_not_to_select_by_rank": "covariance rank and whitening strength are diagnostics, not latent-quality selectors"
+  },
+  "token_intervention": {
+    "ordering": "native token index, no PCA-coordinate exposure and no post-hoc permutation",
+    "group_sizes": [11, 11, 11, 11, 10, 10],
+    "source_profile": "six CIFAR radial-band population powers, tempered with beta 0.25",
+    "snr1_crossings": [
+      0.40410173521418785,
+      0.47022477394468404,
+      0.5065679675274289,
+      0.5325433480897788,
+      0.5658106972478606,
+      0.6055140332654796
+    ],
+    "flow_target_energy_loss_weights": [
+      1.5517655948058875,
+      1.1092893559285699,
+      0.9526161665546741,
+      0.8654548992737954,
+      0.7766682063007606,
+      0.6962931754800191
+    ],
+    "weight_formula": "mean-one over all 64 tokens of 1 + original_CIFAR_band_power^0.25",
+    "weight_range": 2.2286095131351997,
+    "clean_magnitude": "no explicit per-token rescaling; ZCA output receives only the existing tensor-wide population normalization"
+  },
+  "factorial_if_authorized": {
+    "arms": [
+      "common time / uniform loss",
+      "ordered token time / uniform loss",
+      "common time / tempered token loss",
+      "ordered token time / tempered token loss"
+    ],
+    "recipe": "prior seed 1, width 512, depth 12, eight heads, QK RMS normalization, batch 256, 60000 optimizer steps, learning rate 1e-4, 1000 warmup, 50-step Heun evaluation seed 54321",
+    "selection": "decoded FID/KID at 5000 samples; advance improvements, arms within two FID, and FID/KID disagreements to 10000; flow loss and whitening diagnostics do not select",
+    "interaction_goal": "distinguish the cost of ZCA, the value of token timing after ZCA, the value of restored implicit loss allocation, and whether timing plus weighting is complementary or double-counted"
+  },
+  "gpu_protocol": "/workspace/GPU_QUEUEING.md; analysis, cache construction, training, and evaluation use lifetime gpu-claim locks under supervisor"
+}

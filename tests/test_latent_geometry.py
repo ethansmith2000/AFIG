@@ -14,12 +14,15 @@ from progressive_tokenizer.latent_geometry import (
     swap_axis_band,
 )
 from progressive_tokenizer.whitening import (
+    apply_zca,
     covariance_diagnostics,
     invert_linear,
+    invert_zca,
     power_whitening_gains,
     project_linear,
     regularized_whitening_gains,
     tempered_token_profile,
+    zca_power_gains,
 )
 from scripts.analyze_known_clean_denoising import _comparison
 
@@ -149,6 +152,35 @@ def test_power_whitening_interpolates_log_spectrum() -> None:
 def test_power_whitening_rejects_zero_power_for_full_rank_transform() -> None:
     with pytest.raises(ValueError, match="strictly positive"):
         power_whitening_gains(torch.tensor([1.0, 0.0]), 1.0)
+
+
+def test_zca_power_whitening_has_exact_identity_anchor() -> None:
+    power = torch.tensor([16.0, 4.0, 1.0])
+    identity = zca_power_gains(power, 0.0)
+    full = zca_power_gains(power, 1.0)
+    assert torch.equal(identity["gains"], torch.ones_like(power))
+    torch.testing.assert_close(
+        full["transformed_power"], power.mean().expand_as(power)
+    )
+    assert full["relative_gain_range"] == pytest.approx(4.0)
+
+
+def test_zca_round_trip_and_zero_exponent_preserve_native_axes() -> None:
+    generator = torch.Generator().manual_seed(41)
+    values = torch.randn(7, 3, 2, generator=generator)
+    mean = torch.randn(3, 2, generator=generator)
+    basis, _ = torch.linalg.qr(torch.randn(6, 6, generator=generator))
+    power = torch.tensor([9.0, 5.0, 3.0, 2.0, 1.0, 0.25])
+    identity = zca_power_gains(power, 0.0)["gains"]
+    gains = zca_power_gains(power, 0.5)["gains"]
+    assert isinstance(identity, torch.Tensor)
+    assert isinstance(gains, torch.Tensor)
+    torch.testing.assert_close(
+        apply_zca(values, mean, basis, identity), values, atol=1e-6, rtol=1e-6
+    )
+    transformed = apply_zca(values, mean, basis, gains)
+    restored = invert_zca(transformed, mean, basis, gains)
+    torch.testing.assert_close(restored, values, atol=2e-5, rtol=2e-5)
 
 
 def test_linear_whitening_round_trip_is_exact() -> None:

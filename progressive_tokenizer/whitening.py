@@ -76,6 +76,83 @@ def power_whitening_gains(
     }
 
 
+def zca_power_gains(
+    power: torch.Tensor, exponent: float
+) -> dict[str, torch.Tensor | float]:
+    """Return identity-anchored gains for symmetric/ZCA power whitening.
+
+    The gains are ``(power / mean(power))**(-exponent/2)``. Exponent zero is
+    therefore exactly the identity, exponent one makes every fitted
+    eigendirection have the original mean power, and intermediate exponents
+    smoothly compress the log spectrum.
+    """
+
+    if power.ndim != 1 or power.numel() == 0:
+        raise ValueError("power must be a nonempty vector")
+    if not math.isfinite(exponent) or not 0.0 <= exponent <= 1.0:
+        raise ValueError("exponent must lie in [0,1]")
+    values = power.double()
+    if not bool(torch.isfinite(values).all()) or bool((values <= 0).any()):
+        raise ValueError("power must be finite and strictly positive")
+    reference = values.mean()
+    gains = (values / reference).pow(-exponent / 2.0)
+    transformed_power = values * gains.square()
+    return {
+        "gains": gains.to(dtype=power.dtype),
+        "transformed_power": transformed_power.to(dtype=power.dtype),
+        "reference_power": float(reference),
+        "relative_gain_range": float(gains.max() / gains.min()),
+        "exponent": float(exponent),
+    }
+
+
+def zca_matrix(basis: torch.Tensor, gains: torch.Tensor) -> torch.Tensor:
+    """Construct ``basis @ diag(gains) @ basis.T`` after validation."""
+
+    if basis.ndim != 2 or basis.shape[0] != basis.shape[1]:
+        raise ValueError("basis must be square")
+    if gains.shape != (basis.shape[1],):
+        raise ValueError("gains must match the basis rank")
+    if not bool(torch.isfinite(basis).all()) or not bool(torch.isfinite(gains).all()):
+        raise ValueError("basis and gains must be finite")
+    if bool((gains <= 0).any()):
+        raise ValueError("gains must be strictly positive")
+    return (basis * gains[None, :]) @ basis.T
+
+
+def apply_zca(
+    values: torch.Tensor,
+    mean: torch.Tensor,
+    basis: torch.Tensor,
+    gains: torch.Tensor,
+) -> torch.Tensor:
+    """Apply a symmetric power transform while retaining the original axes."""
+
+    if values.ndim != 3 or mean.shape != values.shape[1:]:
+        raise ValueError("values and mean must have shapes [N,T,D] and [T,D]")
+    dimensions = values.shape[1] * values.shape[2]
+    if basis.shape != (dimensions, dimensions) or gains.shape != (dimensions,):
+        raise ValueError("basis and gains do not match the flattened latent")
+    matrix = zca_matrix(
+        basis.to(values.device, dtype=torch.float32),
+        gains.to(values.device, dtype=torch.float32),
+    )
+    centered = values.float() - mean.to(values.device, dtype=torch.float32)
+    transformed = centered.flatten(1) @ matrix
+    return transformed.reshape_as(values) + mean.to(values.device, dtype=torch.float32)
+
+
+def invert_zca(
+    values: torch.Tensor,
+    mean: torch.Tensor,
+    basis: torch.Tensor,
+    gains: torch.Tensor,
+) -> torch.Tensor:
+    """Invert :func:`apply_zca` in floating-point arithmetic."""
+
+    return apply_zca(values, mean, basis, gains.reciprocal())
+
+
 def project_linear(
     values: torch.Tensor,
     mean: torch.Tensor,

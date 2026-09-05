@@ -22,6 +22,19 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-05 — rotate-back/ZCA correction predeclared:** the previous smooth
+  whitening screen exposed sequence/channel eigenmodes as the literal `64x16`
+  prior tensor; gamma 0 was therefore a rotation rather than an identity. The
+  intended experiment uses the symmetric transform
+  `U diag(gain) U.T`, returning to native coordinates. Audit channel-only,
+  sequence-only, combined axial, and flattened ZCA for gamma
+  `0/.25/.5/.75/1`, including native-token self-attribution and exact gamma-0
+  identity. If numerically healthy, use full axial ZCA and run the required
+  common/ordered-time by uniform/tempered-loss factorial. The token schedule
+  and bounded mean-one loss weights both come from the same beta-.25 softened
+  CIFAR radial profile; token magnitudes are not separately rescaled.
+  [Frozen protocol](reports/2026-08-26_autoencoder_program/zca_whitening_protocol.json).
+
 - **2026-09-05 — smooth power-whitening analysis passes:** retain the frozen
   factorized sequence/channel basis but replace the hard gain cap with
   `gain_j proportional to power_j^(-gamma/2)`. Analyze gamma
