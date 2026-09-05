@@ -22,7 +22,8 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
-- **2026-09-05 — regularized whitening feasibility predeclared:** before another
+- **2026-09-05 — regularized factorized whitening passes and freezes an ordered
+  readout:** before another
   prior is trained, compare two invertible readouts of the selected v27 cache:
   sequence/channel product modes retaining 64 sequence-ranked tokens, and a
   complete flattened-PCA control packed by consecutive rank. Sweep relative
@@ -31,8 +32,15 @@ verdicts live under `reports/` and are linked here.
   inversion, and decoded numerical error. From floored pre-whitening token
   powers, tabulate beta `0/.125/.25/.5` rational SNR clocks and two alternative
   mean-one loss profiles. No training is authorized until one transform, cap,
-  schedule, and loss family pass the frozen gates.
-  [Exact protocol](reports/2026-08-26_autoencoder_program/regularized_whitening_protocol.json).
+  schedule, and loss family pass the frozen gates. The final queued audit
+  selects the factorized readout at gain cap `16`: held-out effective rank rises
+  from 369.88 to 794.98 and off-diagonal covariance fraction falls from .9439
+  to .5844. Float32/float16 latent round-trip errors are `7.1e-7/2.06e-4`, and
+  decoded float16 error is `.00121`. Beta `.25` is the strongest full pass,
+  giving crossings `.433-.605` and gentle flow-target weights with a `1.899x`
+  range. Freeze these exact values and advance the four-arm prior factorial.
+  [Result](reports/2026-08-26_autoencoder_program/regularized_whitening/results.md);
+  [exact protocol](reports/2026-08-26_autoencoder_program/regularized_whitening_protocol.json).
 
 - **2026-09-04 — latent-axis geometry audit identifies a distributed, stable
   hierarchy:** before any whitening

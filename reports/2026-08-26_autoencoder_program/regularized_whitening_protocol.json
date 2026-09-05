@@ -1,6 +1,6 @@
 {
   "date": "2026-09-05",
-  "status": "predeclared_prelaunch",
+  "status": "complete",
   "question": "Can an invertible ordered whitening readout remove nuisance covariance without amplifying the weak tail or damaging decode numerics, so that tokenwise SNR timing and loss allocation can later be reintroduced as controlled interventions?",
   "source": {
     "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
@@ -48,5 +48,31 @@
   "selection_rule": "Prefer the factorized sequence-ordered transform when it passes every health gate. Use flattened PCA only if factorized fails or leaves clearly pathological held-out covariance. Among healthy caps no larger than 16, prefer the smallest cap achieving at least 95% of the held-out effective-rank improvement attained by cap 16. Select the strongest beta that passes all schedule-family bounds; beta 0 remains the exact common-time/uniform-loss control. If both loss profiles pass, use the gentler flow-target-energy profile for the weighted training arm because the actual rectified-flow target is clean minus unit noise; retain signal-metric weights as a reported sensitivity diagnostic rather than an additional arm.",
   "training_authorization": "No prior training is launched until this audit is complete and its result freezes one transform, cap, beta, token crossings, and one loss-weight family. A pass authorizes the four common/ordered time by uniform/weighted loss arms on one exact transformed cache, retaining the unwhitened v27 common-time prior as the external baseline.",
   "selection_metrics": "Whitening diagnostics are safety and identifiability gates, not evidence of generative improvement. Any later model selection remains decoded FID/KID; reconstruction is only a health veto.",
-  "gpu_protocol": "/workspace/GPU_QUEUEING.md; gpu-claim lifetime lock; supervisor-owned run"
+  "gpu_protocol": "/workspace/GPU_QUEUEING.md; gpu-claim lifetime lock; supervisor-owned run",
+  "execution": {
+    "final_code_commit": "f02a1e0",
+    "supervisor_job": "afig_regularized_whitening",
+    "gpu": 1,
+    "completed_utc": "2026-09-05T02:22:28Z",
+    "focused_tests": "33 passed",
+    "implementation_correction": "The first pass exposed TF32 and a 1.55e-5 float32 sequence-basis orthogonality defect against the frozen 1e-5 inverse gate. The final pass disabled TF32 and QR-repaired the numerical representation of the same ordered eigenvectors; no gate or scientific choice changed."
+  },
+  "result": {
+    "readout": "factorized sequence/channel product basis",
+    "relative_gain_cap": 16,
+    "heldout_effective_rank": 794.98388671875,
+    "baseline_effective_rank": 369.8818664550781,
+    "heldout_off_diagonal_frobenius_fraction": 0.5843778848648071,
+    "baseline_off_diagonal_frobenius_fraction": 0.9439206719398499,
+    "float32_relative_roundtrip_rms": 7.094821367903688e-7,
+    "float16_relative_roundtrip_rms": 0.00020633806480899688,
+    "decoded_float16_pixel_delta_rms": 0.0012106811287174756,
+    "selected_beta": 0.25,
+    "snr1_crossing_range": [0.4332219152622271, 0.6045426889568087],
+    "rational_odds_range": 2.0,
+    "loss_family": "flow_target_energy",
+    "loss_weight_range": 1.899016862917737,
+    "verdict": "All frozen gates pass. Freeze the exact factorized cap-16 transform and beta-.25 schedule/flow-target weights; authorize the four-arm matched prior factorial."
+  },
+  "result_document": "regularized_whitening/results.md"
 }

@@ -76,6 +76,11 @@ retaining the hard-VAE path as a conservative stability control.
   global/coarse toward residual/fine structure, and recover from known noise in
   their magnitude-predicted order. Current token indices should not receive
   another schedule without an ordered invertible readout.
+- Regularized sequence/channel whitening now supplies that readout safely. A
+  cap-16 transform raises held-out effective rank from 369.88 to 794.98 while
+  retaining sequence-mode token order; simulated float16 inversion changes
+  decoded pixels by only `.00121` RMS. The frozen beta-.25 schedule spans
+  SNR=1 times `.433-.605` without changing clean token magnitude.
 - Decoder-only sigma-0.05 latent jitter improves expected matched-prior
   generation across tokenizer and prior seeds, although one tokenizer seed
   regresses; it is the retained expected-value training design.
@@ -88,18 +93,19 @@ retaining the hard-VAE path as a conservative stability control.
 
 ## Current follow-up
 
-The planned representation screen, trajectory diagnosis, and latent-axis audit
-are closed with v27 retained. Before further training, the next analysis should
-construct regularized sequence/channel and flattened whitening transforms,
-measure their held-out residual covariance and inverse-gain range, and freeze a
-safe ordered readout. Only then consider the `common/ordered time x
-uniform/latent-derived loss` factorial. The repository cleanup boundary remains
-valid. Details of the final training screen are in
+The representation screen, trajectory diagnosis, latent-axis audit, and
+regularized-whitening feasibility phase are closed with v27 retained. The next
+experiment is the authorized four-arm `common/ordered time x
+uniform/flow-target-weighted loss` factorial on one exact factorized-whitened
+cache. The repository cleanup boundary remains valid. Details of the final
+training screen are in
 `reports/2026-08-26_autoencoder_program/input_register_soft_snr_screen.json`;
 the direct emergence analysis is in
 `reports/2026-08-26_autoencoder_program/generation_trajectory/results.md`;
 the frozen audit is in
 `reports/2026-08-26_autoencoder_program/latent_axis_audit/results.md`;
+the whitening decision is in
+`reports/2026-08-26_autoencoder_program/regularized_whitening/results.md`;
 the read-only cleanup inventory and proposed retention boundary are in
 `reports/2026-09-04_cleanup_audit.md`.
 

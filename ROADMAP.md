@@ -755,6 +755,38 @@ later selection still depends on decoded FID/KID.
 
 [Frozen Phase-I protocol](reports/2026-08-26_autoencoder_program/regularized_whitening_protocol.json).
 
+**Outcome:** all numerical gates pass. Select factorized sequence/channel
+whitening at relative gain cap `16`. It raises held-out effective rank from
+369.88 to 794.98 and lowers off-diagonal covariance fraction from .9439 to
+.5844 while retaining the observed 64-token sequence-mode order. Float32 and
+simulated-float16 relative inversion errors are `7.1e-7` and `2.06e-4`; decoded
+pixel delta RMS is `.00121`. Flattened cap-16 is a healthy stronger-whitening
+control at rank 926.86, but is not selected because factorized passes while
+preserving the interpretable sequence decomposition.
+
+Freeze beta `.25`: its rational odds span `2x`, SNR=1 crossings span
+`.4332-.6045`, and its selected flow-target-energy weights span only `1.899x`.
+Beta `.5` fails the frozen `3x` flow-target weight bound. Phase I therefore
+authorizes the exact-cache four-arm factorial.
+
+[Phase-I result](reports/2026-08-26_autoencoder_program/regularized_whitening/results.md).
+
+## Phase J — whitened schedule x loss factorial (authorized)
+
+On one factorized cap-16 float16 cache, train common/uniform,
+ordered/uniform, common/weighted, and ordered/weighted priors with the selected
+v27 tokenizer seed 2 and prior seed 1 recipe unchanged. Ordered means the exact
+64 beta-.25 rational crossings frozen by Phase I. Weighted means the exact
+mean-one flow-target-energy profile; no arm changes clean magnitude. Retain the
+unwhitened v27 common-time prior as the external baseline.
+
+Evaluate every arm at FID/KID-5k. Advance each whitened arm to 10k when it
+improves its relevant factorial control, lies within two FID, or FID/KID
+disagree. A concordant loss greater than two FID can stop at 5k. Whitened
+common/uniform isolates whitening; ordered/uniform isolates scheduling after
+whitening; common/weighted isolates loss allocation; ordered/weighted measures
+the interaction. Flow loss and reconstruction do not select.
+
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 
 The decoder-objective screen is closed before changing shape. Retrain native
