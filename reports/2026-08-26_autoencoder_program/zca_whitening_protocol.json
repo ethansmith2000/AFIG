@@ -93,6 +93,12 @@
       "common time / tempered token loss",
       "ordered token time / tempered token loss"
     ],
+    "run_names": {
+      "common_uniform": "v37-v27-axial-zca1-common-uniform-prior-s1",
+      "ordered_uniform": "v37-v27-axial-zca1-ordered-uniform-prior-s1",
+      "common_weighted": "v37-v27-axial-zca1-common-flowweight-prior-s1",
+      "ordered_weighted": "v37-v27-axial-zca1-ordered-flowweight-prior-s1"
+    },
     "recipe": "prior seed 1, width 512, depth 12, eight heads, QK RMS normalization, batch 256, 60000 optimizer steps, learning rate 1e-4, 1000 warmup, 50-step Heun evaluation seed 54321",
     "selection": "decoded FID/KID at 5000 samples; advance improvements, arms within two FID, and FID/KID disagreements to 10000; flow loss and whitening diagnostics do not select",
     "interaction_goal": "distinguish the cost of ZCA, the value of token timing after ZCA, the value of restored implicit loss allocation, and whether timing plus weighting is complementary or double-counted"

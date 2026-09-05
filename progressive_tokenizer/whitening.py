@@ -153,6 +153,27 @@ def invert_zca(
     return apply_zca(values, mean, basis, gains.reciprocal())
 
 
+def zca_inverse_affine(
+    mean: torch.Tensor,
+    basis: torch.Tensor,
+    gains: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Serialize a ZCA inverse as ``values @ inverse_basis.T + offset``.
+
+    ``mean`` is expressed in the same physical gauge as the values stored in a
+    cache. The returned tensors therefore plug directly into the repository's
+    ``linear_inverse`` latent-transform payload.
+    """
+
+    dimensions = mean.numel()
+    if basis.shape != (dimensions, dimensions) or gains.shape != (dimensions,):
+        raise ValueError("mean, basis, and gains have incompatible shapes")
+    inverse_matrix = zca_matrix(basis, gains.reciprocal())
+    flat_mean = mean.flatten().to(inverse_matrix.device, dtype=inverse_matrix.dtype)
+    offset = flat_mean - flat_mean @ inverse_matrix
+    return offset, inverse_matrix.T
+
+
 def project_linear(
     values: torch.Tensor,
     mean: torch.Tensor,
