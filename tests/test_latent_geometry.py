@@ -13,6 +13,13 @@ from progressive_tokenizer.latent_geometry import (
     summarize_ordered_energy,
     swap_axis_band,
 )
+from progressive_tokenizer.whitening import (
+    covariance_diagnostics,
+    invert_linear,
+    project_linear,
+    regularized_whitening_gains,
+    tempered_token_profile,
+)
 from scripts.analyze_known_clean_denoising import _comparison
 
 
@@ -110,3 +117,46 @@ def test_complex_comparison_preserves_fft_phase_and_imaginary_energy() -> None:
     assert identical["correlation"] == pytest.approx(1.0)
     changed = _comparison(torch.tensor([1.0 + 0.0j, 3.0 + 0.0j]), clean)
     assert changed["relative_mse"] > 0.0
+
+
+def test_regularized_whitening_caps_gain_and_preserves_mean_power() -> None:
+    fitted = regularized_whitening_gains(torch.tensor([16.0, 4.0, 0.01]), 4.0)
+    gains = fitted["gains"]
+    transformed = fitted["transformed_power"]
+    assert isinstance(gains, torch.Tensor)
+    assert isinstance(transformed, torch.Tensor)
+    assert fitted["relative_gain_range"] == pytest.approx(4.0)
+    assert float(transformed.mean()) == pytest.approx(1.0)
+    assert float(transformed[-1]) < 1.0
+
+
+def test_linear_whitening_round_trip_is_exact() -> None:
+    values = torch.randn(7, 4, 3)
+    mean = torch.randn(4, 3)
+    basis, _ = torch.linalg.qr(torch.randn(12, 12))
+    gains = torch.linspace(0.25, 2.0, 12)
+    projected = project_linear(values, mean, basis, gains)
+    restored = invert_linear(projected, mean, basis, gains)
+    torch.testing.assert_close(restored, values, atol=2e-5, rtol=2e-5)
+
+
+def test_covariance_diagnostics_detects_diagonal_whitening() -> None:
+    generator = torch.Generator().manual_seed(31)
+    values = torch.randn(20000, 4, generator=generator)
+    values[:, 0] *= 4.0
+    before = covariance_diagnostics(values)
+    values[:, 0] /= 4.0
+    after = covariance_diagnostics(values)
+    assert after["effective_rank"] > before["effective_rank"]
+    assert after["diagonal_variance_std"] < before["diagonal_variance_std"]
+
+
+def test_tempered_profile_has_common_control_and_bounded_floored_range() -> None:
+    power = torch.tensor([64.0, 4.0, 0.0001])
+    common = tempered_token_profile(power, 8.0, 0.0)
+    assert common["snr1_crossings"] == pytest.approx([0.5, 0.5, 0.5])
+    assert common["signal_metric_loss_weights"] == pytest.approx([1.0, 1.0, 1.0])
+    softened = tempered_token_profile(power, 8.0, 0.5)
+    assert softened["ranges"]["rational_odds"] == pytest.approx(8.0**0.5)
+    assert softened["ranges"]["signal_metric_loss"] == pytest.approx(8.0)
+    assert softened["ranges"]["flow_target_energy_loss"] < 3.0

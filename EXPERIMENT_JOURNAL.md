@@ -22,6 +22,18 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
+- **2026-09-05 — regularized whitening feasibility predeclared:** before another
+  prior is trained, compare two invertible readouts of the selected v27 cache:
+  sequence/channel product modes retaining 64 sequence-ranked tokens, and a
+  complete flattened-PCA control packed by consecutive rank. Sweep relative
+  whitening-gain caps `4/8/16/32`, with any selected cap limited to `16`; score
+  held-out covariance, gain distributions, float32 and simulated-float16
+  inversion, and decoded numerical error. From floored pre-whitening token
+  powers, tabulate beta `0/.125/.25/.5` rational SNR clocks and two alternative
+  mean-one loss profiles. No training is authorized until one transform, cap,
+  schedule, and loss family pass the frozen gates.
+  [Exact protocol](reports/2026-08-26_autoencoder_program/regularized_whitening_protocol.json).
+
 - **2026-09-04 — latent-axis geometry audit identifies a distributed, stable
   hierarchy:** before any whitening
   or new prior training, audit the selected v27 `64x16` code along channel,

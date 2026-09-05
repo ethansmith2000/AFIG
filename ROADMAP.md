@@ -740,6 +740,21 @@ cache: common/uniform, ordered/uniform, common/weighted, and ordered/weighted.
 That 2x2 structure is required to distinguish the schedule, loss-allocation,
 and interaction effects.
 
+Frozen launch details: sweep relative forward-gain caps `4/8/16/32`, but do
+not select a cap above `16`. Normalize each transform to mean unit training
+power and simulate float16 cache storage before decoding. A selected transform
+must have float32/float16 relative latent round-trip RMS at most `1e-5/.002`,
+decoded pixel delta RMS at most `.002`, higher held-out covariance effective
+rank, and lower off-diagonal covariance fraction than the original centered
+latent. Derive the explicit interventions from the same floored pre-whitening
+token power with beta `0/.125/.25/.5`. The selected family is limited to `4x`
+rational-odds, `16x` signal-metric loss, and `3x` flow-target-energy loss
+ranges. Prefer the factorized sequence-ordered readout if healthy; otherwise
+use the flattened control. These are safety and identifiability gates only;
+later selection still depends on decoded FID/KID.
+
+[Frozen Phase-I protocol](reports/2026-08-26_autoencoder_program/regularized_whitening_protocol.json).
+
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 
 The decoder-objective screen is closed before changing shape. Retrain native

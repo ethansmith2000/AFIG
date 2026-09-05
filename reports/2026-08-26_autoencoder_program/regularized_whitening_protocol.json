@@ -1,0 +1,52 @@
+{
+  "date": "2026-09-05",
+  "status": "predeclared_prelaunch",
+  "question": "Can an invertible ordered whitening readout remove nuisance covariance without amplifying the weak tail or damaging decode numerics, so that tokenwise SNR timing and loss allocation can later be reintroduced as controlled interventions?",
+  "source": {
+    "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
+    "prior_normalization": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2-prior-s1",
+    "physical_shape": [64, 16],
+    "fit_split": "first 25000 training latents",
+    "evaluation_split": "all 10000 disjoint test latents"
+  },
+  "candidate_readouts": {
+    "factorized": "Rotate by the population sequence and channel eigenvectors, retain sequence-mode rank as the 64-token order, estimate all 1024 product-coordinate powers, and regularize their diagonal whitening gains.",
+    "flattened": "Rotate by the complete 1024-dimensional population PCA basis, regularize its diagonal whitening gains, and pack consecutive eigenvalue ranks into 64 tokens of width 16."
+  },
+  "whitening": {
+    "gain_formula": "g_j = 1/sqrt(max(power_j, max(power)/cap^2)), followed by one scalar normalization so mean transformed training power is one",
+    "relative_gain_caps": [4, 8, 16, 32],
+    "selected_cap_must_not_exceed": 16,
+    "clean_magnitude_policy": "The stored prior coordinates are approximately unit scale. Decoder inversion restores the original physical latent gauge; no magnitude hierarchy is transmitted through the shared prior projections."
+  },
+  "diagnostics": [
+    "complete held-out transformed covariance spectrum and effective rank",
+    "held-out diagonal variance distribution and off-diagonal Frobenius fraction",
+    "complete forward-gain distribution",
+    "float32 and simulated float16-cache round-trip latent error",
+    "decoded pixel error after simulated float16-cache round trip",
+    "per-token pre-whitening power and all proposed schedule/loss profiles"
+  ],
+  "tempered_interventions": {
+    "power_floor": "Use the same max(power)/cap^2 floor as the selected whitening cap before deriving token profiles, preventing a near-null terminal direction from dictating the schedule.",
+    "beta_grid": [0.0, 0.125, 0.25, 0.5],
+    "rational_odds": "a_i = normalized_floored_token_power_i^(beta/2)",
+    "snr1_crossing": "1/(1+a_i)",
+    "signal_metric_loss": "mean-one weights proportional to normalized_floored_token_power_i^beta",
+    "flow_target_energy_loss": "mean-one weights proportional to 1 + normalized_floored_token_power_i^beta",
+    "note": "These loss families are alternatives in the audit; no training combines both."
+  },
+  "health_gates": {
+    "finite": "all transforms and metrics must be finite",
+    "float32_relative_roundtrip_rms_max": 0.00001,
+    "float16_relative_roundtrip_rms_max": 0.002,
+    "decoded_float16_pixel_delta_rms_max": 0.002,
+    "covariance": "selected transform must increase held-out covariance effective rank and reduce off-diagonal Frobenius fraction relative to the untransformed centered latent",
+    "gain": "selected relative forward-gain range must be at most 16x",
+    "schedule_family": "selected softened family must have at most 4x rational-odds range, at most 16x signal-metric loss range, and at most 3x flow-target-energy loss range"
+  },
+  "selection_rule": "Prefer the factorized sequence-ordered transform when it passes every health gate. Use flattened PCA only if factorized fails or leaves clearly pathological held-out covariance. Among healthy caps no larger than 16, prefer the smallest cap achieving at least 95% of the held-out effective-rank improvement attained by cap 16. Select the strongest beta that passes all schedule-family bounds; beta 0 remains the exact common-time/uniform-loss control. If both loss profiles pass, use the gentler flow-target-energy profile for the weighted training arm because the actual rectified-flow target is clean minus unit noise; retain signal-metric weights as a reported sensitivity diagnostic rather than an additional arm.",
+  "training_authorization": "No prior training is launched until this audit is complete and its result freezes one transform, cap, beta, token crossings, and one loss-weight family. A pass authorizes the four common/ordered time by uniform/weighted loss arms on one exact transformed cache, retaining the unwhitened v27 common-time prior as the external baseline.",
+  "selection_metrics": "Whitening diagnostics are safety and identifiability gates, not evidence of generative improvement. Any later model selection remains decoded FID/KID; reconstruction is only a health veto.",
+  "gpu_protocol": "/workspace/GPU_QUEUEING.md; gpu-claim lifetime lock; supervisor-owned run"
+}
