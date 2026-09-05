@@ -251,7 +251,7 @@ def main() -> None:
         key = f"{axis}_eigenvectors"
         basis = geometry[key]
         assert isinstance(basis, torch.Tensor)
-        geometry[key] = _reorthogonalize(basis)
+        geometry[key] = _reorthogonalize(basis).contiguous()
     element_mean = geometry["element_mean"]
     assert isinstance(element_mean, torch.Tensor)
     del fit_raw, fit
