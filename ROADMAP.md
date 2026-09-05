@@ -824,6 +824,17 @@ schedule comparison.
 
 [Frozen Phase-K protocol](reports/2026-08-26_autoencoder_program/power_whitening_protocol.json).
 
+Analysis outcome: all four training exponents pass. Disjoint-half product-
+coordinate and token power ranks correlate `.99924/.99973`; sequence subspace
+overlaps remain at least `.9828` through the non-null spectrum, and the final
+near-null direction is itself stable. The weakest coordinate has estimated
+source-float16 quantization SNR `1,650`, with none below 1,000. Gamma 1's
+intentional `892.6x` gain round-trips at `2.07e-4` relative latent RMS and
+`.00121` decoded pixel RMS. Proceed with gamma `0/.25/.5/1` common/uniform
+training; numerical gain is no longer a rejection criterion.
+
+[Phase-K analysis](reports/2026-08-26_autoencoder_program/power_whitening/results.md).
+
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 
 The decoder-objective screen is closed before changing shape. Retrain native

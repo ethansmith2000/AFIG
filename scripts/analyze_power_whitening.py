@@ -167,14 +167,14 @@ def _plots(result: dict[str, object], output: Path) -> None:
         (0, 0, 500, 600),
         [("effective rank", x, ranks, PLOT_COLORS[0])],
         title="Power whitening versus covariance rank",
-        y_label="held-out effective rank",
+        y_label="rank",
     )
     draw_line_chart(
         canvas,
         (500, 0, 1000, 600),
         [("gain range", x, gains, PLOT_COLORS[1])],
         title="Intentional weak-direction amplification",
-        y_label="relative forward gain",
+        y_label="gain",
         log_y=True,
     )
     canvas.save(output / "gamma_rank_and_gain.png", optimize=True)
@@ -197,7 +197,7 @@ def _plots(result: dict[str, object], output: Path) -> None:
         (0, 0, 1000, 620),
         series,
         title="Held-out covariance under smooth power whitening",
-        y_label="eigenvalue / strongest",
+        y_label="relative eig.",
         log_y=True,
     )
     spectrum.save(output / "gamma_covariance_spectra.png", optimize=True)

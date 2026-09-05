@@ -1,6 +1,6 @@
 {
   "date": "2026-09-05",
-  "status": "predeclared_prelaunch",
+  "status": "analysis_complete_training_authorized",
   "question": "Does smooth log-spectrum compression find a better representation-conditioning point than cap-16 whitening, and is complete whitening useful when its weak-direction amplification is treated as intentional?",
   "source": {
     "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
@@ -46,5 +46,34 @@
     "schedule_followup": "only the best healthy gamma may receive a later common-versus-beta timing comparison",
     "nonselectors": ["training flow loss", "covariance effective rank", "reconstruction within its health envelope"]
   },
-  "gpu_protocol": "/workspace/GPU_QUEUEING.md; every analysis, cache build, training run, and evaluation uses a lifetime gpu-claim and supervisor"
+  "gpu_protocol": "/workspace/GPU_QUEUEING.md; every analysis, cache build, training run, and evaluation uses a lifetime gpu-claim and supervisor",
+  "analysis_execution": {
+    "code_and_protocol_commit": "5deca9a",
+    "launcher_commit": "5dde8d3",
+    "supervisor": "afig_power_whitening_audit",
+    "completed_utc": "2026-09-05T04:11:38Z",
+    "focused_tests": "43 passed"
+  },
+  "analysis_result": {
+    "fixed_coordinate_power_split_spearman": 0.9992430806159973,
+    "fixed_token_power_split_spearman": 0.9997251629829407,
+    "weakest_float16_quantization_proxy_snr": 1649.662841796875,
+    "fraction_quantization_proxy_snr_below_1000": 0.0,
+    "gamma_effective_ranks": {
+      "0": 369.8820495605469,
+      "0.25": 565.94189453125,
+      "0.5": 700.625732421875,
+      "1": 795.9541625976562
+    },
+    "gamma_relative_gain_ranges": {
+      "0": 1.0,
+      "0.25": 5.46598237370534,
+      "0.5": 29.876963309657473,
+      "1": 892.6329366066185
+    },
+    "full_whitening_float16_relative_roundtrip_rms": 0.00020749824219199904,
+    "full_whitening_decoded_pixel_delta_rms": 0.0012098416754836546,
+    "verdict": "All four training gammas are numerically healthy. The weak spectrum is exceptionally stable across data halves and remains far above the source-float16 quantization proxy. Proceed with the common-time/uniform-loss gamma screen, including intentional full whitening."
+  },
+  "result_document": "power_whitening/results.md"
 }

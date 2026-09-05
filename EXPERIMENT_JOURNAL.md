@@ -22,15 +22,22 @@ verdicts live under `reports/` and are linked here.
 
 ## Campaigns
 
-- **2026-09-05 — smooth power-whitening screen predeclared:** retain the frozen
+- **2026-09-05 — smooth power-whitening analysis passes:** retain the frozen
   factorized sequence/channel basis but replace the hard gain cap with
   `gain_j proportional to power_j^(-gamma/2)`. Analyze gamma
   `0/.125/.25/.5/.75/1`, including split stability and a source-float16
   quantization-noise proxy. Then train common-time/uniform-loss controls only
   for gamma `0/.25/.5/1`; gamma 0 isolates the ordered basis rotation and gamma
   1 intentionally performs unrestricted full whitening. FID/KID select before
-  any beta schedule or loss weighting is reintroduced.
+  any beta schedule or loss weighting is reintroduced. The queued analysis
+  finds exceptionally stable weak power: disjoint-half coordinate/token rank
+  correlations are `.99924/.99973`, no coordinate has float16 quantization-
+  proxy SNR below 1,000, and gamma 1 still round-trips through a float16 cache
+  at `2.07e-4` relative latent RMS and `.00121` decoded pixel RMS. Effective
+  rank changes smoothly from 369.88 at gamma 0 to 565.94/700.63/795.95 at
+  `.25/.5/1`. All predeclared training arms are authorized.
   [Frozen protocol](reports/2026-08-26_autoencoder_program/power_whitening_protocol.json).
+  [Analysis result](reports/2026-08-26_autoencoder_program/power_whitening/results.md).
 
 - **2026-09-05 — whitened schedule x loss factorial predeclared:** project the
   selected v27 cache through the frozen factorized cap-16 transform, serialize
