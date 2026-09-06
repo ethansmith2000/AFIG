@@ -905,6 +905,18 @@ completed and validated at `2.27e-4` inverse relative RMS. At
 [`79sbr5wr`](https://wandb.ai/ethansmith2000/afig-progressive-tokenizer/runs/79sbr5wr)
 (ordered/weighted).
 
+**FID/KID-5k gate:** common/uniform reaches `27.246/.01917`, only `.503` FID
+behind native v27 but with worse KID. Ordered/uniform is `29.099/.02144`,
+common/weighted is `30.037/.02152`, and ordered/weighted is `28.740/.02085`.
+Thus neither token timing nor loss allocation improves the ZCA control. Their
+combination has a strong negative interaction, but remains `1.494` FID worse
+than common/uniform, consistent with mutual compensation rather than an
+advantage. Continue common/uniform, ordered/uniform, and ordered/weighted to
+10k under the frozen proximity/improvement rules. Common/weighted is
+concordantly worse by more than two FID and stops at 5k.
+
+[Phase-L factorial result](reports/2026-08-26_autoencoder_program/zca_whitening/factorial_results.md).
+
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 
 The decoder-objective screen is closed before changing shape. Retrain native

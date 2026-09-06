@@ -1,0 +1,58 @@
+{
+  "date": "2026-09-06",
+  "status": "five_thousand_complete_three_ten_thousand_evaluations_authorized",
+  "sample_count": 5000,
+  "external_control": {
+    "name": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2-prior-s1",
+    "fid": 26.742993129687875,
+    "kid": 0.017538033425807953
+  },
+  "arms": {
+    "common_uniform": {
+      "name": "v37-v27-axial-zca1-common-uniform-prior-s1",
+      "fid": 27.246121501223854,
+      "kid": 0.019170522689819336,
+      "fid_delta_vs_external": 0.5031283715359793,
+      "kid_delta_vs_external": 0.001632489264011383,
+      "advance_to_10000": true,
+      "reason": "within two FID of the native external control"
+    },
+    "ordered_uniform": {
+      "name": "v37-v27-axial-zca1-ordered-uniform-prior-s1",
+      "fid": 29.09934151063686,
+      "kid": 0.02144438773393631,
+      "fid_delta_vs_common_uniform": 1.8532200094130076,
+      "kid_delta_vs_common_uniform": 0.002273865044116974,
+      "advance_to_10000": true,
+      "reason": "within two FID of its exact-cache common-time control"
+    },
+    "common_weighted": {
+      "name": "v37-v27-axial-zca1-common-flowweight-prior-s1",
+      "fid": 30.03736444630738,
+      "kid": 0.021520810201764107,
+      "fid_delta_vs_common_uniform": 2.7912429450835248,
+      "kid_delta_vs_common_uniform": 0.002350287511944771,
+      "advance_to_10000": false,
+      "reason": "concordantly worse than its exact control by more than two FID"
+    },
+    "ordered_weighted": {
+      "name": "v37-v27-axial-zca1-ordered-flowweight-prior-s1",
+      "fid": 28.73976733967146,
+      "kid": 0.020847558975219727,
+      "fid_delta_vs_common_uniform": 1.4936458384476055,
+      "kid_delta_vs_common_uniform": 0.0016770362854003906,
+      "fid_delta_vs_ordered_uniform": -0.3595741709654021,
+      "fid_delta_vs_common_weighted": -1.2975971066359193,
+      "advance_to_10000": true,
+      "reason": "within two FID of common/uniform and improves both corresponding single-intervention arms"
+    }
+  },
+  "factorial_effects": {
+    "timing_at_uniform_loss_fid": 1.8532200094130076,
+    "weighting_at_common_time_fid": 2.7912429450835248,
+    "timing_at_weighted_loss_fid": -1.2975971066359193,
+    "weighting_at_ordered_time_fid": -0.3595741709654021,
+    "interaction_fid": -3.150817116048927,
+    "interpretation": "Both single interventions worsen common/uniform, while their combination is less harmful than an additive model predicts; no intervention improves the ZCA control."
+  }
+}

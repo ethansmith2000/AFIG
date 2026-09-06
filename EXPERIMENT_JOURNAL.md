@@ -37,6 +37,14 @@ verdicts live under `reports/` and are linked here.
   shared lifetime GPU lock and entered finite training. W&B runs are
   `sya16sx4/c87jzy5h/otpkkbos/79sbr5wr` in
   common-uniform/ordered-uniform/common-weighted/ordered-weighted order.
+  All four completed. At 5k their FID/KID values are
+  `27.246/.01917`, `29.099/.02144`, `30.037/.02152`, and
+  `28.740/.02085`, versus native v27 `26.743/.01754`. ZCA in native axes is
+  near baseline, unlike PCA-coordinate whitening, but neither explicit timing
+  nor weighting improves it. The joint intervention partially compensates the
+  two single-arm losses without beating common/uniform. Common/uniform,
+  ordered/uniform, and ordered/weighted satisfy the frozen 10k rules;
+  common/weighted stops.
   [Full analysis](reports/2026-08-26_autoencoder_program/zca_whitening/results.md).
 - **2026-09-05 — rotate-back/ZCA correction predeclared:** the previous smooth
   whitening screen exposed sequence/channel eigenmodes as the literal `64x16`
