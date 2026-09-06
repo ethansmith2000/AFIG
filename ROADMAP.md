@@ -1024,7 +1024,7 @@ replicated. Retain radial log-power as a plausible weak modifier; reject LPIPS
 for this configuration, and do not silently combine either objective with the
 next experiment.
 
-## Phase M — complete ZCA axis × hierarchy matrix (predeclared 2026-09-06)
+## Phase M — complete ZCA axis × hierarchy matrix (complete 2026-09-06)
 
 Phase L analyzed channel, sequence, axial, and flattened rotate-back ZCA but
 trained only the scientifically selected axial gamma-1 factorial. This left the
@@ -1068,6 +1068,16 @@ three flattened objective variants advance to 10k; flattened common/uniform
 stops. These eleven evaluations require no new training.
 
 [Phase-M 5k matrix](reports/2026-08-26_autoencoder_program/zca_axis_matrix_results.md).
+
+**Final 10k outcome:** channel and sequence common/uniform reach
+`26.441/.01970` and `26.448/.02080`; both lose about `1.91` FID to native
+v27 and `1.40` to axial ZCA. No channel objective changes FID by more than
+`.30`, and none improves both metrics. Sequence timing/weighting variants lose
+`.43-.94` FID while sometimes slightly improving KID. Continuing flattened
+cells remain decisively poor at FID `31.85-33.26`. Across the full 5k matrix
+and eleven frozen 10k continuations, the ordering is native, axial, channel and
+sequence, then flattened. Close Phase M: retain native v27 common/uniform and
+do not replicate post-hoc ZCA or native-index hierarchy.
 
 ## Promotion protocol
 

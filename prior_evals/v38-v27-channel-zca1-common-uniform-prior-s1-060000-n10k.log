@@ -1,0 +1,44 @@
+[gpu-claim] job=v38-v27-channel-zca1-common-uniform-prior-s1-eval10k owner=AFIG -> gpu1
+/venv/main/lib/python3.12/site-packages/torch/nn/functional.py:2954: UserWarning: Mismatch dtype between input and weight: input dtype = c10::BFloat16, weight dtype = float, Cannot dispatch to fused implementation. (Triggered internally at /pytorch/aten/src/ATen/native/layer_norm.cpp:344.)
+  return torch.rms_norm(input, normalized_shape, weight, eps)
+{"generated": 256}
+{"generated": 512}
+{"generated": 768}
+{"generated": 1024}
+{"generated": 1280}
+{"generated": 1536}
+{"generated": 1792}
+{"generated": 2048}
+{"generated": 2304}
+{"generated": 2560}
+{"generated": 2816}
+{"generated": 3072}
+{"generated": 3328}
+{"generated": 3584}
+{"generated": 3840}
+{"generated": 4096}
+{"generated": 4352}
+{"generated": 4608}
+{"generated": 4864}
+{"generated": 5120}
+{"generated": 5376}
+{"generated": 5632}
+{"generated": 5888}
+{"generated": 6144}
+{"generated": 6400}
+{"generated": 6656}
+{"generated": 6912}
+{"generated": 7168}
+{"generated": 7424}
+{"generated": 7680}
+{"generated": 7936}
+{"generated": 8192}
+{"generated": 8448}
+{"generated": 8704}
+{"generated": 8960}
+{"generated": 9216}
+{"generated": 9472}
+{"generated": 9728}
+{"generated": 9984}
+{"generated": 10000}
+{"checkpoint_step": 60000, "decoded_clipping_fraction": 0.0024287109375, "decoded_max": 1.328125, "decoded_min": -1.4375, "fid": 26.441365623843524, "kid": 0.019697226583957672, "model_type": "progressive_joint_rectified_flow", "num_samples": 10000, "representation_type": "tokenizer_latents", "sample_steps": 50, "standardized_latent_mean": 0.008656596639389714, "standardized_latent_std": 0.9784686924754461, "token_scale_applied": false}

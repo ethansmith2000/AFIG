@@ -1,6 +1,6 @@
 {
   "date": "2026-09-06",
-  "status": "five_thousand_complete_eleven_ten_thousand_evaluations_authorized",
+  "status": "complete_retain_native_v27",
   "question": "Does the generative effect of rotate-back whitening and the explicit token hierarchy depend on whether covariance is conditioned along features, sequence, both axes, or the complete flattened latent?",
   "scope_correction": {
     "completed_phase_l": "analyzed all four ZCA variants but trained the objective factorial only on axial gamma 1",
@@ -98,14 +98,19 @@
         "roundtrip_relative_rms": 0.00020128983780733902
       }
     },
-    "initial_wandb_runs": {
+    "wandb_runs": {
       "channel_common_uniform": "y40v0kel",
       "channel_ordered_uniform": "b3y8oq7j",
       "channel_common_weighted": "ymlp42wb",
       "channel_ordered_weighted": "i55yizz6",
       "sequence_common_uniform": "2sa0z297",
       "sequence_common_weighted": "ck3hgtvl",
-      "flattened_ordered_uniform": "5gqadkfa"
+      "sequence_ordered_uniform": "nvprysx5",
+      "sequence_ordered_weighted": "bc1l8uvo",
+      "flattened_common_uniform": "9f2fgobn",
+      "flattened_ordered_uniform": "5gqadkfa",
+      "flattened_common_weighted": "1sg5flwo",
+      "flattened_ordered_weighted": "t2wu8m0m"
     },
     "queue_state": "seven arms acquired distinct lifetime GPU locks; five wait without a GPU claim and will start as locks are released"
   },
@@ -121,6 +126,15 @@
     "ten_thousand_evaluations": 11,
     "stopped_cell": "flattened/common_uniform",
     "result": "reports/2026-08-26_autoencoder_program/zca_axis_matrix_5k_results.json"
+  },
+  "ten_thousand_result": {
+    "completed_evaluations": 11,
+    "channel_common_uniform_fid_kid": [26.441365623843524, 0.019697226583957672],
+    "sequence_common_uniform_fid_kid": [26.448187961675615, 0.020797543227672577],
+    "axial_common_uniform_fid_kid": [25.04443157062542, 0.019015107303857803],
+    "native_fid_kid": [24.534106902736653, 0.017646966502070427],
+    "selection": "retain native v27 with common time and uniform loss",
+    "result": "reports/2026-08-26_autoencoder_program/zca_axis_matrix_final_results.json"
   },
   "gpu_protocol": "/workspace/GPU_QUEUEING.md; one queue-managed cache suite and twelve supervisor-owned train/eval chains"
 }

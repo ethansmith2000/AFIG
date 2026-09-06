@@ -1,0 +1,58 @@
+{
+  "date": "2026-09-06",
+  "status": "complete_retain_native_v27",
+  "native_10000": [24.534106902736653, 0.017646966502070427],
+  "variants_10000": {
+    "channel": {
+      "common_uniform": [26.441365623843524, 0.019697226583957672],
+      "ordered_uniform": [26.37905823675834, 0.019856978207826614],
+      "common_weighted": [26.737747806146558, 0.019660677760839462],
+      "ordered_weighted": [26.395105369451926, 0.01970294490456581],
+      "fid_effects": {
+        "timing_at_uniform_loss": -0.06230738708518402,
+        "weighting_at_common_time": 0.29638218230303437,
+        "combined_vs_common_uniform": -0.046260254391597755,
+        "interaction": -0.2803350496094481
+      }
+    },
+    "sequence": {
+      "common_uniform": [26.448187961675615, 0.020797543227672577],
+      "ordered_uniform": [26.876543942559863, 0.020543508231639862],
+      "common_weighted": [27.17043468268008, 0.021022671833634377],
+      "ordered_weighted": [27.38860810639551, 0.020532721653580666],
+      "fid_effects": {
+        "timing_at_uniform_loss": 0.4283559808842483,
+        "weighting_at_common_time": 0.722246721004467,
+        "combined_vs_common_uniform": 0.9404201447198943,
+        "interaction": -0.21018255716882095
+      }
+    },
+    "axial": {
+      "common_uniform": [25.04443157062542, 0.019015107303857803],
+      "ordered_uniform": [26.848381250953537, 0.021812934428453445],
+      "common_weighted": null,
+      "ordered_weighted": [26.533006740051633, 0.0208175890147686],
+      "missing_reason": "common_weighted stopped at 5k under the frozen greater-than-two concordant-loss rule"
+    },
+    "flattened": {
+      "common_uniform": null,
+      "ordered_uniform": [32.79726437573015, 0.02642870880663395],
+      "common_weighted": [33.260862965046044, 0.02625768631696701],
+      "ordered_weighted": [31.848816738139874, 0.02606615610420704],
+      "missing_reason": "common_uniform stopped at 5k after a concordant eight-FID loss; within-transform effects remain measured at 5k"
+    }
+  },
+  "common_uniform_comparison": {
+    "native": [24.534106902736653, 0.017646966502070427],
+    "axial": [25.04443157062542, 0.019015107303857803],
+    "channel": [26.441365623843524, 0.019697226583957672],
+    "sequence": [26.448187961675615, 0.020797543227672577],
+    "flattened_5000_only": [34.770588104399394, 0.025516103953123093]
+  },
+  "verdict": {
+    "axis": "Axial ZCA is the least harmful transform, channel and sequence have nearly identical FID but channel has better KID, and flattened ZCA is decisively rejected.",
+    "hierarchy": "No per-token timing or loss-weighting effect improves both FID and KID by a meaningful amount within any viable transform.",
+    "selection": "Retain native v27 with common time and uniform loss. Do not replicate post-hoc ZCA or the imposed native-token hierarchy."
+  },
+  "five_thousand_result": "reports/2026-08-26_autoencoder_program/zca_axis_matrix_5k_results.json"
+}

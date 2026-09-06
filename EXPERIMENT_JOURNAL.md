@@ -41,6 +41,13 @@ verdicts live under `reports/` and are linked here.
   clearly rejected. Objective effects within each cache are small and mixed.
   Eleven cells satisfy the frozen 10k proximity/disagreement rules; only
   flattened common/uniform stops.
+  At 10k, channel and sequence common/uniform converge at
+  `26.441/.01970` and `26.448/.02080`, versus axial
+  `25.044/.01902` and native `24.534/.01765`. Channel objective effects are
+  at most `.30` FID and metric-discordant; every sequence hierarchy variant
+  worsens FID. Continuing flattened cells remain at FID `31.85-33.26`.
+  No whitening axis or imposed hierarchy improves both metrics. Retain native
+  v27 common/uniform and close the matrix without replication.
   [Frozen protocol](reports/2026-08-26_autoencoder_program/zca_axis_matrix_protocol.json).
 - **2026-09-05 — rotate-back/ZCA analysis passes and authorizes training:**
   gamma zero is exactly the native representation, confirming that this is the
