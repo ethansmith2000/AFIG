@@ -1,0 +1,24 @@
+[gpu-claim] job=v37-v27-axial-zca1-common-uniform-prior-s1-eval5k owner=AFIG -> gpu5
+/venv/main/lib/python3.12/site-packages/torch/nn/functional.py:2954: UserWarning: Mismatch dtype between input and weight: input dtype = c10::BFloat16, weight dtype = float, Cannot dispatch to fused implementation. (Triggered internally at /pytorch/aten/src/ATen/native/layer_norm.cpp:344.)
+  return torch.rms_norm(input, normalized_shape, weight, eps)
+{"generated": 256}
+{"generated": 512}
+{"generated": 768}
+{"generated": 1024}
+{"generated": 1280}
+{"generated": 1536}
+{"generated": 1792}
+{"generated": 2048}
+{"generated": 2304}
+{"generated": 2560}
+{"generated": 2816}
+{"generated": 3072}
+{"generated": 3328}
+{"generated": 3584}
+{"generated": 3840}
+{"generated": 4096}
+{"generated": 4352}
+{"generated": 4608}
+{"generated": 4864}
+{"generated": 5000}
+{"checkpoint_step": 60000, "decoded_clipping_fraction": 0.002337955729166667, "decoded_max": 1.3359375, "decoded_min": -1.375, "fid": 27.246121501223854, "kid": 0.019170522689819336, "model_type": "progressive_joint_rectified_flow", "num_samples": 5000, "representation_type": "tokenizer_latents", "sample_steps": 50, "standardized_latent_mean": 0.002218150451244218, "standardized_latent_std": 0.9972556584271713, "token_scale_applied": false}
