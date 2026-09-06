@@ -856,7 +856,7 @@ token semantics.
 [Phase-K analysis](reports/2026-08-26_autoencoder_program/power_whitening/results.md).
 [Phase-K generative result](reports/2026-08-26_autoencoder_program/power_whitening/screen_results.md).
 
-## Phase L — rotate-back/ZCA whitening and restored token hierarchy (predeclared)
+## Phase L — rotate-back/ZCA whitening and restored token hierarchy (complete 2026-09-06)
 
 Phase K used PCA coordinates, not the intended rotate-back whitening: gamma 0
 still replaced native tokens with global sequence-mode coefficients. Correct
@@ -916,6 +916,17 @@ advantage. Continue common/uniform, ordered/uniform, and ordered/weighted to
 concordantly worse by more than two FID and stops at 5k.
 
 [Phase-L factorial result](reports/2026-08-26_autoencoder_program/zca_whitening/factorial_results.md).
+
+**Final 10k outcome:** native v27, ZCA common/uniform, ZCA ordered/uniform,
+and ZCA ordered/weighted reach FID/KID
+`24.534/.01765`, `25.044/.01902`, `26.848/.02181`, and `26.533/.02082`.
+Rotate-back ZCA is approximately at parity but remains worse on both metrics;
+the softened token schedule loses `1.804` FID to its exact ZCA control, and
+weighting recovers only `.315` of that loss. The earlier collapse was primarily
+the cost of exposing PCA modes as literal tokens, not an unavoidable numerical
+cost of eigenspectrum conditioning. Still, no tested post-hoc whitening or
+native-token hierarchy improves generation. Retain native v27 with common time
+and uniform loss; close Phase L without replication.
 
 ### Learned latent-factorization screen (predeclared 2026-09-03)
 

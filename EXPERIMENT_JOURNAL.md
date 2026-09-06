@@ -45,7 +45,14 @@ verdicts live under `reports/` and are linked here.
   two single-arm losses without beating common/uniform. Common/uniform,
   ordered/uniform, and ordered/weighted satisfy the frozen 10k rules;
   common/weighted stops.
-  [Full analysis](reports/2026-08-26_autoencoder_program/zca_whitening/results.md).
+  The 10k result confirms the ordering: native v27, ZCA common/uniform, ZCA
+  ordered/uniform, and ZCA ordered/weighted reach FID/KID
+  `24.534/.01765`, `25.044/.01902`, `26.848/.02181`, and
+  `26.533/.02082`. Rotate-back ZCA fixes the catastrophic PCA-coordinate
+  penalty but does not improve native generation; token timing and weighting
+  remain harmful. Retain native v27 common/uniform and close the branch.
+  [Analysis](reports/2026-08-26_autoencoder_program/zca_whitening/results.md)
+  and [factorial verdict](reports/2026-08-26_autoencoder_program/zca_whitening/factorial_results.md).
 - **2026-09-05 — rotate-back/ZCA correction predeclared:** the previous smooth
   whitening screen exposed sequence/channel eigenmodes as the literal `64x16`
   prior tensor; gamma 0 was therefore a rotation rather than an identity. The

@@ -1,6 +1,6 @@
 {
   "date": "2026-09-05",
-  "status": "five_thousand_complete_three_ten_thousand_evaluations_authorized",
+  "status": "complete_retain_native_v27",
   "question": "After whitening covariance in eigenspace and rotating back into the native token/feature basis, can an explicit per-token SNR schedule and matched loss allocation restore a useful image-like resolving hierarchy?",
   "correction": {
     "previous_transform": "PCA coordinates: (x - mean) @ U @ diag(gain); gamma zero remained a sequence/channel rotation",
@@ -131,6 +131,14 @@
     "ten_thousand_arms": ["common_uniform", "ordered_uniform", "ordered_weighted"],
     "stopped_arm": "common_weighted",
     "result": "reports/2026-08-26_autoencoder_program/zca_whitening/factorial_5k_results.json"
+  },
+  "ten_thousand_result": {
+    "external_v27_fid_kid": [24.534106902736653, 0.017646966502070427],
+    "common_uniform_fid_kid": [25.04443157062542, 0.019015107303857803],
+    "ordered_uniform_fid_kid": [26.848381250953537, 0.021812934428453445],
+    "ordered_weighted_fid_kid": [26.533006740051633, 0.0208175890147686],
+    "selection": "retain native v27 with common time and uniform loss",
+    "result": "reports/2026-08-26_autoencoder_program/zca_whitening/factorial_final_results.json"
   },
   "gpu_protocol": "/workspace/GPU_QUEUEING.md; analysis, cache construction, training, and evaluation use lifetime gpu-claim locks under supervisor"
 }

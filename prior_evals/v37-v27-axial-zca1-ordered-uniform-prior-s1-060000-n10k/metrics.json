@@ -1,0 +1,15 @@
+{
+  "checkpoint_step": 60000,
+  "decoded_clipping_fraction": 0.00250615234375,
+  "decoded_max": 1.296875,
+  "decoded_min": -1.3515625,
+  "fid": 26.848381250953537,
+  "kid": 0.021812934428453445,
+  "model_type": "progressive_joint_rectified_flow",
+  "num_samples": 10000,
+  "representation_type": "tokenizer_latents",
+  "sample_steps": 50,
+  "standardized_latent_mean": 0.004660537144589734,
+  "standardized_latent_std": 0.9871213988930777,
+  "token_scale_applied": false
+}

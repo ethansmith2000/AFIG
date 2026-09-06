@@ -1,0 +1,42 @@
+{
+  "date": "2026-09-06",
+  "status": "complete_retain_native_v27",
+  "external_control_10000": {
+    "name": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2-prior-s1",
+    "fid": 24.534106902736653,
+    "kid": 0.017646966502070427
+  },
+  "arms_10000": {
+    "common_uniform": {
+      "fid": 25.04443157062542,
+      "kid": 0.019015107303857803,
+      "fid_delta_vs_external": 0.5103246678887672,
+      "kid_delta_vs_external": 0.0013681408017873764
+    },
+    "ordered_uniform": {
+      "fid": 26.848381250953537,
+      "kid": 0.021812934428453445,
+      "fid_delta_vs_common_uniform": 1.8039496803281168,
+      "kid_delta_vs_common_uniform": 0.002797827124595642
+    },
+    "ordered_weighted": {
+      "fid": 26.533006740051633,
+      "kid": 0.0208175890147686,
+      "fid_delta_vs_common_uniform": 1.4885751694262126,
+      "kid_delta_vs_common_uniform": 0.0018024817109107971,
+      "fid_delta_vs_ordered_uniform": -0.31537451090190416,
+      "kid_delta_vs_ordered_uniform": -0.000995345413684845
+    }
+  },
+  "common_weighted_5000_only": {
+    "fid": 30.03736444630738,
+    "kid": 0.021520810201764107,
+    "reason_stopped": "concordantly worse than common_uniform by more than two FID"
+  },
+  "verdict": {
+    "zca": "Axial gamma-1 ZCA rotated back into native axes is approximately at parity but slightly worse than the native v27 representation on both 5k and 10k metrics.",
+    "token_timing": "The softened six-group per-token SNR schedule is worse than common time at both sample counts.",
+    "loss_weighting": "Tempered flow-target loss weighting does not improve common time and only partially compensates the ordered-time loss.",
+    "selection": "Retain native v27 with common time and uniform loss; close the post-hoc whitening and explicit native-token hierarchy branch."
+  }
+}
