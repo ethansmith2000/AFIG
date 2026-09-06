@@ -1058,6 +1058,17 @@ supervisor-owned train/eval chains entered the queue at
 finite startup; the remaining five wait without holding a GPU claim and will
 start automatically as capacity returns.
 
+**FID/KID-5k gate:** every new cell completed. Common/uniform results are
+channel `28.504/.01959`, sequence `28.909/.02119`, axial
+`27.246/.01917`, and flattened `34.771/.02552`, versus native v27
+`26.743/.01754`. No transform wins; axial is closest and flattened is
+decisively worst. Token timing and loss weighting have only small, inconsistent
+within-cache effects. Under the frozen rule, all channel and sequence cells and
+three flattened objective variants advance to 10k; flattened common/uniform
+stops. These eleven evaluations require no new training.
+
+[Phase-M 5k matrix](reports/2026-08-26_autoencoder_program/zca_axis_matrix_results.md).
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality

@@ -1,0 +1,59 @@
+{
+  "date": "2026-09-06",
+  "status": "five_thousand_complete_eleven_ten_thousand_evaluations_authorized",
+  "external_native": {
+    "fid": 26.742993129687875,
+    "kid": 0.017538033425807953
+  },
+  "variants": {
+    "channel": {
+      "common_uniform": [28.50436757365344, 0.019593453034758568],
+      "ordered_uniform": [28.81862221544918, 0.019784383475780487],
+      "common_weighted": [28.699000065651944, 0.019385484978556633],
+      "ordered_weighted": [28.395405555193406, 0.019279027357697487],
+      "fid_effects": {
+        "timing_at_uniform_loss": 0.3142546417957419,
+        "weighting_at_common_time": 0.19463249199850452,
+        "combined_vs_common_uniform": -0.1089620184600335,
+        "interaction": -0.6178491522542799
+      },
+      "advance_to_10000": ["common_uniform", "ordered_uniform", "common_weighted", "ordered_weighted"]
+    },
+    "sequence": {
+      "common_uniform": [28.909092220163416, 0.02118641324341297],
+      "ordered_uniform": [29.30375170194344, 0.02093399502336979],
+      "common_weighted": [29.409388460514776, 0.021090364083647728],
+      "ordered_weighted": [29.66866921420649, 0.02067895419895649],
+      "fid_effects": {
+        "timing_at_uniform_loss": 0.39465948178002463,
+        "weighting_at_common_time": 0.5002962403513607,
+        "combined_vs_common_uniform": 0.7595769940430728,
+        "interaction": -0.13537872808831253
+      },
+      "advance_to_10000": ["common_uniform", "ordered_uniform", "common_weighted", "ordered_weighted"]
+    },
+    "axial": {
+      "common_uniform": [27.246121501223854, 0.019170522689819336],
+      "ordered_uniform": [29.09934151063686, 0.02144438773393631],
+      "common_weighted": [30.03736444630738, 0.021520810201764107],
+      "ordered_weighted": [28.73976733967146, 0.020847558975219727],
+      "status": "completed in Phase L"
+    },
+    "flattened": {
+      "common_uniform": [34.770588104399394, 0.025516103953123093],
+      "ordered_uniform": [35.07096243744081, 0.026375217363238335],
+      "common_weighted": [35.24173201944723, 0.02609388343989849],
+      "ordered_weighted": [34.28885037322385, 0.025886617600917816],
+      "fid_effects": {
+        "timing_at_uniform_loss": 0.30037433304141814,
+        "weighting_at_common_time": 0.4711439150478327,
+        "combined_vs_common_uniform": -0.4817377311755422,
+        "interaction": -1.253255979264793
+      },
+      "advance_to_10000": ["ordered_uniform", "common_weighted", "ordered_weighted"],
+      "stop_at_5000": ["common_uniform"]
+    }
+  },
+  "common_uniform_axis_order_by_fid": ["native", "axial", "channel", "sequence", "flattened"],
+  "interim_verdict": "No ZCA axis or explicit hierarchy cell beats native at 5k. Axial is the closest transform; flattened is decisively rejected as a representation, while small within-transform objective differences advance under the frozen rule."
+}

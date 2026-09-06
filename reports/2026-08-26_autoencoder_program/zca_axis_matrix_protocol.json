@@ -1,6 +1,6 @@
 {
   "date": "2026-09-06",
-  "status": "active_seven_running_five_queued",
+  "status": "five_thousand_complete_eleven_ten_thousand_evaluations_authorized",
   "question": "Does the generative effect of rotate-back whitening and the explicit token hierarchy depend on whether covariance is conditioned along features, sequence, both axes, or the complete flattened latent?",
   "scope_correction": {
     "completed_phase_l": "analyzed all four ZCA variants but trained the objective factorial only on axial gamma 1",
@@ -108,6 +108,19 @@
       "flattened_ordered_uniform": "5gqadkfa"
     },
     "queue_state": "seven arms acquired distinct lifetime GPU locks; five wait without a GPU claim and will start as locks are released"
+  },
+  "five_thousand_result": {
+    "completed": true,
+    "common_uniform_axis_fid": {
+      "channel": 28.50436757365344,
+      "sequence": 28.909092220163416,
+      "axial": 27.246121501223854,
+      "flattened": 34.770588104399394,
+      "native": 26.742993129687875
+    },
+    "ten_thousand_evaluations": 11,
+    "stopped_cell": "flattened/common_uniform",
+    "result": "reports/2026-08-26_autoencoder_program/zca_axis_matrix_5k_results.json"
   },
   "gpu_protocol": "/workspace/GPU_QUEUEING.md; one queue-managed cache suite and twelve supervisor-owned train/eval chains"
 }
