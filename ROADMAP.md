@@ -1050,6 +1050,14 @@ loss remain non-selectors.
 
 [Frozen Phase-M protocol](reports/2026-08-26_autoencoder_program/zca_axis_matrix_protocol.json).
 
+Launch record: commit `27f23b1` was pushed before GPU work. All three caches
+completed under one shared lifetime claim with float16 inverse relative RMS
+`2.13e-4/2.12e-4/2.01e-4` for channel/sequence/flattened. The twelve
+supervisor-owned train/eval chains entered the queue at
+`2026-09-06T00:54:40Z`. Seven immediately acquired distinct GPUs and entered
+finite startup; the remaining five wait without holding a GPU claim and will
+start automatically as capacity returns.
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality

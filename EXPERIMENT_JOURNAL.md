@@ -30,6 +30,10 @@ verdicts live under `reports/` and are linked here.
   crossings and mean-one weights; do not rescale clean magnitudes. Every new
   cell receives FID/KID-5k under the existing continuation rules. This resolves
   transform-axis dependence rather than assuming the axial result generalizes.
+  Commit `27f23b1` landed before launch. The three new caches validate at
+  approximately `2.0e-4` inverse relative RMS. All twelve supervisor chains
+  entered the shared queue at 00:54 UTC; seven acquired the available GPUs and
+  five remain CPU-only waiters until a lifetime lock is released.
   [Frozen protocol](reports/2026-08-26_autoencoder_program/zca_axis_matrix_protocol.json).
 - **2026-09-05 — rotate-back/ZCA analysis passes and authorizes training:**
   gamma zero is exactly the native representation, confirming that this is the

@@ -1,6 +1,6 @@
 {
   "date": "2026-09-06",
-  "status": "predeclared_prelaunch",
+  "status": "active_seven_running_five_queued",
   "question": "Does the generative effect of rotate-back whitening and the explicit token hierarchy depend on whether covariance is conditioned along features, sequence, both axes, or the complete flattened latent?",
   "scope_correction": {
     "completed_phase_l": "analyzed all four ZCA variants but trained the objective factorial only on axial gamma 1",
@@ -76,6 +76,38 @@
     "ten_thousand_rule": "advance an improvement, an FID gap below two from its relevant control, or an FID/KID disagreement; a concordant loss above two may stop",
     "promotion": "only a concordant 10k improvement of at least two FID over native v27 motivates replication or intermediate-gamma follow-up",
     "nonselectors": ["flow loss", "covariance rank", "reconstruction quality"]
+  },
+  "execution": {
+    "launcher_commit": "27f23b1",
+    "cache_completed_at": "2026-09-06T00:54:33Z",
+    "training_queue_started_at": "2026-09-06T00:54:40Z",
+    "caches": {
+      "channel": {
+        "global_mean": 0.004202104639261961,
+        "global_std": 0.9073759913444519,
+        "roundtrip_relative_rms": 0.0002129987327175567
+      },
+      "sequence": {
+        "global_mean": 0.004393906332552433,
+        "global_std": 0.907294750213623,
+        "roundtrip_relative_rms": 0.0002121586515187147
+      },
+      "flattened": {
+        "global_mean": 0.004214417189359665,
+        "global_std": 0.9237879514694214,
+        "roundtrip_relative_rms": 0.00020128983780733902
+      }
+    },
+    "initial_wandb_runs": {
+      "channel_common_uniform": "y40v0kel",
+      "channel_ordered_uniform": "b3y8oq7j",
+      "channel_common_weighted": "ymlp42wb",
+      "channel_ordered_weighted": "i55yizz6",
+      "sequence_common_uniform": "2sa0z297",
+      "sequence_common_weighted": "ck3hgtvl",
+      "flattened_ordered_uniform": "5gqadkfa"
+    },
+    "queue_state": "seven arms acquired distinct lifetime GPU locks; five wait without a GPU claim and will start as locks are released"
   },
   "gpu_protocol": "/workspace/GPU_QUEUEING.md; one queue-managed cache suite and twelve supervisor-owned train/eval chains"
 }
