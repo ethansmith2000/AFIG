@@ -1024,6 +1024,32 @@ replicated. Retain radial log-power as a plausible weak modifier; reject LPIPS
 for this configuration, and do not silently combine either objective with the
 next experiment.
 
+## Phase M — complete ZCA axis × hierarchy matrix (predeclared 2026-09-06)
+
+Phase L analyzed channel, sequence, axial, and flattened rotate-back ZCA but
+trained only the scientifically selected axial gamma-1 factorial. This left the
+broader proposed experiment incomplete. Keep the four completed axial cells and
+train the missing `3 transforms × 4 objectives = 12` cells for channel-only,
+sequence-only, and flattened gamma-1 ZCA.
+
+Every transform remains symmetric and returns to the native `64x16` axes.
+Channel ZCA never mixes tokens; sequence and axial ZCA retain `94.41%` mean
+matching-token linear-map energy; flattened ZCA retains `87.73%`, so its native-
+index schedule is a deliberately less token-local control. Cross each cache
+with common/ordered time and uniform/tempered loss using the exact Phase-L
+crossings, weights, six native-index groups, prior recipe, and evaluation seed.
+Do not rescale clean token magnitudes.
+
+All twelve cells receive FID/KID-5k. Within each transform, objective effects
+use its common/uniform cell as the exact-cache control. Common/uniform also
+compares to native v27 and completed axial ZCA. Advance improvements, gaps below
+two FID, and FID/KID disagreements to 10k; a concordant loss above two may stop.
+Only a concordant 10k gain of at least two FID over native v27 authorizes seed
+replication or an intermediate-gamma screen. Geometry, reconstruction, and flow
+loss remain non-selectors.
+
+[Frozen Phase-M protocol](reports/2026-08-26_autoencoder_program/zca_axis_matrix_protocol.json).
+
 ## Promotion protocol
 
 1. 15k tokenizer codec-health screen; reconstruction is not a latent-quality

@@ -1,0 +1,81 @@
+{
+  "date": "2026-09-06",
+  "status": "predeclared_prelaunch",
+  "question": "Does the generative effect of rotate-back whitening and the explicit token hierarchy depend on whether covariance is conditioned along features, sequence, both axes, or the complete flattened latent?",
+  "scope_correction": {
+    "completed_phase_l": "analyzed all four ZCA variants but trained the objective factorial only on axial gamma 1",
+    "current_phase": "complete the missing channel, sequence, and flattened gamma-1 factorial cells without rerunning the four axial cells",
+    "total_matrix": "four ZCA variants by four prior objectives; 16 cells total, 12 new"
+  },
+  "source": {
+    "tokenizer": "v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2",
+    "cache": "tokenizer_runs/v27-residual-e7p1-det-jitter05-slotbal2e3-n64d16-s2/latents_final_original_flip.pt",
+    "geometry": "reports/2026-08-26_autoencoder_program/zca_whitening/zca_geometry.pt",
+    "shape": [64, 16],
+    "gamma": 1.0,
+    "external_control_5k": [26.742993129687875, 0.017538033425807953],
+    "external_control_10k": [24.534106902736653, 0.017646966502070427]
+  },
+  "transforms": {
+    "channel": {
+      "definition": "apply 16-dimensional feature ZCA identically inside every native token",
+      "relative_gain_range": 3.2136125564575195,
+      "mean_matching_native_token_energy_fraction": 1.0
+    },
+    "sequence": {
+      "definition": "apply 64-dimensional sequence ZCA identically to every feature, then rotate back",
+      "relative_gain_range": 215.8254852294922,
+      "mean_matching_native_token_energy_fraction": 0.9441186189651489
+    },
+    "axial": {
+      "definition": "Kronecker product of sequence and channel ZCA, then rotate back",
+      "relative_gain_range": 693.5794677734375,
+      "mean_matching_native_token_energy_fraction": 0.9441186189651489,
+      "status": "four cells complete; reuse Phase-L results"
+    },
+    "flattened": {
+      "definition": "complete 1024-dimensional ZCA, then rotate back to the native 64x16 partition",
+      "relative_gain_range": 1866.1602783203125,
+      "mean_matching_native_token_energy_fraction": 0.8773156404495239,
+      "interpretation_caveat": "native token-index interventions remain operational after rotate-back but act on less token-local outputs"
+    }
+  },
+  "token_intervention": {
+    "ordering": "native token index with no permutation",
+    "group_sizes": [11, 11, 11, 11, 10, 10],
+    "snr1_crossings": [
+      0.40410173521418785,
+      0.47022477394468404,
+      0.5065679675274289,
+      0.5325433480897788,
+      0.5658106972478606,
+      0.6055140332654796
+    ],
+    "flow_target_energy_loss_weights": [
+      1.5517655948058875,
+      1.1092893559285699,
+      0.9526161665546741,
+      0.8654548992737954,
+      0.7766682063007606,
+      0.6962931754800191
+    ],
+    "objective_cells": [
+      "common time / uniform loss",
+      "ordered token time / uniform loss",
+      "common time / tempered token loss",
+      "ordered token time / tempered token loss"
+    ],
+    "clean_magnitude": "no explicit token rescaling; every cache uses its tensor-wide population normalization"
+  },
+  "training": {
+    "new_variants": ["channel", "sequence", "flattened"],
+    "new_arms": 12,
+    "recipe": "prior seed 1, width 512, depth 12, eight heads, QK RMS normalization, batch 256, 60000 optimizer steps, learning rate 1e-4, 1000 warmup, 50-step Heun evaluation seed 54321",
+    "evaluation": "all 12 new cells receive decoded FID/KID-5k",
+    "selection": "within each transform, compare timing and weighting against exact-cache controls; compare each common/uniform cell against native v27 and the completed axial cell",
+    "ten_thousand_rule": "advance an improvement, an FID gap below two from its relevant control, or an FID/KID disagreement; a concordant loss above two may stop",
+    "promotion": "only a concordant 10k improvement of at least two FID over native v27 motivates replication or intermediate-gamma follow-up",
+    "nonselectors": ["flow loss", "covariance rank", "reconstruction quality"]
+  },
+  "gpu_protocol": "/workspace/GPU_QUEUEING.md; one queue-managed cache suite and twelve supervisor-owned train/eval chains"
+}

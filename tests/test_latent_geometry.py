@@ -23,9 +23,11 @@ from progressive_tokenizer.whitening import (
     regularized_whitening_gains,
     tempered_token_profile,
     zca_inverse_affine,
+    zca_matrix,
     zca_power_gains,
 )
 from scripts.analyze_known_clean_denoising import _comparison
+from scripts.build_zca_prior_cache import _zca_spec
 
 
 def test_snr1_crossing_matches_signal_to_noise_odds() -> None:
@@ -196,6 +198,49 @@ def test_zca_inverse_affine_matches_native_physical_gauge() -> None:
     torch.testing.assert_close(
         restored.reshape_as(values), values, atol=2e-5, rtol=2e-5
     )
+
+
+@pytest.mark.parametrize("variant", ["channel", "sequence", "axial", "flattened"])
+def test_zca_cache_specs_retain_exact_identity_anchor(variant: str) -> None:
+    generator = torch.Generator().manual_seed(47)
+    sequence_basis, _ = torch.linalg.qr(torch.randn(3, 3, generator=generator))
+    channel_basis, _ = torch.linalg.qr(torch.randn(2, 2, generator=generator))
+    flattened_basis, _ = torch.linalg.qr(torch.randn(6, 6, generator=generator))
+    geometry = {
+        "sequence_eigenvectors": sequence_basis,
+        "sequence_eigenvalues": torch.tensor([9.0, 4.0, 1.0]),
+        "channel_eigenvectors": channel_basis,
+        "channel_eigenvalues": torch.tensor([4.0, 1.0]),
+        "flattened_eigenvectors": flattened_basis,
+        "flattened_eigenvalues": torch.tensor([36.0, 16.0, 9.0, 4.0, 2.0, 1.0]),
+    }
+    basis, gains, _ = _zca_spec(
+        geometry, variant, 0.0, tokens=3, channels=2, device=torch.device("cpu")
+    )
+    torch.testing.assert_close(
+        zca_matrix(basis, gains), torch.eye(6), atol=1e-6, rtol=1e-6
+    )
+
+
+def test_zca_cache_specs_preserve_selected_axis_structure() -> None:
+    geometry = {
+        "sequence_eigenvectors": torch.eye(3),
+        "sequence_eigenvalues": torch.tensor([9.0, 4.0, 1.0]),
+        "channel_eigenvectors": torch.eye(2),
+        "channel_eigenvalues": torch.tensor([4.0, 1.0]),
+        "flattened_eigenvectors": torch.eye(6),
+        "flattened_eigenvalues": torch.tensor([36.0, 16.0, 9.0, 4.0, 2.0, 1.0]),
+    }
+    channel_basis, channel_gains, _ = _zca_spec(
+        geometry, "channel", 1.0, 3, 2, torch.device("cpu")
+    )
+    sequence_basis, sequence_gains, _ = _zca_spec(
+        geometry, "sequence", 1.0, 3, 2, torch.device("cpu")
+    )
+    channel_matrix = zca_matrix(channel_basis, channel_gains).reshape(3, 2, 3, 2)
+    sequence_matrix = zca_matrix(sequence_basis, sequence_gains).reshape(3, 2, 3, 2)
+    assert float(channel_matrix[0, :, 1:, :].abs().max()) == 0.0
+    assert float(sequence_matrix[:, 0, :, 1].abs().max()) == 0.0
 
 
 def test_linear_whitening_round_trip_is_exact() -> None:
